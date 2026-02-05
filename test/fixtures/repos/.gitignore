@@ -1,0 +1,8 @@
+# Ignore fixture repositories - they are created by setup_fixtures.sh
+# Run `bash test/fixtures/repos/setup_fixtures.sh` to create them
+simple_repo/
+multi_contributor_repo/
+single_commit_repo/
+elixir_project_repo/
+node_project_repo/
+python_project_repo/
