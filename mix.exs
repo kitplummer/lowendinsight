@@ -50,6 +50,7 @@ defmodule GithubModule.MixProject do
       {:json_xema, "~> 0.6"},
       {:temp, "~> 0.4"},
       {:excoveralls, "~> 0.18", only: :test},
+      {:mox, "~> 1.1", only: :test},
       {:yarn_parser, "~> 0.3"},
       {:sweet_xml, "~> 0.7.1"},
       {:sbom, "~> 0.6", only: :dev, runtime: false}
