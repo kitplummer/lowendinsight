@@ -4,13 +4,19 @@
 
 # Configure ExUnit exclusions based on environment
 # In CI, exclude network and long-running tests by default
+#
+# Test modes:
+#   CI (default):     mix test (auto-excludes network and long)
+#   Local (default):  mix test (auto-excludes long only)
+#   Full suite:       mix test --include long --include network
+#   Network only:     mix test --only network --include long
+#   Long only:        mix test --only long
+#
 exclusions =
   if System.get_env("CI") do
     [network: true, long: true]
   else
     # Locally, only exclude long tests by default
-    # Run `mix test --include long` for full suite
-    # Run `mix test --include network` for network tests
     [long: true]
   end
 
