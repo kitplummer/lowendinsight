@@ -6,6 +6,7 @@ defmodule GitModule do
   @moduledoc """
   Collections of functions for interacting with the `git` command to perform queries.
   """
+  @behaviour GitModule.Behaviour
   require Logger
 
   @doc """
