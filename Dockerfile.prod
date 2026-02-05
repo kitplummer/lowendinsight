@@ -113,6 +113,10 @@ RUN chmod +x /usr/local/bin/docker-entrypoint.sh
 # Switch to non-root user
 USER lei
 
+# Install hex and rebar for the non-root user
+RUN mix local.rebar --force && \
+    mix local.hex --force
+
 # Workspace for mounting repositories to analyze
 VOLUME ["/workspace"]
 
