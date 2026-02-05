@@ -6,6 +6,10 @@ defmodule AnalyzerTest do
   use ExUnit.Case, async: false
   doctest AnalyzerModule
 
+  # All tests in this module require network access unless tagged otherwise
+  @moduletag :network
+  @moduletag :long
+
   setup_all do
     {:ok, tmp_path} = Temp.path("lei-analyzer-test")
     {:ok, repo} = GitModule.clone_repo("https://github.com/kitplummer/xmpp4rails", tmp_path)
@@ -15,6 +19,8 @@ defmodule AnalyzerTest do
     [weeks: weeks]
   end
 
+  @tag network: false
+  @tag long: false
   test "analyze local path repo" do
     {:ok, cwd} = File.cwd()
 
@@ -27,6 +33,8 @@ defmodule AnalyzerTest do
     assert [] == repo_data[:data][:project_types]
   end
 
+  @tag network: false
+  @tag long: false
   test "get empty report" do
     start_time = DateTime.utc_now()
     uuid = UUID.uuid1()

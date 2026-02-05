@@ -8,6 +8,7 @@ defmodule Mix.Tasks.AnalyzeTest do
   use ExUnit.Case, async: true
   alias Mix.Tasks.Lei.Analyze
   @tag :long
+  @tag :network
   describe "run/1" do
     test "run analysis, validate report, return report" do
       Analyze.run(["https://github.com/expressjs/express"])

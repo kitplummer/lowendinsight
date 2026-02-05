@@ -3,8 +3,12 @@
 # the BSD 3-Clause license. See the LICENSE file for details.
 
 defmodule FilesTest do
-  use ExUnit.Case, async:  false
+  use ExUnit.Case, async: false
   doctest Lowendinsight.Files
+
+  # All tests in this module require network access
+  @moduletag :network
+  @moduletag :long
   # setup_all do
   #   {:ok, tmp_path} = Temp.path("lei-analyzer-test")
   #   {:ok, repo} = GitModule.clone_repo("https://github.com/kitplummer/xmpp4rails", tmp_path)

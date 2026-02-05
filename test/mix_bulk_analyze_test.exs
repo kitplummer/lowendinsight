@@ -10,6 +10,7 @@ defmodule Mix.Tasks.BulkAnalyzeTest do
 
   describe "run/1" do
     @tag :long
+    @tag :network
     test "run scan, validate report, return report" do
       args = ["#{File.cwd!()}/test/scan_list_test" | []]
       BulkAnalyze.run(args)
@@ -21,6 +22,7 @@ defmodule Mix.Tasks.BulkAnalyzeTest do
 
     @tag timeout: 200_000
     @tag :long
+    @tag :network
     test "run scan against NPM cleaned list" do
       args = ["#{File.cwd!()}/test/fixtures/npm.short.csv", "no_validation" | []]
       BulkAnalyze.run(args)

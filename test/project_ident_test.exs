@@ -5,6 +5,10 @@
 defmodule ProjectIdentTest do
   use ExUnit.Case, async: false
 
+  # Most tests require network access (cloning repos)
+  @moduletag :network
+  @moduletag :long
+
   setup_all do
     {:ok, cwd} = File.cwd()
     {:ok, tmp_path} = Temp.path("lei-test")
@@ -134,6 +138,8 @@ defmodule ProjectIdentTest do
     GitModule.delete_repo(repo)
   end
 
+  @tag network: false
+  @tag long: false
   test "find_files", %{cwd: cwd} do
     {:ok, repo} = GitModule.get_repo(cwd)
     mix_type = %ProjectType{name: :mix, path: "", files: ["mix.exs", "mix.lock"]}

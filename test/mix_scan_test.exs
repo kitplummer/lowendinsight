@@ -10,6 +10,7 @@ defmodule Mix.Tasks.ScanTest do
 
   @tag timeout: 130_000
   @tag :long
+  @tag :network
   describe "run/1" do
     test "run scan, validate report, return report" do
       Scan.run([])
@@ -32,6 +33,7 @@ defmodule Mix.Tasks.ScanTest do
 
   @tag timeout: 130_000
   @tag :long
+  @tag :network
   describe "bitbucket based run/1" do
     test "run scan and report against a package that has a known reference to Bitbucket" do
       # Get the repo
@@ -51,6 +53,7 @@ defmodule Mix.Tasks.ScanTest do
 
   describe "multi hub repo scan/1" do
     @tag :long
+    @tag :network
     test "run scan and report against a package that has a known reference to Bitbucket" do
       {:ok, tmp_path} = Temp.path("lei-analyzer-test")
 
@@ -114,6 +117,7 @@ defmodule Mix.Tasks.ScanTest do
 
   @tag timeout: 140_000
   @tag :long
+  @tag :network
   test "run scan on JS repo, validate report, return report" do
     {:ok, tmp_path} = Temp.path("lei-scan-js-repo-test")
     {:ok, repo} = GitModule.clone_repo("https://github.com/juliangarnier/anime", tmp_path)
@@ -166,6 +170,7 @@ defmodule Mix.Tasks.ScanTest do
   end
 
   @tag :long
+  @tag :network
   test "run scan on python repo, validate report, return report" do
     {:ok, tmp_path} = Temp.path("lei-scan-python-repo-test")
     {:ok, repo} = GitModule.clone_repo("https://github.com/kitplummer/clikan", tmp_path)
