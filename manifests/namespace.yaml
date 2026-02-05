@@ -1,0 +1,7 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: lei
+  labels:
+    app.kubernetes.io/name: lowendinsight
+    app.kubernetes.io/component: namespace

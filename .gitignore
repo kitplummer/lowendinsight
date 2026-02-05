@@ -35,3 +35,7 @@ entrypoint_*
 .claude/
 .beads/
 .logs/
+
+# Zarf package artifacts
+zarf-package-*.tar.zst
+zarf-sbom/

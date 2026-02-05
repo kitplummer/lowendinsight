@@ -1,0 +1,56 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: lei
+  namespace: lei
+  labels:
+    app: lei
+    app.kubernetes.io/name: lowendinsight
+    app.kubernetes.io/component: analyzer
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: lei
+  template:
+    metadata:
+      labels:
+        app: lei
+        app.kubernetes.io/name: lowendinsight
+    spec:
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1000
+        runAsGroup: 1000
+        fsGroup: 1000
+      containers:
+        - name: lei
+          image: "###ZARF_REGISTRY###/ghcr.io/gtri/lowendinsight:###ZARF_CONST_VERSION###"
+          imagePullPolicy: IfNotPresent
+          command: ["sleep", "infinity"]
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: false
+            capabilities:
+              drop:
+                - ALL
+          envFrom:
+            - configMapRef:
+                name: lei-config
+          resources:
+            requests:
+              memory: "256Mi"
+              cpu: "100m"
+            limits:
+              memory: "1Gi"
+              cpu: "1000m"
+          volumeMounts:
+            - name: workspace
+              mountPath: /workspace
+            - name: tmp
+              mountPath: /tmp
+      volumes:
+        - name: workspace
+          emptyDir: {}
+        - name: tmp
+          emptyDir: {}

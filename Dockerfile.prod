@@ -1,0 +1,130 @@
+# Production Dockerfile for LowEndInsight (LEI)
+# Optimized for Zarf packaging and air-gapped deployment
+#
+# Build: docker build -f Dockerfile.prod -t lei:latest .
+# Run:   docker run --rm -v /path/to/repo:/workspace lei:latest analyze /workspace
+
+ARG ELIXIR_VERSION=1.14.1
+ARG ERLANG_VERSION=24.3.4
+ARG ALPINE_VERSION=3.16
+
+# ==============================================================================
+# Stage 1: Builder - compile application and dependencies
+# ==============================================================================
+FROM elixir:${ELIXIR_VERSION}-alpine AS builder
+
+ARG MIX_ENV=prod
+
+ENV MIX_ENV=${MIX_ENV} \
+    LANG=C.UTF-8 \
+    LEI_BASE_TEMP_DIR=/tmp
+
+WORKDIR /build
+
+# Install build dependencies
+RUN apk update && \
+    apk upgrade --no-cache && \
+    apk add --no-cache \
+      git \
+      build-base \
+      openssh-client && \
+    mix local.rebar --force && \
+    mix local.hex --force
+
+# Copy dependency files first for caching
+COPY mix.exs mix.lock ./
+
+# Fetch and compile dependencies (cached layer)
+RUN mix deps.get --only ${MIX_ENV} && \
+    mix deps.compile
+
+# Copy application source
+COPY lib ./lib
+COPY config ./config
+COPY schema ./schema
+COPY scripts ./scripts
+
+# Compile application
+RUN mix compile
+
+# ==============================================================================
+# Stage 2: SBOM Generator - generate Software Bill of Materials
+# ==============================================================================
+FROM builder AS sbom-generator
+
+# Install syft for SBOM generation
+RUN apk add --no-cache curl && \
+    curl -sSfL https://raw.githubusercontent.com/anchore/syft/main/install.sh | sh -s -- -b /usr/local/bin
+
+WORKDIR /build
+
+# Generate SBOM in multiple formats
+RUN syft dir:/build -o cyclonedx-json=/build/sbom.cdx.json && \
+    syft dir:/build -o spdx-json=/build/sbom.spdx.json
+
+# ==============================================================================
+# Stage 3: Runtime - minimal production image
+# ==============================================================================
+FROM elixir:${ELIXIR_VERSION}-alpine AS runtime
+
+ARG MIX_ENV=prod
+
+ENV MIX_ENV=${MIX_ENV} \
+    LANG=C.UTF-8 \
+    LEI_BASE_TEMP_DIR=/tmp \
+    LEI_AIRGAPPED_MODE=false
+
+WORKDIR /opt/lei
+
+# Install runtime dependencies only
+RUN apk update && \
+    apk upgrade --no-cache && \
+    apk add --no-cache \
+      git \
+      openssh-client \
+      ca-certificates \
+      tini && \
+    mix local.rebar --force && \
+    mix local.hex --force && \
+    # Create non-root user for security
+    addgroup -g 1000 lei && \
+    adduser -u 1000 -G lei -s /bin/sh -D lei && \
+    # Create directories with proper permissions
+    mkdir -p /workspace /tmp/lei && \
+    chown -R lei:lei /opt/lei /workspace /tmp/lei
+
+# Copy compiled application from builder
+COPY --from=builder --chown=lei:lei /build/_build/${MIX_ENV} ./_build/${MIX_ENV}
+COPY --from=builder --chown=lei:lei /build/deps ./deps
+COPY --from=builder --chown=lei:lei /build/lib ./lib
+COPY --from=builder --chown=lei:lei /build/config ./config
+COPY --from=builder --chown=lei:lei /build/schema ./schema
+COPY --from=builder --chown=lei:lei /build/mix.exs ./mix.exs
+COPY --from=builder --chown=lei:lei /build/mix.lock ./mix.lock
+
+# Copy SBOM files
+COPY --from=sbom-generator --chown=lei:lei /build/sbom.cdx.json /opt/lei/sbom.cdx.json
+COPY --from=sbom-generator --chown=lei:lei /build/sbom.spdx.json /opt/lei/sbom.spdx.json
+
+# Copy entrypoint script
+COPY --chown=lei:lei scripts/docker-entrypoint.sh /usr/local/bin/docker-entrypoint.sh
+RUN chmod +x /usr/local/bin/docker-entrypoint.sh
+
+# Switch to non-root user
+USER lei
+
+# Workspace for mounting repositories to analyze
+VOLUME ["/workspace"]
+
+# Use tini as init system for proper signal handling
+ENTRYPOINT ["/sbin/tini", "--", "/usr/local/bin/docker-entrypoint.sh"]
+
+# Default command: show help
+CMD ["help"]
+
+# Labels for container metadata
+LABEL org.opencontainers.image.title="LowEndInsight" \
+      org.opencontainers.image.description="OSS supply chain risk analysis tool" \
+      org.opencontainers.image.vendor="Georgia Tech Research Institute" \
+      org.opencontainers.image.licenses="BSD-3-Clause" \
+      org.opencontainers.image.source="https://github.com/gtri/lowendinsight"
