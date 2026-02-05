@@ -8,10 +8,11 @@ defmodule Mix.Tasks.ScanTest do
   use ExUnit.Case, async: true
   alias Mix.Tasks.Lei.Scan
 
-  @tag timeout: 130_000
-  @tag :long
-  @tag :network
   describe "run/1" do
+    @describetag timeout: 130_000
+    @describetag :long
+    @describetag :network
+
     test "run scan, validate report, return report" do
       Scan.run([])
       assert_received {:mix_shell, :info, [report]}
@@ -22,8 +23,9 @@ defmodule Mix.Tasks.ScanTest do
     end
   end
 
-  @tag :long
   describe "run/1 with invalid path" do
+    @describetag :long
+
     test "should fail with valid message" do
       Scan.run(["blah/"])
       assert_received {:mix_shell, :info, [report]}
@@ -31,10 +33,11 @@ defmodule Mix.Tasks.ScanTest do
     end
   end
 
-  @tag timeout: 130_000
-  @tag :long
-  @tag :network
   describe "bitbucket based run/1" do
+    @describetag timeout: 130_000
+    @describetag :long
+    @describetag :network
+
     test "run scan and report against a package that has a known reference to Bitbucket" do
       # Get the repo
       # https://bitbucket.org/npa_io/ueberauth_bitbucket.git
@@ -70,6 +73,7 @@ defmodule Mix.Tasks.ScanTest do
   end
 
   @moduletag timeout: 200000
+
   @tag :long
   test "run scan against package-lock.json" do
     paths = %{node: ["./test/fixtures/packagejson", "./test/fixtures/package-lockjson"]}
@@ -97,7 +101,6 @@ defmodule Mix.Tasks.ScanTest do
     assert 1 == Enum.count(reports_list)
   end
 
-  @moduletag timeout: 200000
   @tag :long
   test "run scan against package.json, package-lock.json and yarn.lock" do
     paths = %{
@@ -129,7 +132,6 @@ defmodule Mix.Tasks.ScanTest do
     assert Map.has_key?(report_data["metadata"], "risk_counts") == true
   end
 
-  @moduletag timeout: 200000
   @tag :long
   test "return 2 reports for package-lock.json and yarn.lock" do
     paths = [

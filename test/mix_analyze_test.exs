@@ -7,9 +7,11 @@ Mix.shell(Mix.Shell.Process)
 defmodule Mix.Tasks.AnalyzeTest do
   use ExUnit.Case, async: true
   alias Mix.Tasks.Lei.Analyze
-  @tag :long
-  @tag :network
+
   describe "run/1" do
+    @describetag :long
+    @describetag :network
+
     test "run analysis, validate report, return report" do
       Analyze.run(["https://github.com/expressjs/express"])
       assert_received {:mix_shell, :info, [report]}
