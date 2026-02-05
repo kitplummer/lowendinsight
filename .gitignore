@@ -29,3 +29,9 @@ out/
 DockerfileTest
 DockerfileDev
 entrypoint_*
+
+# Gas Town (added by gt)
+.runtime/
+.claude/
+.beads/
+.logs/
