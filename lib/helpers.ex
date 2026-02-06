@@ -25,7 +25,7 @@ defmodule Helpers do
         {:error, "invalid source URL"}
 
       path ->
-        path = String.slice(path, 1..-1)
+        path = String.slice(path, 1..-1//1)
         {:ok, path}
     end
   end
