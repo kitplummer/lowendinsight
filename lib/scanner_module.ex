@@ -32,6 +32,7 @@ defmodule ScannerModule do
     mix? = Map.has_key?(project_types_identified, :mix)
     node? = Map.has_key?(project_types_identified, :node)
     pypi? = Map.has_key?(project_types_identified, :python)
+    cargo? = Map.has_key?(project_types_identified, :cargo)
 
     {hex_reports_list, hex_deps_count} = Hex.Scanner.scan(mix?, project_types_identified)
 
@@ -40,17 +41,20 @@ defmodule ScannerModule do
 
     {pypi_reports_list, pypi_deps_count} = Pypi.Scanner.scan(pypi?, project_types_identified)
 
+    {cargo_reports_list, cargo_deps_count} = Cargo.Scanner.scan(cargo?, project_types_identified)
+
     reports = [
       hex: hex_reports_list,
       node_json: json_reports_list,
       node_yarn: yarn_reports_list,
-      pypi: pypi_reports_list
+      pypi: pypi_reports_list,
+      cargo: cargo_reports_list
     ]
 
     result =
       get_report(
         start_time,
-        hex_deps_count + npm_deps_count + pypi_deps_count,
+        hex_deps_count + npm_deps_count + pypi_deps_count + cargo_deps_count,
         reports,
         project_types_identified
       )
@@ -63,7 +67,7 @@ defmodule ScannerModule do
   def get_report(
         start_time,
         deps_count,
-        [hex: hex_report, node_json: json_report, node_yarn: yarn_report, pypi: pypi_report] =
+        [hex: hex_report, node_json: json_report, node_yarn: yarn_report, pypi: pypi_report, cargo: cargo_report] =
           reports,
         project_types
       ) do
@@ -75,8 +79,8 @@ defmodule ScannerModule do
       # If both package-lock.json and yarn.lock are present, create 2 separate reports
       Enum.member?(files, :node_json) && Enum.member?(files, :node_yarn) ->
         # json
-        result_json_list = hex_report ++ json_report
-        result_yarn_list = hex_report ++ yarn_report
+        result_json_list = hex_report ++ json_report ++ pypi_report ++ cargo_report
+        result_yarn_list = hex_report ++ yarn_report ++ pypi_report ++ cargo_report
 
         result_json = %{
           :state => :complete,
@@ -126,7 +130,7 @@ defmodule ScannerModule do
         %{:error => "No dependency manifest files were found"}
 
       true ->
-        result_list = hex_report ++ json_report ++ yarn_report ++ pypi_report
+        result_list = hex_report ++ json_report ++ yarn_report ++ pypi_report ++ cargo_report
 
         result = %{
           :state => :complete,
