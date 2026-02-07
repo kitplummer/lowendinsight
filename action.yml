@@ -26,6 +26,14 @@ inputs:
     description: 'Directory to change to before pushing.'
     required: false
     default: '.'
+  sarif:
+    description: 'Generate SARIF output for GitHub Security tab instead of JSON report'
+    required: false
+    default: 'false'
+  sarif_file:
+    description: 'Output path for SARIF file (used when sarif is true)'
+    required: false
+    default: 'lei-results.sarif'
 
 runs:
   using: 'docker'
