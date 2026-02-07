@@ -53,7 +53,8 @@ defmodule GithubModule.MixProject do
       {:mox, "~> 1.1", only: :test},
       {:yarn_parser, "~> 0.3"},
       {:sweet_xml, "~> 0.7.1"},
-      {:sbom, "~> 0.6", only: :dev, runtime: false}
+      {:sbom, "~> 0.6", only: :dev, runtime: false},
+      {:exqlite, "~> 0.27"}
     ]
   end
 
