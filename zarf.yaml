@@ -19,6 +19,9 @@ variables:
   - name: LEI_REGISTRY
     description: "Container registry for LEI image"
     default: "ghcr.io/gtri"
+  - name: LEI_CACHE_REGISTRY
+    description: "OCI registry for LEI cache artifacts"
+    default: "ghcr.io/defenseunicorns"
   - name: LEI_AIRGAPPED_MODE
     description: "Enable air-gapped mode"
     default: "true"
@@ -65,6 +68,20 @@ components:
               docker run --rm ghcr.io/gtri/lowendinsight:0.8.1 sbom cyclonedx > /var/lei/sbom.cdx.json
               docker run --rm ghcr.io/gtri/lowendinsight:0.8.1 sbom spdx > /var/lei/sbom.spdx.json
             description: "Extract container SBOM"
+
+  - name: lei-cache
+    description: "LEI analysis cache as OCI artifact for air-gapped environments"
+    required: false
+    images:
+      - "###ZARF_PKG_TMPL_LEI_CACHE_REGISTRY###/lei-cache:latest"
+    actions:
+      onDeploy:
+        after:
+          - cmd: |
+              echo "Importing LEI cache from OCI artifact..."
+              mix lei.cache.pull oci://###ZARF_PKG_TMPL_LEI_CACHE_REGISTRY###/lei-cache:latest -o /var/lei/cache
+              mix lei.cache.import /var/lei/cache
+            description: "Pull and import LEI analysis cache"
 
   - name: lei-k8s
     description: "Kubernetes deployment manifests for LEI"
