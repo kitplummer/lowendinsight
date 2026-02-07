@@ -50,15 +50,22 @@ defmodule Mix.Tasks.Lei.ExportCache do
 
     Lei.Cache.init()
 
-    case Lei.Cache.Exporter.export(output) do
-      {:ok, bundle_dir, manifest} ->
-        Mix.shell().info("Cache exported to #{bundle_dir}")
-        Mix.shell().info("  Entries: #{manifest.entries}")
-        Mix.shell().info("  Ecosystems: #{inspect(manifest.ecosystems)}")
-        Mix.shell().info("  Format version: #{manifest.format_version}")
+    entries = Lei.Cache.all_valid()
 
-      {:error, msg} ->
-        Mix.shell().error("Export failed: #{msg}")
+    if entries == [] do
+      Mix.shell().error("Export failed: No cache entries to export")
+    else
+      reports = Enum.map(entries, fn {_key, entry} -> entry.report end)
+      output_dir = output || Path.join(System.tmp_dir!(), "lei-cache-#{Date.to_iso8601(Date.utc_today())}")
+
+      case Lei.Cache.Exporter.export(reports, output_dir) do
+        {:ok, dir} ->
+          Mix.shell().info("Cache exported to #{dir}")
+          Mix.shell().info("  Entries: #{length(reports)}")
+
+        {:error, msg} ->
+          Mix.shell().error("Export failed: #{msg}")
+      end
     end
   end
 end
