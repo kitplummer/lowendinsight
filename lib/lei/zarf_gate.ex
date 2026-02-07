@@ -30,10 +30,10 @@ defmodule Lei.ZarfGate do
 
   Returns `{:ok, result}` where result contains `:pass` boolean and details.
 
-  ## Threshold levels
-    - "low" - fail on anything above low risk
-    - "medium" - fail on high or critical risk
-    - "high" - fail only on critical risk
+  ## Threshold levels (fail when risk >= threshold)
+    - "low" - fail on any risk level (low, medium, high, critical)
+    - "medium" - fail on medium, high, or critical risk
+    - "high" - fail on high or critical risk (default)
     - "critical" - fail only on critical risk
   """
   @spec evaluate(map(), String.t()) :: {:ok, gate_result()}

@@ -112,12 +112,12 @@ defmodule Mix.Tasks.Lei.ZarfGate do
 
     unless quiet, do: Mix.shell().info("Scanning project at #{scan_path}...")
 
-    unless File.exists?(scan_path) do
-      {:error, "Path does not exist: #{scan_path}"}
-    else
+    if File.exists?(scan_path) do
       json = ScannerModule.scan(scan_path)
       report = Poison.decode!(json, keys: :atoms)
       {:ok, report}
+    else
+      {:error, "Path does not exist: #{scan_path}"}
     end
   end
 
