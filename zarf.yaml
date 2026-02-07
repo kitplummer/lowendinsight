@@ -27,6 +27,15 @@ variables:
     default: "true"
 
 components:
+  - name: lei-risk-gate
+    description: "LEI supply chain risk gate - blocks package creation on high-risk dependencies"
+    required: false
+    actions:
+      onCreate:
+        before:
+          - cmd: mix lei.zarf_gate --path . --threshold high --format json
+            description: "LEI supply chain risk assessment"
+
   - name: lei-image
     description: "LowEndInsight container image"
     required: true
