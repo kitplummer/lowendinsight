@@ -52,7 +52,15 @@ config :lowendinsight,
   base_temp_dir: System.get_env("LEI_BASE_TEMP_DIR") || "/tmp",
 
   ## Air-gapped mode: when true, skip network-dependent checks
-  airgapped_mode: System.get_env("LEI_AIRGAPPED_MODE") == "true"
+  airgapped_mode: System.get_env("LEI_AIRGAPPED_MODE") == "true",
+
+  web_port: String.to_integer(System.get_env("LEI_WEB_PORT") || "4000"),
+
+  oban: [
+    engine: Oban.Engines.Lite,
+    repo: Lei.Repo,
+    queues: [analysis: 10]
+  ]
 
 # JsonXema Schema Loader
 config :xema, loader: SchemaLoader

@@ -194,6 +194,10 @@ defmodule Helpers do
   def convert_config_to_list(config) do
     Enum.into(config, %{})
     |> Map.delete(:jobs_per_core_max)
+    |> Map.delete(:oban)
+    |> Map.delete(:web_port)
+    |> Map.delete(Lei.Repo)
+    |> Map.delete(:ecto_repos)
   end
 
   @doc """

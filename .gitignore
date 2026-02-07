@@ -30,6 +30,11 @@ DockerfileTest
 DockerfileDev
 entrypoint_*
 
+# SQLite databases
+*.db
+*.db-shm
+*.db-wal
+
 # Gas Town (added by gt)
 .runtime/
 .claude/
