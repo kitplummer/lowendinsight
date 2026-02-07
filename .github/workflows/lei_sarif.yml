@@ -1,0 +1,46 @@
+name: lei_sarif_scan
+
+on:
+  push:
+    branches: [develop, main]
+  pull_request:
+    branches: [develop, main]
+  schedule:
+    - cron: '0 6 * * 1'  # Weekly Monday 6am UTC
+
+permissions:
+  security-events: write
+  actions: read
+  contents: read
+
+jobs:
+  lei-sarif:
+    runs-on: ubuntu-latest
+    env:
+      MIX_ENV: test
+    steps:
+    - uses: actions/checkout@v4
+
+    - name: Setup Elixir
+      uses: erlef/setup-beam@v1
+      with:
+        elixir-version: 1.14.1
+        otp-version: 25.2
+
+    - name: Install Dependencies
+      run: |
+        mix local.rebar --force
+        mix local.hex --force
+        mix deps.get
+
+    - name: Run LowEndInsight SARIF Scan
+      run: |
+        git config --global --add safe.directory /__w/${{ github.event.repository.name }}/${{ github.event.repository.name }}
+        mix lei.sarif . --output lei-results.sarif
+
+    - name: Upload SARIF to GitHub Security tab
+      uses: github/codeql-action/upload-sarif@v3
+      if: always()
+      with:
+        sarif_file: lei-results.sarif
+        category: lowendinsight
