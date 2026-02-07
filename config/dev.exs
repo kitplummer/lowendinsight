@@ -49,7 +49,15 @@ config :lowendinsight,
   jobs_per_core_max: String.to_integer(System.get_env("LEI_JOBS_PER_CORE_MAX") || "2"),
 
   ## Base directory structure for temp clones
-  base_temp_dir: System.get_env("LEI_BASE_TEMP_DIR") || "/tmp"
+  base_temp_dir: System.get_env("LEI_BASE_TEMP_DIR") || "/tmp",
+
+  web_port: String.to_integer(System.get_env("LEI_WEB_PORT") || "4000"),
+
+  oban: [
+    engine: Oban.Engines.Lite,
+    repo: Lei.Repo,
+    queues: [analysis: 10]
+  ]
 
 # JsonXema Schema Loader
 config :xema, loader: SchemaLoader

@@ -5,4 +5,10 @@
 import Config
 
 config :logger, :console, format: "lei: $time $metadata[$level] $message\n"
+
+config :lowendinsight, Lei.Repo,
+  database: "lei_#{Mix.env()}.db"
+
+config :lowendinsight, ecto_repos: [Lei.Repo]
+
 import_config "#{Mix.env()}.exs"
