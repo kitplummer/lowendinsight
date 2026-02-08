@@ -28,7 +28,18 @@ jobs:
     - name: Run Tests
       run: |
         git config --global --add safe.directory /__w/lowendinsight/lowendinsight
-        MIX_ENV=test mix coveralls.github --exclude network --exclude long
+        # Retry up to 5 times to handle intermittent parallel compiler race condition
+        max_attempts=5
+        attempt=1
+        until MIX_ENV=test mix coveralls.github --exclude network --exclude long; do
+          if [ $attempt -ge $max_attempts ]; then
+            echo "All $max_attempts attempts failed"
+            exit 1
+          fi
+          echo "Attempt $attempt failed, retrying in 2s..."
+          attempt=$((attempt + 1))
+          sleep 2
+        done
     - name: Generate Docs
       run: |
         MIX_ENV=dev mix docs
