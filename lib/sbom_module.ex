@@ -13,8 +13,19 @@ defmodule SbomModule do
   end
 
   def has_spdx?(repo) do
-    boms = Path.wildcard(repo.path <> "/**/*spdx*")
-    !Enum.empty?(boms)
+    # Look for actual SPDX document files, not source code files containing "spdx"
+    spdx_patterns = [
+      "/**/*.spdx.json",
+      "/**/*.spdx.xml",
+      "/**/*.spdx.rdf",
+      "/**/*.spdx.yaml",
+      "/**/*.spdx.yml",
+      "/**/*.spdx"
+    ]
+
+    Enum.any?(spdx_patterns, fn pattern ->
+      !Enum.empty?(Path.wildcard(repo.path <> pattern))
+    end)
   end
 
 end
