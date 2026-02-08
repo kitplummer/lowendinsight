@@ -1,19 +1,25 @@
 # LowEndInsight
 
-![build status](https://github.com/gtri/lowendinsight/workflows/default_elixir_ci/badge.svg?branch=develop) ![Hex.pm](https://img.shields.io/hexpm/v/lowendinsight) [![Coverage Status](https://coveralls.io/repos/github/gtri/lowendinsight/badge.svg?branch=develop)](https://coveralls.io/github/gtri/lowendinsight?branch=develop)
+![build status](https://github.com/kitplummer/lowendinsight/workflows/default_elixir_ci/badge.svg?branch=develop) ![Hex.pm](https://img.shields.io/hexpm/v/lowendinsight) [![Coverage Status](https://coveralls.io/repos/github/kitplummer/lowendinsight/badge.svg?branch=develop)](https://coveralls.io/github/kitplummer/lowendinsight?branch=develop)
 
-CAVEATS: 
+## Current Version: 0.9.0
 
-Version 0.7.0 includes a quick scan for the presence of a SBOM, either a `bom.xml` for CycloneDX or `*.spdx`/`*spdx.rdf` for SPDX.
+## What's New
 
-Version 0.6.0 includes breaking changes to the analyze function -> upgrading from 0.5.0 to 0.6.0 will require you to pass in a couple
-extra arguments to the analyze function:
+**Version 0.9.0** adds:
+- **SARIF Output** - Generate SARIF reports for GitHub Security tab integration (`mix lei.sarif`)
+- **ZarfGate** - Quality gate for CI/CD pipelines with configurable risk thresholds
+- **AI Rules Generation** - Generate rules for Cursor/GitHub Copilot (`mix lei.generate_rules`)
+- **Files Analysis** - Binary file detection, README/LICENSE/CONTRIBUTING presence check
+- **SPDX Parser** - Full SPDX SBOM parsing support
 
+**Version 0.7.0** added quick scan for SBOM presence (CycloneDX `bom.xml` or SPDX `*.spdx*`).
+
+**Version 0.6.0** introduced breaking changes - the analyze function now requires additional arguments:
+
+```elixir
+AnalyzerModule.analyze(["https://github.com/kitplummer/lowendinsight"], "iex", DateTime.utc_now(), %{types: true})
 ```
-AnalyzerModule.analyze(["https://github.com/gtri/lowendinsight","https://github.com/gtri/lowendinsight-get"], "iex", DateTime.utc_now(), %{types: true})
-```
-
-In version 0.6.0 the `DateTime.utc_now()` and new `options` field `%{types: true}` are required.
 
 <img src="lei_bus_128.png" style="float: left;margin-right: 10px;margin-top: 10px;"> LowEndInsight is a simple "bus-factor" risk analysis library for Open
 Source Software which is managed within a Git repository.  Provide the
@@ -684,7 +690,7 @@ by adding `lowendinsight` to your list of dependencies in `mix.exs`:
 ```elixir
 def deps do
   [
-    {:lowendinsight, "~> 0.5"}
+    {:lowendinsight, "~> 0.9"}
   ]
 end
 ```
@@ -704,7 +710,7 @@ the library to your project's dependencies:
 ```
 defp deps do
   [
-    {:lowendinsight, "~> 0.5", except: :prod, runtime: false}
+    {:lowendinsight, "~> 0.9", only: [:dev, :test], runtime: false}
   ]
 end
 ```
@@ -905,9 +911,62 @@ mix lei.bulk_analyze "./test/scan_list_test" | jq
 The expected file is a simple list of URLs, one per line like this:
 
 ```
-https://github.com/gtri/lowendinsight
-https://github.com/gtri/lowendinsight-get
+https://github.com/kitplummer/lowendinsight
+https://github.com/kitplummer/lowendinsight-get
 ```
+
+### SARIF Output for GitHub Security
+
+Generate SARIF (Static Analysis Results Interchange Format) output for integration with GitHub's Security tab:
+
+```bash
+mix lei.sarif . --output lei-results.sarif
+```
+
+Options:
+- `--output` or `-o`: Output file path (default: stdout)
+- `--threshold`: Risk threshold for failing (low, medium, high, critical)
+
+Use in GitHub Actions:
+```yaml
+- name: Run LowEndInsight SARIF Scan
+  run: mix lei.sarif . --output lei-results.sarif
+
+- name: Upload SARIF to GitHub Security tab
+  uses: github/codeql-action/upload-sarif@v3
+  with:
+    sarif_file: lei-results.sarif
+```
+
+### ZarfGate - Quality Gate for CI/CD
+
+Use ZarfGate to fail CI pipelines when dependencies exceed risk thresholds:
+
+```bash
+# Fail if any dependency has high or critical risk
+mix lei.gate . --threshold high
+
+# JSON output for programmatic use
+mix lei.gate . --threshold medium --format json
+```
+
+### AI Rules Generation
+
+Generate rules for AI coding assistants (Cursor, GitHub Copilot):
+
+```bash
+# Generate rules for all supported targets
+mix lei.generate_rules
+
+# Generate for specific target
+mix lei.generate_rules --target cursor
+mix lei.generate_rules --target copilot
+
+# Custom thresholds
+mix lei.generate_rules --critical-currency 52 --high-contributors 5
+```
+
+This creates `.cursorrules` or `.github/copilot-instructions.md` with LowEndInsight guidance.
 
 ### GitHub Action
 Lowendinsight can also be added to a GitHub workflow as an action. In its current state, it works against both NPM and Mix based projects. When run against a GitHub repository, a `.json` file will be generated of the format `lei--Y-m-d--H-M-S.json` and pushed to that repository's root directory by default. This action currently exists in the develop branch. The following is an example usage:
@@ -955,7 +1014,7 @@ This action does not, nor will it ever, collect user data.  Any repository used 
 
 Also, there is a sister project that wraps this library and provides an HTTP-based interface.
 
-https://github.com/gtri/lowendinsight-get
+https://github.com/kitplummer/lowendinsight-get
 
 ## Docs
 
