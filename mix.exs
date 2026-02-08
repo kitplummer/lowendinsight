@@ -45,7 +45,7 @@ defmodule GithubModule.MixProject do
       {:git_cli, "~> 0.3"},
       {:poison, "~> 6.0"},
       {:elixir_uuid, "~> 1.2"},
-      {:ex_doc, "~> 0.34", runtime: false},
+      {:ex_doc, "~> 0.32.0", runtime: false},
       {:credo, "~> 1.7", only: [:dev, :test], runtime: false},
       {:mix_audit, "~> 0.1", only: [:dev, :test], runtime: false},
       {:json_xema, "~> 0.6"},

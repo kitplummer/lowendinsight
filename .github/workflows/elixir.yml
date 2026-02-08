@@ -25,11 +25,19 @@ jobs:
         mix local.rebar --force
         mix local.hex --force
         mix deps.get
+    - name: Compile
+      run: |
+        MIX_ENV=test mix compile --force
     - name: Run Tests
+      env:
+        # Limit parallelism to avoid race conditions in test file loading
+        ELIXIR_ERL_OPTIONS: "+S 1:1"
       run: |
         git config --global --add safe.directory /__w/lowendinsight/lowendinsight
-        MIX_ENV=test mix coveralls.github --exclude network --exclude long
-        MIX_ENV=test mix docs
+        MIX_ENV=test mix coveralls.github --exclude network --exclude long --max-cases 4
+    - name: Generate Docs
+      run: |
+        MIX_ENV=dev mix docs
     - name: LowEndInsight Scan
       run: |
         mix lei.scan .
