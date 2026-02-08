@@ -18,25 +18,16 @@ jobs:
     - name: Setup Elixir
       uses: erlef/setup-beam@v1
       with:
-        elixir-version: 1.14.5
-        otp-version: 25.3
+        elixir-version: 1.16.3
+        otp-version: 26.2
     - name: Install Dependencies
       run: |
         mix local.rebar --force
         mix local.hex --force
         mix deps.get
-    - name: Compile
-      run: |
-        MIX_ENV=test mix compile --force
     - name: Run Tests
-      env:
-        # Force sequential test file loading to avoid parallel compiler race condition
-        ELIXIR_COMPILER_PROCESSES: "1"
       run: |
         git config --global --add safe.directory /__w/lowendinsight/lowendinsight
-        # Run tests with retries on compilation failures
-        MIX_ENV=test mix coveralls.github --exclude network --exclude long || \
-        MIX_ENV=test mix coveralls.github --exclude network --exclude long || \
         MIX_ENV=test mix coveralls.github --exclude network --exclude long
     - name: Generate Docs
       run: |
@@ -51,7 +42,7 @@ jobs:
       MIX_ENV: test
       GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
     container:
-      image: elixir:1.14.5-alpine
+      image: elixir:1.16.3-alpine
 
     steps:
     - uses: actions/checkout@v4
