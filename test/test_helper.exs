@@ -20,7 +20,9 @@ exclusions =
     [long: true]
   end
 
-ExUnit.start(exclude: exclusions)
+# Use max_cases: 1 in CI to avoid parallel test file loading race conditions
+max_cases = if System.get_env("CI"), do: 1, else: System.schedulers_online() * 2
+ExUnit.start(exclude: exclusions, max_cases: max_cases)
 
 # Compile support files
 Code.require_file("support/fixture_helper.ex", __DIR__)
