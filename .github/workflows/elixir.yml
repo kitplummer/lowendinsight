@@ -12,17 +12,14 @@ jobs:
       MIX_ENV: test
       CI: true
       GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-    
+
     steps:
-    - uses: actions/checkout@v1
-    - name: Setup OS deps
-      run: |
-        sudo apt-get update && sudo apt-get install -y git libssl-dev
+    - uses: actions/checkout@v4
     - name: Setup Elixir
       uses: erlef/setup-beam@v1
       with:
-        elixir-version: 1.14.1
-        otp-version: 25.2
+        elixir-version: 1.15.7
+        otp-version: 26.2
     - name: Install Dependencies
       run: |
         mix local.rebar --force
@@ -31,21 +28,22 @@ jobs:
     - name: Run Tests
       run: |
         git config --global --add safe.directory /__w/lowendinsight/lowendinsight
-        MIX_ENV=test mix coveralls.github --trace --exclude network --exclude long
+        MIX_ENV=test mix coveralls.github --exclude network --exclude long
         MIX_ENV=test mix docs
     - name: LowEndInsight Scan
       run: |
         mix lei.scan .
-  audit:      
+
+  audit:
     runs-on: ubuntu-latest
     env:
       MIX_ENV: test
       GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
     container:
-      image: elixir:1.14.2-alpine
+      image: elixir:1.15.7-alpine
 
     steps:
-    - uses: actions/checkout@v1
+    - uses: actions/checkout@v4
     - name: Install Dependencies
       run: |
         apk add git
@@ -54,7 +52,4 @@ jobs:
         mix deps.get
     - name: Run Audit
       run: |
-        MIX_ENV=test mix deps.audit    
-
-        
-
+        MIX_ENV=test mix deps.audit
