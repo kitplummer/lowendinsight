@@ -32,7 +32,8 @@ defmodule GithubModule.MixProject do
   # Run "mix help compile.app" to learn about applications.
   def application do
     [
-      extra_applications: [:logger, :crypto]
+      extra_applications: [:logger, :crypto],
+      mod: {Lei.Application, []}
     ]
   end
 
@@ -54,7 +55,9 @@ defmodule GithubModule.MixProject do
       {:yarn_parser, "~> 0.3"},
       {:sweet_xml, "~> 0.7.1"},
       {:sbom, "~> 0.6", only: :dev, runtime: false},
-      {:exqlite, "~> 0.27"}
+      {:exqlite, "~> 0.27"},
+      {:plug, "~> 1.15"},
+      {:plug_cowboy, "~> 2.7"}
     ]
   end
 
