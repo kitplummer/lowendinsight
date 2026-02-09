@@ -29,7 +29,7 @@ defmodule Cargo.Cargolock do
   defp extract_packages(content) do
     # Split by [[package]] markers and parse each block
     content
-    |> String.split(~r/\[\[package\]\]/i)
+    |> String.split(~r/\[\[package\]\]/)
     |> Enum.drop(1)
     |> Enum.map(&parse_package_block/1)
     |> Enum.filter(& &1)

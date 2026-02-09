@@ -82,4 +82,53 @@ defmodule Lei.BatchAnalyzerTest do
     assert result.summary.cached == 50
     assert elapsed < 500, "Expected <500ms, got #{elapsed}ms"
   end
+
+  test "analyze handles crates ecosystem with empty cache" do
+    deps = [
+      %{"ecosystem" => "crates", "package" => "serde", "version" => "1.0.188"},
+      %{"ecosystem" => "crates", "package" => "tokio", "version" => "1.32.0"}
+    ]
+
+    result = Lei.BatchAnalyzer.analyze(deps)
+
+    assert result.summary.total == 2
+    assert result.summary.cached == 0
+    assert result.summary.pending == 2
+    assert length(result.pending_jobs) == 2
+  end
+
+  test "analyze returns cached crates results" do
+    Lei.BatchCache.put("crates", "serde", "1.0.188", %{
+      risk: "low",
+      data: %{repo: "https://github.com/serde-rs/serde"}
+    })
+
+    deps = [
+      %{"ecosystem" => "crates", "package" => "serde", "version" => "1.0.188"}
+    ]
+
+    result = Lei.BatchAnalyzer.analyze(deps)
+
+    assert result.summary.total == 1
+    assert result.summary.cached == 1
+    assert result.summary.pending == 0
+    assert result.summary.risk_breakdown["low"] == 1
+  end
+
+  test "analyze handles mixed ecosystems (npm and crates)" do
+    Lei.BatchCache.put("npm", "express", "4.18.2", %{risk: "low"})
+    Lei.BatchCache.put("crates", "serde", "1.0.188", %{risk: "medium"})
+
+    deps = [
+      %{"ecosystem" => "npm", "package" => "express", "version" => "4.18.2"},
+      %{"ecosystem" => "crates", "package" => "serde", "version" => "1.0.188"},
+      %{"ecosystem" => "crates", "package" => "tokio", "version" => "1.32.0"}
+    ]
+
+    result = Lei.BatchAnalyzer.analyze(deps)
+
+    assert result.summary.total == 3
+    assert result.summary.cached == 2
+    assert result.summary.pending == 1
+  end
 end

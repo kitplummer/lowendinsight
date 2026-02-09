@@ -98,8 +98,8 @@ defmodule Cargo.Scanner do
   defp query_crates_io(crate_name) do
     HTTPoison.start()
 
-    response =
-      HTTPoison.get!(
+    {:ok, response} =
+      HTTPoison.get(
         "#{@crates_io_api}/#{crate_name}",
         [{"User-Agent", "lowendinsight/1.0"}]
       )
@@ -118,6 +118,8 @@ defmodule Cargo.Scanner do
       _ ->
         nil
     end
+  rescue
+    _ -> nil
   end
 
   defp run_analysis(url, crate_name) do

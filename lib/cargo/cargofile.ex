@@ -7,8 +7,9 @@ defmodule Cargo.Cargofile do
 
   @moduledoc """
     Provides Cargo.toml dependency parser for Rust projects.
-    Parses [dependencies] and [dev-dependencies] sections,
-    extracting crate names and version specs.
+    Parses [dependencies], [dev-dependencies], [build-dependencies],
+    and [workspace.dependencies] sections, extracting crate names,
+    version specs, and git/path source info.
   """
 
   @impl Parser
@@ -30,8 +31,13 @@ defmodule Cargo.Cargofile do
 
     deps = Map.get(sections, "dependencies", %{})
     dev_deps = Map.get(sections, "dev-dependencies", %{})
+    build_deps = Map.get(sections, "build-dependencies", %{})
+    workspace_deps = Map.get(sections, "workspace.dependencies", %{})
 
-    Map.merge(deps, dev_deps)
+    deps
+    |> Map.merge(dev_deps)
+    |> Map.merge(build_deps)
+    |> Map.merge(workspace_deps)
   end
 
   defp extract_deps(deps_map) do
@@ -90,7 +96,23 @@ defmodule Cargo.Cargofile do
             nil -> ""
           end
 
-        {name, version}
+        git_url =
+          case Regex.run(~r/git\s*=\s*"([^"]*)"/, line) do
+            [_, url] -> url
+            nil -> nil
+          end
+
+        path =
+          case Regex.run(~r/path\s*=\s*"([^"]*)"/, line) do
+            [_, p] -> p
+            nil -> nil
+          end
+
+        cond do
+          git_url != nil -> {name, %{git: git_url, version: version}}
+          path != nil -> {name, %{path: path, version: version}}
+          true -> {name, version}
+        end
 
       # Simple string: serde = "1.0"
       Regex.match?(~r/^(\S+)\s*=\s*"([^"]*)"/, line) ->
