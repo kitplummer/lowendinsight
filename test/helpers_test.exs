@@ -37,4 +37,38 @@ defmodule Lowendinsight.HelpersTest do
     assert "git://github.com/hmfng/modal.git" ==
              Helpers.remove_git_prefix("git://github.com/hmfng/modal.git")
   end
+
+  describe "get_slug/1" do
+    test "extracts slug from github URL" do
+      assert {:ok, "kitplummer/xmpp4rails"} == Helpers.get_slug("https://github.com/kitplummer/xmpp4rails")
+    end
+
+    test "handles URL with .git suffix" do
+      assert {:ok, "kitplummer/xmpp4rails.git"} == Helpers.get_slug("https://github.com/kitplummer/xmpp4rails.git")
+    end
+
+    test "returns error for URL without path" do
+      assert {:error, "invalid source URL"} == Helpers.get_slug("https://github.com")
+    end
+  end
+
+  describe "split_slug/1" do
+    test "splits valid slug" do
+      assert {:ok, "kitplummer", "xmpp4rails"} == Helpers.split_slug("kitplummer/xmpp4rails")
+    end
+
+    test "returns error for slug without slash" do
+      assert {:error, "bad_slug"} == Helpers.split_slug("noslash")
+    end
+  end
+
+  describe "count_forward_slashes/1" do
+    test "counts slashes in URL" do
+      assert Helpers.count_forward_slashes("https://github.com/test/repo") == 4
+    end
+
+    test "returns 0 for string with no slashes" do
+      assert Helpers.count_forward_slashes("noslashes") == 0
+    end
+  end
 end

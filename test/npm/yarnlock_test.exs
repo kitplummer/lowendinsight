@@ -13,4 +13,8 @@ defmodule YarnlockTest do
     assert deps_count == 1
     assert parsed_yarn == lib_map
   end
+
+  test "returns correct file_names" do
+    assert Npm.Yarnlockfile.file_names() == ["yarn.lock"]
+  end
 end

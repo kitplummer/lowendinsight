@@ -87,4 +87,38 @@ defmodule RiskLogicTest do
   test "confirm functional commiters critical" do
     assert RiskLogic.functional_contributors_risk(1) == {:ok, "critical"}
   end
+
+  test "confirm functional commiters zero" do
+    assert RiskLogic.functional_contributors_risk(0) == {:ok, "critical"}
+  end
+
+  test "confirm large commit high at 35%" do
+    assert RiskLogic.commit_change_size_risk(0.35) == {:ok, "high"}
+  end
+
+  test "confirm large commit critical at threshold" do
+    assert RiskLogic.commit_change_size_risk(0.50) == {:ok, "critical"}
+  end
+
+  test "confirm currency at exact thresholds" do
+    # At medium threshold
+    assert RiskLogic.commit_currency_risk(26) == {:ok, "medium"}
+    # Just below medium
+    assert RiskLogic.commit_currency_risk(25) == {:ok, "low"}
+    # At high threshold
+    assert RiskLogic.commit_currency_risk(52) == {:ok, "high"}
+    # At critical threshold
+    assert RiskLogic.commit_currency_risk(104) == {:ok, "critical"}
+  end
+
+  test "confirm contributor at exact thresholds" do
+    # At critical threshold
+    assert RiskLogic.contributor_risk(2) == {:ok, "high"}
+    # At high threshold
+    assert RiskLogic.contributor_risk(3) == {:ok, "medium"}
+    # At medium threshold
+    assert RiskLogic.contributor_risk(5) == {:ok, "low"}
+    # Above medium
+    assert RiskLogic.contributor_risk(10) == {:ok, "low"}
+  end
 end
