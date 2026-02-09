@@ -134,4 +134,65 @@ defmodule Lei.Sbom.CycloneDXTest do
   test "returns error for unsupported format" do
     assert {:error, _} = Lei.Sbom.CycloneDX.generate(%{bad: "data"})
   end
+
+  test "handles report without timestamp in metadata" do
+    report = %{
+      state: "complete",
+      report: %{
+        uuid: "uuid",
+        repos: [
+          %{
+            header: %{repo: "https://github.com/test/repo", uuid: "test"},
+            data: %{
+              repo: "https://github.com/test/repo",
+              git: %{hash: "abc"},
+              results: %{contributor_risk: "low"}
+            }
+          }
+        ]
+      },
+      metadata: %{repo_count: 1}
+    }
+
+    {:ok, json} = Lei.Sbom.CycloneDX.generate(report)
+    bom = Poison.decode!(json)
+
+    assert is_binary(bom["metadata"]["timestamp"])
+  end
+
+  test "includes all risk properties in component" do
+    {:ok, json} = Lei.Sbom.CycloneDX.generate(@single_report)
+    bom = Poison.decode!(json)
+    [component] = bom["components"]
+    props = component["properties"]
+
+    prop_names = Enum.map(props, & &1["name"])
+
+    assert "lei:risk" in prop_names
+    assert "lei:contributor_risk" in prop_names
+    assert "lei:contributor_count" in prop_names
+    assert "lei:commit_currency_risk" in prop_names
+    assert "lei:commit_currency_weeks" in prop_names
+    assert "lei:functional_contributors_risk" in prop_names
+    assert "lei:functional_contributors" in prop_names
+    assert "lei:large_recent_commit_risk" in prop_names
+    assert "lei:sbom_risk" in prop_names
+  end
+
+  test "handles missing git hash gracefully" do
+    report = %{
+      header: %{repo: "https://github.com/test/repo", uuid: "test", start_time: "2024-01-01T00:00:00Z"},
+      data: %{
+        repo: "https://github.com/test/repo",
+        git: %{},
+        results: %{contributor_risk: "low"}
+      }
+    }
+
+    {:ok, json} = Lei.Sbom.CycloneDX.generate(report)
+    bom = Poison.decode!(json)
+    [component] = bom["components"]
+
+    assert component["version"] == "unknown"
+  end
 end
