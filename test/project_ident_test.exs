@@ -5,7 +5,144 @@
 defmodule ProjectIdentTest do
   use ExUnit.Case, async: false
 
-  # Most tests require network access (cloning repos)
+  describe "find_files/2 (unit tests)" do
+    test "finds mix files in current directory" do
+      {:ok, cwd} = File.cwd()
+      {:ok, repo} = GitModule.get_repo(cwd)
+      mix_type = %ProjectType{name: :mix, path: "", files: ["mix.exs", "mix.lock"]}
+
+      result = ProjectIdent.find_files(repo, mix_type)
+
+      assert "#{cwd}/mix.exs" in result
+      assert "#{cwd}/mix.lock" in result
+    end
+
+    test "returns empty list when no files match" do
+      {:ok, cwd} = File.cwd()
+      {:ok, repo} = GitModule.get_repo(cwd)
+      nonexistent_type = %ProjectType{name: :nonexistent, path: "", files: ["nonexistent.xyz"]}
+
+      result = ProjectIdent.find_files(repo, nonexistent_type)
+
+      assert result == []
+    end
+  end
+
+  describe "categorize_repo/2 (unit tests)" do
+    test "categorizes repo with mix files" do
+      {:ok, cwd} = File.cwd()
+      {:ok, repo} = GitModule.get_repo(cwd)
+      mix_type = %ProjectType{name: :mix, path: "", files: ["mix.exs", "mix.lock"]}
+
+      result = ProjectIdent.categorize_repo(repo, [mix_type])
+
+      assert Map.has_key?(result, :mix)
+      assert is_list(result[:mix])
+    end
+
+    test "returns empty map when no project types match" do
+      {:ok, cwd} = File.cwd()
+      {:ok, repo} = GitModule.get_repo(cwd)
+      nonexistent_type = %ProjectType{name: :nonexistent, path: "", files: ["nonexistent.xyz"]}
+
+      result = ProjectIdent.categorize_repo(repo, [nonexistent_type])
+
+      assert result == %{}
+    end
+
+    test "categorizes multiple project types" do
+      {:ok, cwd} = File.cwd()
+      {:ok, repo} = GitModule.get_repo(cwd)
+      mix_type = %ProjectType{name: :mix, path: "", files: ["mix.exs", "mix.lock"]}
+      nonexistent_type = %ProjectType{name: :nonexistent, path: "", files: ["nonexistent.xyz"]}
+
+      result = ProjectIdent.categorize_repo(repo, [mix_type, nonexistent_type])
+
+      assert Map.has_key?(result, :mix)
+      refute Map.has_key?(result, :nonexistent)
+    end
+  end
+
+  describe "get_project_types_identified/1 (unit tests)" do
+    test "identifies mix project in current directory" do
+      {:ok, cwd} = File.cwd()
+
+      result = ProjectIdent.get_project_types_identified(cwd)
+
+      assert Map.has_key?(result, :mix)
+    end
+
+    test "accepts path string" do
+      {:ok, cwd} = File.cwd()
+
+      result = ProjectIdent.get_project_types_identified(cwd)
+
+      assert is_map(result)
+    end
+
+    test "accepts repo struct" do
+      {:ok, cwd} = File.cwd()
+      {:ok, repo} = GitModule.get_repo(cwd)
+
+      result = ProjectIdent.get_project_types_identified(repo)
+
+      assert is_map(result)
+      assert Map.has_key?(result, :mix)
+    end
+
+    test "returns empty map for empty directory" do
+      tmp_dir = System.tmp_dir!()
+      test_dir = Path.join(tmp_dir, "empty_project_test_#{:rand.uniform(100_000)}")
+      File.mkdir_p!(test_dir)
+
+      result = ProjectIdent.get_project_types_identified(test_dir)
+
+      assert result == %{}
+
+      File.rm_rf!(test_dir)
+    end
+
+    test "identifies node project" do
+      tmp_dir = System.tmp_dir!()
+      test_dir = Path.join(tmp_dir, "node_project_test_#{:rand.uniform(100_000)}")
+      File.mkdir_p!(test_dir)
+      File.write!(Path.join(test_dir, "package.json"), "{}")
+
+      result = ProjectIdent.get_project_types_identified(test_dir)
+
+      assert Map.has_key?(result, :node)
+
+      File.rm_rf!(test_dir)
+    end
+
+    test "identifies python project" do
+      tmp_dir = System.tmp_dir!()
+      test_dir = Path.join(tmp_dir, "python_project_test_#{:rand.uniform(100_000)}")
+      File.mkdir_p!(test_dir)
+      File.write!(Path.join(test_dir, "requirements.txt"), "flask==2.0")
+
+      result = ProjectIdent.get_project_types_identified(test_dir)
+
+      assert Map.has_key?(result, :python)
+
+      File.rm_rf!(test_dir)
+    end
+
+    test "identifies cargo project" do
+      tmp_dir = System.tmp_dir!()
+      test_dir = Path.join(tmp_dir, "cargo_project_test_#{:rand.uniform(100_000)}")
+      File.mkdir_p!(test_dir)
+      File.write!(Path.join(test_dir, "Cargo.toml"), "[package]\nname = \"test\"")
+
+      result = ProjectIdent.get_project_types_identified(test_dir)
+
+      assert Map.has_key?(result, :cargo)
+
+      File.rm_rf!(test_dir)
+    end
+  end
+
+  # Network tests below - these require cloning repos
   @moduletag :network
   @moduletag :long
 
