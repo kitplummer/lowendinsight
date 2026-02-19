@@ -222,6 +222,202 @@ defmodule Lei.SarifTest do
     assert {:error, _} = Lei.Sarif.generate(%{bad: "data"})
   end
 
+  test "maps high risk to warning level" do
+    report = %{
+      header: %{
+        repo: "https://github.com/test/repo",
+        start_time: "2024-01-01T00:00:00Z",
+        uuid: "test-uuid"
+      },
+      data: %{
+        repo: "https://github.com/test/repo",
+        git: %{hash: "abc123"},
+        project_types: %{mix: "mix.exs"},
+        risk: "high",
+        results: %{
+          contributor_count: 2,
+          contributor_risk: "high",
+          commit_currency_weeks: 60,
+          commit_currency_risk: "high",
+          functional_contributors_risk: "high",
+          functional_contributors: 2,
+          large_recent_commit_risk: "high",
+          recent_commit_size_in_percent_of_codebase: 0.35,
+          sbom_risk: "low"
+        }
+      }
+    }
+
+    {:ok, json} = Lei.Sarif.generate(report)
+    sarif = Poison.decode!(json)
+    [run] = sarif["runs"]
+
+    contributor_result =
+      Enum.find(run["results"], &(&1["ruleId"] == "lei/contributor-risk"))
+
+    assert contributor_result["level"] == "warning"
+  end
+
+  test "detects node project type manifest" do
+    report = %{
+      header: %{repo: "https://github.com/test/node-repo", uuid: "test"},
+      data: %{
+        repo: "https://github.com/test/node-repo",
+        git: %{hash: "abc123"},
+        project_types: %{node: "package.json"},
+        results: %{
+          contributor_risk: "critical",
+          contributor_count: 1,
+          commit_currency_risk: "low",
+          functional_contributors_risk: "low",
+          large_recent_commit_risk: "low",
+          sbom_risk: "low"
+        }
+      }
+    }
+
+    {:ok, json} = Lei.Sarif.generate(report)
+    sarif = Poison.decode!(json)
+    [run] = sarif["runs"]
+    [result | _] = run["results"]
+
+    assert result["locations"]
+           |> hd()
+           |> get_in(["physicalLocation", "artifactLocation", "uri"]) == "package.json"
+  end
+
+  test "detects python project type manifest" do
+    report = %{
+      header: %{repo: "https://github.com/test/python-repo", uuid: "test"},
+      data: %{
+        repo: "https://github.com/test/python-repo",
+        git: %{hash: "abc123"},
+        project_types: %{python: "requirements.txt"},
+        results: %{
+          contributor_risk: "critical",
+          contributor_count: 1,
+          commit_currency_risk: "low",
+          functional_contributors_risk: "low",
+          large_recent_commit_risk: "low",
+          sbom_risk: "low"
+        }
+      }
+    }
+
+    {:ok, json} = Lei.Sarif.generate(report)
+    sarif = Poison.decode!(json)
+    [run] = sarif["runs"]
+    [result | _] = run["results"]
+
+    assert result["locations"]
+           |> hd()
+           |> get_in(["physicalLocation", "artifactLocation", "uri"]) == "requirements.txt"
+  end
+
+  test "detects cargo project type manifest" do
+    report = %{
+      header: %{repo: "https://github.com/test/rust-repo", uuid: "test"},
+      data: %{
+        repo: "https://github.com/test/rust-repo",
+        git: %{hash: "abc123"},
+        project_types: %{cargo: "Cargo.toml"},
+        results: %{
+          contributor_risk: "critical",
+          contributor_count: 1,
+          commit_currency_risk: "low",
+          functional_contributors_risk: "low",
+          large_recent_commit_risk: "low",
+          sbom_risk: "low"
+        }
+      }
+    }
+
+    {:ok, json} = Lei.Sarif.generate(report)
+    sarif = Poison.decode!(json)
+    [run] = sarif["runs"]
+    [result | _] = run["results"]
+
+    assert result["locations"]
+           |> hd()
+           |> get_in(["physicalLocation", "artifactLocation", "uri"]) == "Cargo.toml"
+  end
+
+  test "risk_to_security_severity returns correct values" do
+    assert Lei.Sarif.risk_to_security_severity("critical") == "9.1"
+    assert Lei.Sarif.risk_to_security_severity("high") == "7.0"
+    assert Lei.Sarif.risk_to_security_severity("medium") == "4.5"
+    assert Lei.Sarif.risk_to_security_severity("low") == "2.0"
+    assert Lei.Sarif.risk_to_security_severity("unknown") == "2.0"
+  end
+
+  test "message functions handle missing results gracefully" do
+    empty_results = %{}
+
+    assert String.contains?(Lei.Sarif.contributor_message("test", empty_results), "unknown")
+    assert String.contains?(Lei.Sarif.commit_currency_message("test", empty_results), "unknown")
+    assert String.contains?(Lei.Sarif.functional_contributors_message("test", empty_results), "unknown")
+    assert String.contains?(Lei.Sarif.sbom_message("test", empty_results), "unknown")
+  end
+
+  test "handles nil results with empty results list" do
+    report = %{
+      header: %{repo: "https://github.com/test/nil-results", uuid: "test"},
+      data: %{
+        repo: "https://github.com/test/nil-results",
+        git: %{hash: "abc123"},
+        project_types: %{mix: "mix.exs"},
+        risk: "undetermined",
+        results: nil
+      }
+    }
+
+    {:ok, json} = Lei.Sarif.generate(report)
+    sarif = Poison.decode!(json)
+    [run] = sarif["runs"]
+    # With nil results, get_in_results returns nil for all keys, no non-low results
+    assert run["results"] == []
+  end
+
+  test "maps undetermined risk to note level via catch-all" do
+    report = %{
+      header: %{repo: "https://github.com/test/undetermined", uuid: "test"},
+      data: %{
+        repo: "https://github.com/test/undetermined",
+        git: %{hash: "abc123"},
+        project_types: %{mix: "mix.exs"},
+        risk: "undetermined",
+        results: %{
+          contributor_risk: "undetermined",
+          contributor_count: 0,
+          commit_currency_risk: "low",
+          functional_contributors_risk: "low",
+          large_recent_commit_risk: "low",
+          sbom_risk: "low"
+        }
+      }
+    }
+
+    {:ok, json} = Lei.Sarif.generate(report)
+    sarif = Poison.decode!(json)
+    [run] = sarif["runs"]
+
+    contributor_result =
+      Enum.find(run["results"], &(&1["ruleId"] == "lei/contributor-risk"))
+
+    # "undetermined" risk hits risk_to_level(_) catch-all which returns "note"
+    assert contributor_result["level"] == "note"
+  end
+
+  test "large_commit_message handles non-numeric percent" do
+    results = %{
+      recent_commit_size_in_percent_of_codebase: "N/A",
+      large_recent_commit_risk: "low"
+    }
+
+    message = Lei.Sarif.large_commit_message("test", results)
+    assert String.contains?(message, "N/A")
+  end
+
   test "rules have required SARIF fields" do
     {:ok, json} = Lei.Sarif.generate(@single_report)
     sarif = Poison.decode!(json)

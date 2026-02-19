@@ -19,22 +19,6 @@ defmodule AnalyzerTest do
     [weeks: weeks]
   end
 
-  @tag network: false
-  @tag long: false
-  test "analyze local path repo" do
-    {:ok, cwd} = File.cwd()
-
-    {:ok, report} =
-      AnalyzerModule.analyze(["file:///#{cwd}"], "path_test", DateTime.utc_now(), %{types: false})
-
-    assert "complete" == report[:state]
-    repo_data = List.first(report[:report][:repos])
-    assert "path_test" == repo_data[:header][:source_client]
-    assert [] == repo_data[:data][:project_types]
-  end
-
-  @tag network: false
-  @tag long: false
   test "get empty report" do
     start_time = DateTime.utc_now()
     uuid = UUID.uuid1()

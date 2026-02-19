@@ -39,6 +39,34 @@ defmodule Lei.Web.RouterTest do
     assert response["error"] =~ "missing required field"
   end
 
+  test "POST /v1/analyze/batch with non-list dependencies returns 400" do
+    body = %{"dependencies" => "not-a-list"}
+
+    conn =
+      conn(:post, "/v1/analyze/batch", Poison.encode!(body))
+      |> put_req_header("content-type", "application/json")
+      |> Lei.Web.Router.call(@opts)
+
+    assert conn.status == 400
+    response = Poison.decode!(conn.resp_body)
+    assert response["error"] =~ "must be an array"
+  end
+
+  test "POST /v1/analyze/batch with non-map dependency element returns 400" do
+    body = %{
+      "dependencies" => ["just a string", 42]
+    }
+
+    conn =
+      conn(:post, "/v1/analyze/batch", Poison.encode!(body))
+      |> put_req_header("content-type", "application/json")
+      |> Lei.Web.Router.call(@opts)
+
+    assert conn.status == 400
+    response = Poison.decode!(conn.resp_body)
+    assert response["error"] =~ "ecosystem, package, and version"
+  end
+
   test "POST /v1/analyze/batch with invalid dependency format returns 400" do
     body = %{
       "dependencies" => [

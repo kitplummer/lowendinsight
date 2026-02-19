@@ -26,4 +26,39 @@ defmodule PackageJSONTest do
     assert deps_count == 1
     assert parsed_package_lock_json == lib_map
   end
+
+  test "returns correct file_names" do
+    assert Npm.Packagefile.file_names() == ["package.json", "package-lock.json"]
+  end
+
+  test "handles package with devDependencies only" do
+    content = ~s({"devDependencies": {"jest": "^26.0.0"}})
+    {:ok, {lib_map, deps_count}} = Npm.Packagefile.parse!(content)
+
+    assert deps_count == 1
+    assert [{"jest", "26.0.0"}] == lib_map
+  end
+
+  test "handles package with both dependencies and devDependencies" do
+    content = ~s({"dependencies": {"express": "^4.17.1"}, "devDependencies": {"jest": "^26.0.0"}})
+    {:ok, {lib_map, deps_count}} = Npm.Packagefile.parse!(content)
+
+    assert deps_count == 2
+  end
+
+  test "handles version with tilde prefix" do
+    content = ~s({"dependencies": {"lodash": "~4.17.21"}})
+    {:ok, {lib_map, deps_count}} = Npm.Packagefile.parse!(content)
+
+    assert deps_count == 1
+    assert [{"lodash", "4.17.21"}] == lib_map
+  end
+
+  test "handles exact version without prefix" do
+    content = ~s({"dependencies": {"lodash": "4.17.21"}})
+    {:ok, {lib_map, deps_count}} = Npm.Packagefile.parse!(content)
+
+    assert deps_count == 1
+    assert [{"lodash", "4.17.21"}] == lib_map
+  end
 end

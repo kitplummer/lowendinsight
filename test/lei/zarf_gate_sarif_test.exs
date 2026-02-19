@@ -120,4 +120,103 @@ defmodule Lei.ZarfGate.SarifTest do
       assert location["physicalLocation"]["artifactLocation"]["uriBaseId"] == "SRCROOT"
     end)
   end
+
+  test "SARIF maps high risk to warning level" do
+    high_report = %{
+      header: %{repo: "https://github.com/example/high-risk-lib", uuid: "test-uuid-3"},
+      data: %{
+        repo: "https://github.com/example/high-risk-lib",
+        git: %{hash: "def789"},
+        risk: "high",
+        results: %{
+          contributor_risk: "high",
+          commit_currency_risk: "medium",
+          functional_contributors_risk: "high",
+          large_recent_commit_risk: "low",
+          sbom_risk: "low"
+        }
+      }
+    }
+
+    {:ok, gate_result} = Lei.ZarfGate.evaluate(high_report, "high")
+    {:ok, json} = Lei.ZarfGate.Sarif.generate(gate_result)
+
+    sarif = Poison.decode!(json)
+    [run] = sarif["runs"]
+    results = run["results"]
+
+    # Overall risk should be "warning" (high -> warning)
+    overall = Enum.find(results, &(&1["ruleId"] == "lei/overall-risk"))
+    assert overall["level"] == "warning"
+
+    # Individual contributor_risk should be "warning" (high -> warning)
+    contributor = Enum.find(results, &(&1["ruleId"] == "lei/contributor-risk"))
+    assert contributor["level"] == "warning"
+
+    # functional_contributors_risk should be present too
+    functional = Enum.find(results, &(&1["ruleId"] == "lei/functional-contributors-risk"))
+    assert functional["level"] == "warning"
+
+    # commit_currency_risk is "medium" so should be filtered out
+    currency = Enum.find(results, &(&1["ruleId"] == "lei/commit-currency-risk"))
+    assert currency == nil
+  end
+
+  test "SARIF maps low risk to none level via catch-all" do
+    low_report = %{
+      header: %{repo: "https://github.com/example/low-risk-lib", uuid: "test-uuid-4"},
+      data: %{
+        repo: "https://github.com/example/low-risk-lib",
+        git: %{hash: "aaa"},
+        risk: "low",
+        results: %{
+          contributor_risk: "low",
+          commit_currency_risk: "low",
+          functional_contributors_risk: "low",
+          large_recent_commit_risk: "low",
+          sbom_risk: "low"
+        }
+      }
+    }
+
+    # Use "low" threshold so even "low" risk fails
+    {:ok, gate_result} = Lei.ZarfGate.evaluate(low_report, "low")
+    {:ok, json} = Lei.ZarfGate.Sarif.generate(gate_result)
+
+    sarif = Poison.decode!(json)
+    [run] = sarif["runs"]
+    results = run["results"]
+
+    overall = Enum.find(results, &(&1["ruleId"] == "lei/overall-risk"))
+    # "low" risk hits risk_to_sarif_level(_) catch-all which returns "none"
+    assert overall["level"] == "none"
+  end
+
+  test "SARIF maps medium risk to note level" do
+    medium_report = %{
+      header: %{repo: "https://github.com/example/med-risk-lib", uuid: "test-uuid-5"},
+      data: %{
+        repo: "https://github.com/example/med-risk-lib",
+        git: %{hash: "bbb"},
+        risk: "medium",
+        results: %{
+          contributor_risk: "medium",
+          commit_currency_risk: "low",
+          functional_contributors_risk: "low",
+          large_recent_commit_risk: "low",
+          sbom_risk: "low"
+        }
+      }
+    }
+
+    {:ok, gate_result} = Lei.ZarfGate.evaluate(medium_report, "medium")
+    {:ok, json} = Lei.ZarfGate.Sarif.generate(gate_result)
+
+    sarif = Poison.decode!(json)
+    [run] = sarif["runs"]
+    results = run["results"]
+
+    overall = Enum.find(results, &(&1["ruleId"] == "lei/overall-risk"))
+    assert overall["level"] == "note"
+  end
 end

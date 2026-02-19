@@ -13,4 +13,28 @@ defmodule YarnlockTest do
     assert deps_count == 1
     assert parsed_yarn == lib_map
   end
+
+  test "returns correct file_names" do
+    assert Npm.Yarnlockfile.file_names() == ["yarn.lock"]
+  end
+
+  test "keeps higher version when duplicate packages exist" do
+    # When the first occurrence has a higher version, the else branch keeps acc unchanged
+    content = """
+    # yarn lockfile v1
+
+    lodash@^4.17.21:
+      version "4.17.21"
+      resolved "https://registry.yarnpkg.com/lodash/-/lodash-4.17.21.tgz"
+
+    lodash@^4.17.0:
+      version "4.17.0"
+      resolved "https://registry.yarnpkg.com/lodash/-/lodash-4.17.0.tgz"
+    """
+
+    {:ok, {lib_map, deps_count}} = Npm.Yarnlockfile.parse!(content)
+    assert deps_count == 1
+    # Should keep the higher version (4.17.21)
+    assert {"lodash", "4.17.21"} in lib_map
+  end
 end

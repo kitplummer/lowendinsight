@@ -46,6 +46,40 @@ defmodule Lei.Cache.ImporterTest do
       assert {:error, msg} = Importer.import_local(dir)
       assert msg =~ "cache"
     end
+
+    test "returns error for invalid JSON in manifest", %{dir: dir} do
+      File.write!(Path.join(dir, "manifest.json"), "not valid json{{{")
+      File.write!(Path.join(dir, "cache.jsonl.gz"), :zlib.gzip("{}\n"))
+
+      assert {:error, msg} = Importer.import_local(dir)
+      assert msg =~ "parse manifest.json"
+    end
+  end
+
+  describe "pull/3" do
+    test "returns error for invalid OCI reference" do
+      target_dir = Path.join(System.tmp_dir!(), "lei-pull-test-#{:rand.uniform(1_000_000)}")
+      on_exit(fn -> File.rm_rf(target_dir) end)
+
+      result = Importer.pull("invalid-no-tag", target_dir)
+      assert {:error, _} = result
+    end
+
+    test "returns error for unreachable registry" do
+      target_dir = Path.join(System.tmp_dir!(), "lei-pull-test-#{:rand.uniform(1_000_000)}")
+      on_exit(fn -> File.rm_rf(target_dir) end)
+
+      result = Importer.pull("127.0.0.1:1/test/repo:latest", target_dir)
+      assert {:error, _} = result
+    end
+
+    test "returns error with auth token for unreachable registry" do
+      target_dir = Path.join(System.tmp_dir!(), "lei-pull-test-#{:rand.uniform(1_000_000)}")
+      on_exit(fn -> File.rm_rf(target_dir) end)
+
+      result = Importer.pull("127.0.0.1:1/test/repo:v1", target_dir, token: "test-token")
+      assert {:error, _} = result
+    end
   end
 
   describe "round-trip export and import" do

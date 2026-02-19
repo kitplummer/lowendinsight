@@ -146,4 +146,67 @@ defmodule Lei.Sbom.SPDXTest do
   test "returns error for unsupported format" do
     assert {:error, _} = Lei.Sbom.SPDX.generate(%{bad: "data"})
   end
+
+  test "handles nil results with empty annotations" do
+    report = %{
+      header: %{repo: "https://github.com/test/repo", uuid: "test", start_time: "2024-01-01T00:00:00Z"},
+      data: %{
+        repo: "https://github.com/test/repo",
+        git: %{hash: "abc"},
+        results: nil
+      }
+    }
+
+    {:ok, json} = Lei.Sbom.SPDX.generate(report)
+    doc = Poison.decode!(json)
+    assert doc["annotations"] == []
+  end
+
+  test "handles nil results in multi-repo report" do
+    report = %{
+      state: "complete",
+      report: %{
+        uuid: "multi-uuid",
+        repos: [
+          %{
+            header: %{repo: "https://github.com/test/repo", uuid: "test", start_time: "2024-01-01T00:00:00Z"},
+            data: %{
+              repo: "https://github.com/test/repo",
+              git: %{hash: "abc"},
+              results: nil
+            }
+          }
+        ]
+      },
+      metadata: %{repo_count: 1, times: %{start_time: "2024-01-01T00:00:00Z"}}
+    }
+
+    {:ok, json} = Lei.Sbom.SPDX.generate(report)
+    doc = Poison.decode!(json)
+    assert doc["annotations"] == []
+  end
+
+  test "handles missing timestamp in multi-repo metadata" do
+    report = %{
+      state: "complete",
+      report: %{
+        uuid: "test-uuid",
+        repos: [
+          %{
+            header: %{repo: "https://github.com/test/repo", uuid: "test", start_time: "2024-01-01T00:00:00Z"},
+            data: %{
+              repo: "https://github.com/test/repo",
+              git: %{hash: "abc"},
+              results: %{contributor_risk: "low"}
+            }
+          }
+        ]
+      },
+      metadata: %{repo_count: 1}
+    }
+
+    {:ok, json} = Lei.Sbom.SPDX.generate(report)
+    doc = Poison.decode!(json)
+    assert is_binary(doc["creationInfo"]["created"])
+  end
 end

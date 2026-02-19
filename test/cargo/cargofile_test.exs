@@ -9,7 +9,7 @@ defmodule CargofileTest do
     {:ok, {deps, deps_count}} =
       Cargo.Cargofile.parse!(File.read!("./test/fixtures/cargotoml"))
 
-    assert deps_count == 6
+    assert deps_count == 7
 
     assert Keyword.get(deps, :serde) == "1.0"
     assert Keyword.get(deps, :tokio) == "1.28"
@@ -17,6 +17,7 @@ defmodule CargofileTest do
     assert Keyword.get(deps, :clap) == "4.3"
     assert Keyword.get(deps, :assert_cmd) == "2.0"
     assert Keyword.get(deps, :predicates) == "3.0"
+    assert Keyword.get(deps, :cc) == "1.0"
   end
 
   test "returns correct file_names" do
@@ -48,5 +49,128 @@ defmodule CargofileTest do
     {:ok, {deps, deps_count}} = Cargo.Cargofile.parse!(content)
     assert deps_count == 0
     assert deps == []
+  end
+
+  test "handles build-dependencies section" do
+    content = """
+    [package]
+    name = "with-build"
+    version = "0.1.0"
+
+    [dependencies]
+    serde = "1.0"
+
+    [build-dependencies]
+    cc = "1.0"
+    pkg-config = "0.3"
+    """
+
+    {:ok, {deps, deps_count}} = Cargo.Cargofile.parse!(content)
+    assert deps_count == 3
+    assert Keyword.get(deps, :serde) == "1.0"
+    assert Keyword.get(deps, :cc) == "1.0"
+    assert Keyword.get(deps, :"pkg-config") == "0.3"
+  end
+
+  test "handles workspace.dependencies section" do
+    content = """
+    [workspace.dependencies]
+    serde = { version = "1.0", features = ["derive"] }
+    tokio = "1.28"
+    """
+
+    {:ok, {deps, deps_count}} = Cargo.Cargofile.parse!(content)
+    assert deps_count == 2
+    assert Keyword.get(deps, :serde) == "1.0"
+    assert Keyword.get(deps, :tokio) == "1.28"
+  end
+
+  test "handles git dependencies" do
+    content = """
+    [dependencies]
+    my-lib = { git = "https://github.com/user/my-lib", version = "0.5" }
+    """
+
+    {:ok, {deps, deps_count}} = Cargo.Cargofile.parse!(content)
+    assert deps_count == 1
+
+    dep = Keyword.get(deps, :"my-lib")
+    assert dep == %{git: "https://github.com/user/my-lib", version: "0.5"}
+  end
+
+  test "handles path dependencies" do
+    content = """
+    [dependencies]
+    my-local = { path = "../my-local" }
+    """
+
+    {:ok, {deps, deps_count}} = Cargo.Cargofile.parse!(content)
+    assert deps_count == 1
+
+    dep = Keyword.get(deps, :"my-local")
+    assert dep == %{path: "../my-local", version: ""}
+  end
+
+  test "handles comments within dependency sections" do
+    content = """
+    [dependencies]
+    # Main serialization library
+    serde = "1.0"
+    # Async runtime
+    tokio = "1.28"
+    """
+
+    {:ok, {deps, deps_count}} = Cargo.Cargofile.parse!(content)
+    assert deps_count == 2
+    assert Keyword.get(deps, :serde) == "1.0"
+    assert Keyword.get(deps, :tokio) == "1.28"
+  end
+
+  test "handles non-parseable lines within dependency section" do
+    content = """
+    [dependencies]
+    serde = "1.0"
+    features = ["derive"]
+    tokio = "1.28"
+    """
+
+    {:ok, {deps, deps_count}} = Cargo.Cargofile.parse!(content)
+    # "features = [...]" doesn't match any dependency pattern, returns nil, gets skipped
+    assert deps_count == 2
+    assert Keyword.get(deps, :serde) == "1.0"
+    assert Keyword.get(deps, :tokio) == "1.28"
+  end
+
+  test "handles lines before any section header" do
+    content = """
+    name = "mypackage"
+    version = "0.1.0"
+
+    [dependencies]
+    serde = "1.0"
+    """
+
+    {:ok, {deps, deps_count}} = Cargo.Cargofile.parse!(content)
+    assert deps_count == 1
+    assert Keyword.get(deps, :serde) == "1.0"
+  end
+
+  test "merges deps from all sections" do
+    content = """
+    [dependencies]
+    serde = "1.0"
+
+    [dev-dependencies]
+    assert_cmd = "2.0"
+
+    [build-dependencies]
+    cc = "1.0"
+    """
+
+    {:ok, {deps, deps_count}} = Cargo.Cargofile.parse!(content)
+    assert deps_count == 3
+    assert Keyword.get(deps, :serde) == "1.0"
+    assert Keyword.get(deps, :assert_cmd) == "2.0"
+    assert Keyword.get(deps, :cc) == "1.0"
   end
 end

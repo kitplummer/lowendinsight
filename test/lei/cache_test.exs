@@ -149,4 +149,77 @@ defmodule Lei.CacheTest do
     {:ok, entry} = Lei.Cache.get("cargo_repo")
     assert entry.ecosystem == "crates"
   end
+
+  test "detects yarn as npm ecosystem" do
+    report = put_in(@sample_report, [:data, :project_types], %{"yarn" => true})
+    :ok = Lei.Cache.put("yarn_repo", report)
+    {:ok, entry} = Lei.Cache.get("yarn_repo")
+    assert entry.ecosystem == "npm"
+  end
+
+  test "detects pip as pypi ecosystem" do
+    report = put_in(@sample_report, [:data, :project_types], %{"pip" => true})
+    :ok = Lei.Cache.put("pip_repo", report)
+    {:ok, entry} = Lei.Cache.get("pip_repo")
+    assert entry.ecosystem == "pypi"
+  end
+
+  test "detects unknown ecosystem when no project_types" do
+    report = put_in(@sample_report, [:data, :project_types], %{})
+    :ok = Lei.Cache.put("unknown_repo", report)
+    {:ok, entry} = Lei.Cache.get("unknown_repo")
+    assert entry.ecosystem == "unknown"
+  end
+
+  test "detects ecosystem from list format project_types" do
+    report = put_in(@sample_report, [:data, :project_types], [{:mix, ["mix.exs"]}])
+    :ok = Lei.Cache.put("list_hex_repo", report)
+    {:ok, entry} = Lei.Cache.get("list_hex_repo")
+    assert entry.ecosystem == "hex"
+  end
+
+  test "detects npm ecosystem from list format" do
+    report = put_in(@sample_report, [:data, :project_types], [{:npm, ["package.json"]}])
+    :ok = Lei.Cache.put("list_npm_repo", report)
+    {:ok, entry} = Lei.Cache.get("list_npm_repo")
+    assert entry.ecosystem == "npm"
+  end
+
+  test "detects pip ecosystem from list format" do
+    report = put_in(@sample_report, [:data, :project_types], [{:pip, ["requirements.txt"]}])
+    :ok = Lei.Cache.put("list_pip_repo", report)
+    {:ok, entry} = Lei.Cache.get("list_pip_repo")
+    assert entry.ecosystem == "pypi"
+  end
+
+  test "detects cargo ecosystem from list format" do
+    report = put_in(@sample_report, [:data, :project_types], [{:cargo, ["Cargo.toml"]}])
+    :ok = Lei.Cache.put("list_cargo_repo", report)
+    {:ok, entry} = Lei.Cache.get("list_cargo_repo")
+    assert entry.ecosystem == "crates"
+  end
+
+  test "put with explicit ecosystem option" do
+    :ok = Lei.Cache.put("explicit_eco", @sample_report, ecosystem: "custom")
+    {:ok, entry} = Lei.Cache.get("explicit_eco")
+    assert entry.ecosystem == "custom"
+  end
+
+  test "put with custom TTL" do
+    :ok = Lei.Cache.put("custom_ttl", @sample_report, ttl: 7200)
+    {:ok, entry} = Lei.Cache.get("custom_ttl")
+    assert entry.expires_at - entry.cached_at == 7200
+  end
+
+  test "stats returns nil oldest_entry when cache is empty" do
+    stats = Lei.Cache.stats()
+    assert stats.count == 0
+    assert stats.oldest_entry == nil
+    assert stats.ecosystems == %{}
+  end
+
+  test "init is idempotent" do
+    # init() already called in setup, calling again should not fail
+    assert Lei.Cache.init() == :ok || Lei.Cache.init() == nil
+  end
 end

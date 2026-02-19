@@ -118,6 +118,42 @@ defmodule Lei.Cache.ExporterTest do
       {:ok, reports} = Exporter.read_jsonl(path)
       assert length(reports) == 2
     end
+
+    test "returns error for missing file" do
+      {:error, msg} = Exporter.read_jsonl("/nonexistent/path/test.jsonl")
+      assert msg =~ "Cannot read"
+    end
+  end
+
+  describe "export with string-keyed reports" do
+    setup do
+      dir = Path.join(System.tmp_dir!(), "lei-export-strkey-#{:rand.uniform(1_000_000)}")
+      on_exit(fn -> File.rm_rf!(dir) end)
+      {:ok, dir: dir}
+    end
+
+    test "handles reports with string keys in manifest repo extraction", %{dir: dir} do
+      report = %{
+        "header" => %{"uuid" => "string-key-test"},
+        "data" => %{"repo" => "https://github.com/example/string-key-repo"}
+      }
+
+      {:ok, ^dir} = Exporter.export([report], dir)
+
+      {:ok, data} = File.read(Path.join(dir, "manifest.json"))
+      {:ok, manifest} = Poison.decode(data)
+      assert "https://github.com/example/string-key-repo" in manifest["repos"]
+    end
+
+    test "uses 'unknown' for reports without repo keys", %{dir: dir} do
+      report = %{"status" => "test", "something" => "else"}
+
+      {:ok, ^dir} = Exporter.export([report], dir)
+
+      {:ok, data} = File.read(Path.join(dir, "manifest.json"))
+      {:ok, manifest} = Poison.decode(data)
+      assert "unknown" in manifest["repos"]
+    end
   end
 
   describe "reports_to_jsonl/1" do

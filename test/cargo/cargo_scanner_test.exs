@@ -29,6 +29,52 @@ defmodule CargoScannerTest do
       assert count == 0
     end
 
+    test "scans Cargo.toml without Cargo.lock" do
+      tmp_dir = Path.join(System.tmp_dir!(), "lei_cargo_nolock_#{:erlang.unique_integer([:positive])}")
+      File.mkdir_p!(tmp_dir)
+
+      cargo_toml = """
+      [package]
+      name = "test"
+      version = "0.1.0"
+
+      [dependencies]
+      serde = "1.0"
+      """
+
+      File.write!(Path.join(tmp_dir, "Cargo.toml"), cargo_toml)
+
+      project_types = %{cargo: [Path.join(tmp_dir, "Cargo.toml")]}
+      {result, count} = Cargo.Scanner.scan(true, project_types)
+
+      assert is_list(result)
+      assert result == []
+      assert count > 0
+
+      File.rm_rf!(tmp_dir)
+    end
+
+    test "scans with both Cargo.toml and Cargo.lock from fixtures" do
+      cargo_toml_path = Path.join(@fixtures_path, "cargotoml")
+      cargo_lock_path = Path.join(@fixtures_path, "cargolock")
+
+      tmp_dir = Path.join(System.tmp_dir!(), "lei_cargo_both_#{:erlang.unique_integer([:positive])}")
+      File.mkdir_p!(tmp_dir)
+      File.cp!(cargo_toml_path, Path.join(tmp_dir, "Cargo.toml"))
+      File.cp!(cargo_lock_path, Path.join(tmp_dir, "Cargo.lock"))
+
+      project_types = %{cargo: [Path.join(tmp_dir, "Cargo.toml")]}
+
+      # This scans both files but analyze_package needs network for crates.io packages
+      # The scan function will still parse both files and return the count
+      {result_map, deps_count} = Cargo.Scanner.scan(true, project_types)
+
+      assert is_list(result_map)
+      assert is_integer(deps_count)
+
+      File.rm_rf!(tmp_dir)
+    end
+
     @tag :network
     test "scans Cargo.toml and Cargo.lock files" do
       cargo_toml_path = Path.join(@fixtures_path, "cargotoml")
