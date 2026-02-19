@@ -131,4 +131,117 @@ defmodule Lei.BatchAnalyzerTest do
     assert result.summary.cached == 2
     assert result.summary.pending == 1
   end
+
+  test "analyze with empty dependency list" do
+    result = Lei.BatchAnalyzer.analyze([])
+
+    assert result.summary.total == 0
+    assert result.summary.cached == 0
+    assert result.summary.pending == 0
+    assert result.summary.failed == 0
+    assert result.results == []
+  end
+
+  test "risk extraction handles various report formats" do
+    # Test with :risk key
+    Lei.BatchCache.put("npm", "pkg-atom-risk", "1.0.0", %{risk: "high"})
+
+    deps = [%{"ecosystem" => "npm", "package" => "pkg-atom-risk", "version" => "1.0.0"}]
+    result = Lei.BatchAnalyzer.analyze(deps)
+
+    cached_result = Enum.find(result.results, &(&1.status == "cached"))
+    assert cached_result.risk == "high"
+  end
+
+  test "risk extraction handles string key format" do
+    Lei.BatchCache.put("npm", "pkg-str-risk", "1.0.0", %{"risk" => "medium"})
+
+    deps = [%{"ecosystem" => "npm", "package" => "pkg-str-risk", "version" => "1.0.0"}]
+    result = Lei.BatchAnalyzer.analyze(deps)
+
+    cached_result = Enum.find(result.results, &(&1.status == "cached"))
+    assert cached_result.risk == "medium"
+  end
+
+  test "risk extraction handles nested data format" do
+    Lei.BatchCache.put("npm", "pkg-nested", "1.0.0", %{data: %{risk: "critical"}})
+
+    deps = [%{"ecosystem" => "npm", "package" => "pkg-nested", "version" => "1.0.0"}]
+    result = Lei.BatchAnalyzer.analyze(deps)
+
+    cached_result = Enum.find(result.results, &(&1.status == "cached"))
+    assert cached_result.risk == "critical"
+  end
+
+  test "risk extraction handles nested string data format" do
+    Lei.BatchCache.put("npm", "pkg-nested-str", "1.0.0", %{"data" => %{"risk" => "low"}})
+
+    deps = [%{"ecosystem" => "npm", "package" => "pkg-nested-str", "version" => "1.0.0"}]
+    result = Lei.BatchAnalyzer.analyze(deps)
+
+    cached_result = Enum.find(result.results, &(&1.status == "cached"))
+    assert cached_result.risk == "low"
+  end
+
+  test "risk extraction returns unknown for unrecognized format" do
+    Lei.BatchCache.put("npm", "pkg-no-risk", "1.0.0", %{something_else: "value"})
+
+    deps = [%{"ecosystem" => "npm", "package" => "pkg-no-risk", "version" => "1.0.0"}]
+    result = Lei.BatchAnalyzer.analyze(deps)
+
+    cached_result = Enum.find(result.results, &(&1.status == "cached"))
+    assert cached_result.risk == "unknown"
+  end
+
+  test "risk extraction returns unknown for non-map analysis" do
+    # This triggers the extract_risk(_) catch-all clause
+    Lei.BatchCache.put("npm", "pkg-non-map", "1.0.0", "just a string")
+
+    deps = [%{"ecosystem" => "npm", "package" => "pkg-non-map", "version" => "1.0.0"}]
+    result = Lei.BatchAnalyzer.analyze(deps)
+
+    cached_result = Enum.find(result.results, &(&1.status == "cached"))
+    assert cached_result.risk == "unknown"
+  end
+
+  test "risk breakdown counts risks correctly" do
+    Lei.BatchCache.put("npm", "low1", "1.0.0", %{risk: "low"})
+    Lei.BatchCache.put("npm", "low2", "1.0.0", %{risk: "low"})
+    Lei.BatchCache.put("npm", "high1", "1.0.0", %{risk: "high"})
+    Lei.BatchCache.put("npm", "critical1", "1.0.0", %{risk: "critical"})
+
+    deps = [
+      %{"ecosystem" => "npm", "package" => "low1", "version" => "1.0.0"},
+      %{"ecosystem" => "npm", "package" => "low2", "version" => "1.0.0"},
+      %{"ecosystem" => "npm", "package" => "high1", "version" => "1.0.0"},
+      %{"ecosystem" => "npm", "package" => "critical1", "version" => "1.0.0"}
+    ]
+
+    result = Lei.BatchAnalyzer.analyze(deps)
+
+    assert result.summary.risk_breakdown["low"] == 2
+    assert result.summary.risk_breakdown["high"] == 1
+    assert result.summary.risk_breakdown["critical"] == 1
+    assert result.summary.risk_breakdown["medium"] == 0
+  end
+
+  test "risk breakdown handles non-standard risk category" do
+    Lei.BatchCache.put("npm", "exotic-risk", "1.0.0", %{risk: "exotic"})
+
+    deps = [%{"ecosystem" => "npm", "package" => "exotic-risk", "version" => "1.0.0"}]
+    result = Lei.BatchAnalyzer.analyze(deps)
+
+    assert result.summary.risk_breakdown["exotic"] == 1
+    assert result.summary.risk_breakdown["low"] == 0
+  end
+
+  test "pending results include job_id" do
+    deps = [%{"ecosystem" => "npm", "package" => "new-pkg", "version" => "1.0.0"}]
+    result = Lei.BatchAnalyzer.analyze(deps)
+
+    pending = Enum.find(result.results, &(&1.status == "pending"))
+    assert pending != nil
+    assert pending.job_id != nil
+    assert String.starts_with?(pending.job_id, "job-")
+  end
 end

@@ -63,6 +63,48 @@ defmodule CargolockTest do
     assert packages == []
   end
 
+  test "handles non-standard registry source" do
+    content = """
+    [[package]]
+    name = "custom-registry-pkg"
+    version = "1.0.0"
+    source = "registry+https://my-private-registry.example.com/index"
+    """
+
+    {:ok, {packages, count}} = Cargo.Cargolock.parse!(content)
+    assert count == 1
+    pkg = Keyword.get(packages, :"custom-registry-pkg")
+    assert {:registry, _} = pkg.source_url
+  end
+
+  test "handles unknown source type" do
+    content = """
+    [[package]]
+    name = "weird-pkg"
+    version = "0.1.0"
+    source = "path+file:///local/path"
+    """
+
+    {:ok, {packages, count}} = Cargo.Cargolock.parse!(content)
+    assert count == 1
+    pkg = Keyword.get(packages, :"weird-pkg")
+    assert {:unknown, _} = pkg.source_url
+  end
+
+  test "parses git source without commit hash" do
+    content = """
+    [[package]]
+    name = "no-commit"
+    version = "0.2.0"
+    source = "git+https://github.com/example/no-commit"
+    """
+
+    {:ok, {packages, count}} = Cargo.Cargolock.parse!(content)
+    assert count == 1
+    pkg = Keyword.get(packages, :"no-commit")
+    assert {:git, %{url: "https://github.com/example/no-commit", commit: nil}} = pkg.source_url
+  end
+
   test "handles Cargo.lock with only crates.io dependencies" do
     content = """
     [[package]]

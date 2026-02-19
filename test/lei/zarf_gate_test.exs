@@ -257,4 +257,24 @@ defmodule Lei.ZarfGateTest do
   test "evaluate returns error for bad input" do
     assert {:error, _} = Lei.ZarfGate.evaluate(%{bad: "data"})
   end
+
+  test "evaluate handles non-string threshold" do
+    {:ok, result} = Lei.ZarfGate.evaluate(@single_low, nil)
+    assert result.threshold == "high"
+  end
+
+  test "to_json handles non-map results in failing repos" do
+    gate_result = %{
+      pass: false,
+      threshold: "high",
+      summary: %{total: 1, passing: 0, failing: 1},
+      failing_repos: [%{repo: "test", risk: "critical", results: "not a map"}],
+      report: %{}
+    }
+
+    {:ok, json} = Lei.ZarfGate.to_json(gate_result)
+    decoded = Poison.decode!(json)
+    dep = hd(decoded["lei-zarf-gate"]["failing_dependencies"])
+    assert dep["details"] == %{}
+  end
 end

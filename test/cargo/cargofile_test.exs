@@ -126,6 +126,35 @@ defmodule CargofileTest do
     assert Keyword.get(deps, :tokio) == "1.28"
   end
 
+  test "handles non-parseable lines within dependency section" do
+    content = """
+    [dependencies]
+    serde = "1.0"
+    features = ["derive"]
+    tokio = "1.28"
+    """
+
+    {:ok, {deps, deps_count}} = Cargo.Cargofile.parse!(content)
+    # "features = [...]" doesn't match any dependency pattern, returns nil, gets skipped
+    assert deps_count == 2
+    assert Keyword.get(deps, :serde) == "1.0"
+    assert Keyword.get(deps, :tokio) == "1.28"
+  end
+
+  test "handles lines before any section header" do
+    content = """
+    name = "mypackage"
+    version = "0.1.0"
+
+    [dependencies]
+    serde = "1.0"
+    """
+
+    {:ok, {deps, deps_count}} = Cargo.Cargofile.parse!(content)
+    assert deps_count == 1
+    assert Keyword.get(deps, :serde) == "1.0"
+  end
+
   test "merges deps from all sections" do
     content = """
     [dependencies]

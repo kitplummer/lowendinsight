@@ -179,6 +179,47 @@ defmodule Lei.Sbom.CycloneDXTest do
     assert "lei:sbom_risk" in prop_names
   end
 
+  test "handles nil results with empty properties" do
+    report = %{
+      header: %{repo: "https://github.com/test/repo", uuid: "test", start_time: "2024-01-01T00:00:00Z"},
+      data: %{
+        repo: "https://github.com/test/repo",
+        git: %{hash: "abc"},
+        results: nil
+      }
+    }
+
+    {:ok, json} = Lei.Sbom.CycloneDX.generate(report)
+    bom = Poison.decode!(json)
+    [component] = bom["components"]
+    assert component["properties"] == []
+  end
+
+  test "handles nil results in multi-repo report" do
+    report = %{
+      state: "complete",
+      report: %{
+        uuid: "multi-uuid",
+        repos: [
+          %{
+            header: %{repo: "https://github.com/test/repo", uuid: "test"},
+            data: %{
+              repo: "https://github.com/test/repo",
+              git: %{hash: "abc"},
+              results: nil
+            }
+          }
+        ]
+      },
+      metadata: %{repo_count: 1}
+    }
+
+    {:ok, json} = Lei.Sbom.CycloneDX.generate(report)
+    bom = Poison.decode!(json)
+    [component] = bom["components"]
+    assert component["properties"] == []
+  end
+
   test "handles missing git hash gracefully" do
     report = %{
       header: %{repo: "https://github.com/test/repo", uuid: "test", start_time: "2024-01-01T00:00:00Z"},

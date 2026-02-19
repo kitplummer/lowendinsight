@@ -126,6 +126,49 @@ defmodule Lei.OCI.AnnotationsTest do
       assert annotations["dev.lowendinsight.analyzed-at"] == "2024-01-01T00:00:00Z"
     end
 
+    test "falls back to header timestamp when metadata.times is missing" do
+      report_no_times = %{
+        report: %{
+          repos: [
+            %{
+              header: %{
+                repo: "https://github.com/test/repo",
+                start_time: "2024-06-01T00:00:00Z",
+                uuid: "test-uuid"
+              },
+              data: %{
+                repo: "https://github.com/test/repo",
+                git: %{hash: "abc"},
+                results: %{risk: "low"}
+              }
+            }
+          ]
+        },
+        metadata: %{repo_count: 1}
+      }
+
+      {:ok, annotations} = Lei.OCI.Annotations.from_report(report_no_times)
+      assert annotations["dev.lowendinsight.analyzed-at"] == "2024-06-01T00:00:00Z"
+    end
+
+    test "handles nil results with empty risk annotations" do
+      report = %{
+        report: %{
+          repos: [
+            %{
+              header: %{repo: "https://github.com/test/repo", start_time: "2024-01-01T00:00:00Z", uuid: "t"},
+              data: %{repo: "https://github.com/test/repo", results: nil}
+            }
+          ]
+        },
+        metadata: %{repo_count: 1, times: %{start_time: "2024-01-01T00:00:00Z"}}
+      }
+
+      {:ok, annotations} = Lei.OCI.Annotations.from_report(report)
+      refute Map.has_key?(annotations, "dev.lowendinsight.risk")
+      assert annotations["dev.lowendinsight.source-repo"] == "https://github.com/test/repo"
+    end
+
     test "returns error for multi-repo reports with multiple repos" do
       multi_multi = put_in(@multi_report, [:report, :repos], [
         hd(@multi_report.report.repos),

@@ -3,7 +3,7 @@
 # the BSD 3-Clause license. See the LICENSE file for details.
 
 defmodule MixGenerateRulesTest do
-  use ExUnit.Case, async: true
+  use ExUnit.Case, async: false
 
   @default_thresholds %{
     contributor_critical: 2,
@@ -107,22 +107,13 @@ defmodule MixGenerateRulesTest do
   end
 
   describe "mix lei.generate_rules task" do
-    setup do
+    test "generates cursor rules file" do
       tmp_dir = Path.join(System.tmp_dir!(), "lei_rules_test_#{:erlang.unique_integer([:positive])}")
       File.mkdir_p!(tmp_dir)
-      original_dir = File.cwd!()
-      File.cd!(tmp_dir)
 
-      on_exit(fn ->
-        File.cd!(original_dir)
-        File.rm_rf!(tmp_dir)
+      File.cd!(tmp_dir, fn ->
+        Mix.Tasks.Lei.GenerateRules.run(["--target", "cursor"])
       end)
-
-      {:ok, tmp_dir: tmp_dir}
-    end
-
-    test "generates cursor rules file", %{tmp_dir: tmp_dir} do
-      Mix.Tasks.Lei.GenerateRules.run(["--target", "cursor"])
 
       path = Path.join(tmp_dir, ".cursor/rules/lei-dependency-rules.mdc")
       assert File.exists?(path)
@@ -130,10 +121,17 @@ defmodule MixGenerateRulesTest do
       content = File.read!(path)
       assert content =~ "LowEndInsight"
       assert content =~ "globs:"
+
+      File.rm_rf!(tmp_dir)
     end
 
-    test "generates copilot instructions file", %{tmp_dir: tmp_dir} do
-      Mix.Tasks.Lei.GenerateRules.run(["--target", "copilot"])
+    test "generates copilot instructions file" do
+      tmp_dir = Path.join(System.tmp_dir!(), "lei_rules_test_#{:erlang.unique_integer([:positive])}")
+      File.mkdir_p!(tmp_dir)
+
+      File.cd!(tmp_dir, fn ->
+        Mix.Tasks.Lei.GenerateRules.run(["--target", "copilot"])
+      end)
 
       path = Path.join(tmp_dir, ".github/instructions/lei-dependency-rules.instructions.md")
       assert File.exists?(path)
@@ -141,27 +139,43 @@ defmodule MixGenerateRulesTest do
       content = File.read!(path)
       assert content =~ "LowEndInsight"
       assert content =~ "applyTo:"
+
+      File.rm_rf!(tmp_dir)
     end
 
-    test "generates all targets by default", %{tmp_dir: tmp_dir} do
-      Mix.Tasks.Lei.GenerateRules.run([])
+    test "generates all targets by default" do
+      tmp_dir = Path.join(System.tmp_dir!(), "lei_rules_test_#{:erlang.unique_integer([:positive])}")
+      File.mkdir_p!(tmp_dir)
+
+      File.cd!(tmp_dir, fn ->
+        Mix.Tasks.Lei.GenerateRules.run([])
+      end)
 
       assert File.exists?(Path.join(tmp_dir, ".cursor/rules/lei-dependency-rules.mdc"))
       assert File.exists?(Path.join(tmp_dir, ".github/instructions/lei-dependency-rules.instructions.md"))
+
+      File.rm_rf!(tmp_dir)
     end
 
-    test "accepts custom threshold options", %{tmp_dir: tmp_dir} do
-      Mix.Tasks.Lei.GenerateRules.run([
-        "--target", "cursor",
-        "--contributor-critical", "4",
-        "--currency-critical", "200"
-      ])
+    test "accepts custom threshold options" do
+      tmp_dir = Path.join(System.tmp_dir!(), "lei_rules_test_#{:erlang.unique_integer([:positive])}")
+      File.mkdir_p!(tmp_dir)
+
+      File.cd!(tmp_dir, fn ->
+        Mix.Tasks.Lei.GenerateRules.run([
+          "--target", "cursor",
+          "--contributor-critical", "4",
+          "--currency-critical", "200"
+        ])
+      end)
 
       path = Path.join(tmp_dir, ".cursor/rules/lei-dependency-rules.mdc")
       content = File.read!(path)
 
       assert content =~ "fewer than 4 contributors"
       assert content =~ "200 or more weeks since last commit"
+
+      File.rm_rf!(tmp_dir)
     end
   end
 end

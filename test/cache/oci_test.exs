@@ -92,6 +92,19 @@ defmodule Lei.Cache.OCITest do
     test "returns error for missing files", %{dir: dir} do
       assert {:error, _} = OCI.package(dir)
     end
+
+    test "packages with invalid manifest JSON uses fallback config", %{dir: dir} do
+      File.write!(Path.join(dir, "manifest.json"), "not-valid-json{{{")
+      jsonl = ~s({"repo":"test"}\n)
+      File.write!(Path.join(dir, "cache.jsonl.gz"), :zlib.gzip(jsonl))
+
+      {:ok, oci_manifest_json, blobs} = OCI.package(dir)
+      oci_manifest = Poison.decode!(oci_manifest_json)
+
+      # build_config falls back to %{} when manifest JSON is invalid
+      assert oci_manifest["schemaVersion"] == 2
+      assert length(blobs) == 3
+    end
   end
 
   describe "unpack/3" do

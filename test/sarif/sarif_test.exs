@@ -359,6 +359,55 @@ defmodule Lei.SarifTest do
     assert String.contains?(Lei.Sarif.sbom_message("test", empty_results), "unknown")
   end
 
+  test "handles nil results with empty results list" do
+    report = %{
+      header: %{repo: "https://github.com/test/nil-results", uuid: "test"},
+      data: %{
+        repo: "https://github.com/test/nil-results",
+        git: %{hash: "abc123"},
+        project_types: %{mix: "mix.exs"},
+        risk: "undetermined",
+        results: nil
+      }
+    }
+
+    {:ok, json} = Lei.Sarif.generate(report)
+    sarif = Poison.decode!(json)
+    [run] = sarif["runs"]
+    # With nil results, get_in_results returns nil for all keys, no non-low results
+    assert run["results"] == []
+  end
+
+  test "maps undetermined risk to note level via catch-all" do
+    report = %{
+      header: %{repo: "https://github.com/test/undetermined", uuid: "test"},
+      data: %{
+        repo: "https://github.com/test/undetermined",
+        git: %{hash: "abc123"},
+        project_types: %{mix: "mix.exs"},
+        risk: "undetermined",
+        results: %{
+          contributor_risk: "undetermined",
+          contributor_count: 0,
+          commit_currency_risk: "low",
+          functional_contributors_risk: "low",
+          large_recent_commit_risk: "low",
+          sbom_risk: "low"
+        }
+      }
+    }
+
+    {:ok, json} = Lei.Sarif.generate(report)
+    sarif = Poison.decode!(json)
+    [run] = sarif["runs"]
+
+    contributor_result =
+      Enum.find(run["results"], &(&1["ruleId"] == "lei/contributor-risk"))
+
+    # "undetermined" risk hits risk_to_level(_) catch-all which returns "note"
+    assert contributor_result["level"] == "note"
+  end
+
   test "large_commit_message handles non-numeric percent" do
     results = %{
       recent_commit_size_in_percent_of_codebase: "N/A",

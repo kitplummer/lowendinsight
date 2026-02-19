@@ -118,6 +118,72 @@ defmodule ScannerModuleTest do
     end
   end
 
+  describe "get_report/4 additional paths" do
+    defp make_report2(repo_url, risk) do
+      %{
+        data: %{
+          repo: repo_url,
+          risk: risk,
+          results: %{
+            contributor_risk: risk,
+            commit_currency_risk: risk,
+            functional_contributors_risk: risk,
+            large_recent_commit_risk: "low"
+          }
+        }
+      }
+    end
+
+    test "generates report with only node_yarn reports (no node_json)" do
+      start_time = DateTime.utc_now()
+      yarn_report = [make_report2("https://github.com/test/yarn-pkg", "low")]
+      reports = [hex: [], node_json: [], node_yarn: yarn_report, pypi: [], cargo: []]
+      project_types = %{node: ["package.json", "yarn.lock"]}
+
+      result = ScannerModule.get_report(start_time, 1, reports, project_types)
+
+      assert result[:state] == :complete
+      assert result[:files] == [:node_yarn]
+    end
+
+    test "generates report with only node_json reports (no node_yarn)" do
+      start_time = DateTime.utc_now()
+      json_report = [make_report2("https://github.com/test/npm-pkg", "medium")]
+      reports = [hex: [], node_json: json_report, node_yarn: [], pypi: [], cargo: []]
+      project_types = %{node: ["package.json", "package-lock.json"]}
+
+      result = ScannerModule.get_report(start_time, 1, reports, project_types)
+
+      assert result[:state] == :complete
+      assert result[:files] == [:node_json]
+    end
+
+    test "includes dependency_count in metadata" do
+      start_time = DateTime.utc_now()
+      hex_report = [make_report2("test", "low")]
+      reports = [hex: hex_report, node_json: [], node_yarn: [], pypi: [], cargo: []]
+      project_types = %{mix: ["mix.exs"]}
+
+      result = ScannerModule.get_report(start_time, 42, reports, project_types)
+
+      assert result[:metadata][:dependency_count] == 42
+    end
+
+    test "dual node reports include timing metadata" do
+      start_time = DateTime.utc_now()
+      json_report = [make_report2("npm1", "low")]
+      yarn_report = [make_report2("yarn1", "low")]
+      reports = [hex: [], node_json: json_report, node_yarn: yarn_report, pypi: [], cargo: []]
+      project_types = %{node: ["package.json", "package-lock.json", "yarn.lock"]}
+
+      result = ScannerModule.get_report(start_time, 2, reports, project_types)
+
+      assert Map.has_key?(result, :metadata)
+      assert Map.has_key?(result[:metadata], :times)
+      assert Map.has_key?(result[:metadata][:times], :duration)
+    end
+  end
+
   describe "dependencies/1" do
     test "parses mix.lock and returns dependency JSON" do
       lockfile_path = Path.join(@fixtures_path, "lockfile")

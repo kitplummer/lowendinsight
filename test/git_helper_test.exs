@@ -154,16 +154,18 @@ defmodule GitHelperTest do
     end
 
     test "splits commits by tag" do
+      # Data uses improper lists: ["tag" | timestamp] as created by git_module
       commits = [
-        ["tag: v1.0", 1000],
-        ["commit 1", 900],
-        ["commit 2", 800],
-        ["tag: v0.9", 700],
-        ["commit 3", 600]
+        ["tag: v1.0" | 1000],
+        ["" | 900],
+        ["" | 800],
+        ["tag: v0.9" | 700],
+        ["" | 600]
       ]
 
       {:ok, result} = GitHelper.split_commits_by_tag(commits)
       assert is_list(result)
+      assert length(result) == 2
     end
   end
 
@@ -172,12 +174,36 @@ defmodule GitHelperTest do
       {:ok, result} = GitHelper.get_total_tag_commit_time_diff([])
       assert result == []
     end
+
+    test "computes total time diff for tag groups" do
+      # Data uses improper lists: ["tag" | timestamp] where tail is an integer
+      groups = [
+        [["tag: v1.0" | 1000], ["" | 900], ["" | 800]],
+        [["tag: v0.9" | 500], ["" | 400]]
+      ]
+
+      {:ok, result} = GitHelper.get_total_tag_commit_time_diff(groups)
+      assert is_list(result)
+      assert length(result) == 2
+    end
   end
 
   describe "get_avg_tag_commit_time_diff/1" do
     test "handles empty list" do
       {:ok, result} = GitHelper.get_avg_tag_commit_time_diff([])
       assert result == []
+    end
+
+    test "computes average time diff for tag groups" do
+      # Data uses improper lists: ["tag" | timestamp] where tail is an integer
+      groups = [
+        [["tag: v1.0" | 1000], ["" | 900], ["" | 800]],
+        [["tag: v0.9" | 500], ["" | 400]]
+      ]
+
+      {:ok, result} = GitHelper.get_avg_tag_commit_time_diff(groups)
+      assert is_list(result)
+      assert length(result) == 2
     end
   end
 

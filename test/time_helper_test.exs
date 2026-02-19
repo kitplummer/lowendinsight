@@ -98,5 +98,53 @@ defmodule TimeHelperTest do
       list = [[:commit1 | 1000]]
       assert {:ok, 0} = TimeHelper.sum_ts_diff(list)
     end
+
+    test "computes difference for two element list" do
+      list = [[:commit1 | 1000], [:commit2 | 2000]]
+      assert {:ok, 1000} = TimeHelper.sum_ts_diff(list)
+    end
+
+    test "computes cumulative difference for three element list" do
+      list = [[:c1 | 1000], [:c2 | 2000], [:c3 | 4000]]
+      {:ok, result} = TimeHelper.sum_ts_diff(list)
+      # (2000-1000) + (4000-2000) = 1000 + 2000 = 3000
+      assert result == 3000
+    end
+  end
+
+  describe "get_commit_delta/1 additional cases" do
+    test "computes delta for very recent date" do
+      # Just a few seconds ago
+      recent = DateTime.utc_now() |> DateTime.add(-60) |> DateTime.to_iso8601()
+      seconds = TimeHelper.get_commit_delta(recent)
+      assert is_integer(seconds)
+      assert seconds >= 59
+      assert seconds < 120
+    end
+  end
+
+  describe "sec_to_str/1 additional cases" do
+    test "handles large values with all units" do
+      # 2 weeks + 3 days + 4 hours + 5 minutes + 6 seconds
+      seconds = 2 * 604_800 + 3 * 86_400 + 4 * 3_600 + 5 * 60 + 6
+      result = TimeHelper.sec_to_str(seconds)
+      assert result =~ "2 wk"
+      assert result =~ "3 d"
+      assert result =~ "4 hr"
+      assert result =~ "5 min"
+      assert result =~ "6 sec"
+    end
+  end
+
+  describe "sec_to_days/1 additional" do
+    test "handles zero" do
+      assert TimeHelper.sec_to_days(0) == 0
+    end
+  end
+
+  describe "sec_to_weeks/1 additional" do
+    test "handles zero" do
+      assert TimeHelper.sec_to_weeks(0) == 0
+    end
   end
 end

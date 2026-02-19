@@ -8,6 +8,19 @@ defmodule Mix.Tasks.AnalyzeTest do
   use ExUnit.Case, async: true
   alias Mix.Tasks.Lei.Analyze
 
+  describe "run/1 with local repo (no network)" do
+    test "analyzes local repo via file:// scheme" do
+      {:ok, cwd} = File.cwd()
+      Analyze.run(["file:///#{cwd}"])
+      assert_received {:mix_shell, :info, [report]}
+      decoded = Poison.decode!(report)
+      assert "complete" == decoded["state"]
+      repo_data = List.first(decoded["report"]["repos"])
+      assert repo_data["header"]["source_client"] == "mix task"
+      assert is_map(repo_data["data"]["project_types"])
+    end
+  end
+
   describe "run/1" do
     @describetag :long
     @describetag :network
