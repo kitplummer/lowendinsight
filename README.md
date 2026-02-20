@@ -1,8 +1,8 @@
 # LowEndInsight
 
-![build status](https://github.com/kitplummer/lowendinsight/workflows/default_elixir_ci/badge.svg?branch=develop) ![Hex.pm](https://img.shields.io/hexpm/v/lowendinsight) [![Coverage Status](https://coveralls.io/repos/github/kitplummer/lowendinsight/badge.svg?branch=develop)](https://coveralls.io/github/kitplummer/lowendinsight?branch=develop)
+![build status](https://github.com/kitplummer/lowendinsight/workflows/default_elixir_ci/badge.svg?branch=develop) ![Hex.pm](https://img.shields.io/hexpm/v/lowendinsight) [![Coverage Status](https://coveralls.io/repos/github/kitplummer/lowendinsight/badge.svg?branch=develop&v=2)](https://coveralls.io/github/kitplummer/lowendinsight?branch=develop)
 
-## Current Version: 0.9.0
+## Current Version: 0.9.1
 
 ## What's New
 
