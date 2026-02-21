@@ -42,7 +42,7 @@ defmodule Lei.Cache.OCI do
         "org.opencontainers.image.created" => DateTime.to_iso8601(DateTime.utc_now()),
         "org.opencontainers.image.title" => "lei-cache",
         "org.opencontainers.image.description" => "LEI analysis cache snapshot",
-        "org.opencontainers.image.vendor" => "GTRI"
+        "org.opencontainers.image.vendor" => "Kit Plummer"
       }
     }
   end

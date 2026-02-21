@@ -9,16 +9,16 @@ metadata:
   name: lei
   description: "LowEndInsight - OSS Supply Chain Risk Analysis Tool"
   version: "0.8.1"
-  url: https://github.com/gtri/lowendinsight
-  authors: Georgia Tech Research Institute
-  documentation: https://github.com/gtri/lowendinsight#readme
-  source: https://github.com/gtri/lowendinsight
-  vendor: GTRI
+  url: https://github.com/kitplummer/lowendinsight
+  authors: Kit Plummer
+  documentation: https://github.com/kitplummer/lowendinsight#readme
+  source: https://github.com/kitplummer/lowendinsight
+  vendor: Kit Plummer
 
 variables:
   - name: LEI_REGISTRY
     description: "Container registry for LEI image"
-    default: "ghcr.io/gtri"
+    default: "ghcr.io/kitplummer"
   - name: LEI_CACHE_REGISTRY
     description: "OCI registry for LEI cache artifacts"
     default: "ghcr.io/defenseunicorns"
@@ -46,7 +46,7 @@ components:
         before:
           - cmd: |
               echo "Building LEI container image..."
-              docker build -f Dockerfile.prod -t ghcr.io/gtri/lowendinsight:0.8.1 .
+              docker build -f Dockerfile.prod -t ghcr.io/kitplummer/lowendinsight:0.8.1 .
             description: "Build LEI production container"
 
   - name: lei-cli
@@ -74,8 +74,8 @@ components:
         after:
           - cmd: |
               echo "Extracting SBOM from LEI container..."
-              docker run --rm ghcr.io/gtri/lowendinsight:0.8.1 sbom cyclonedx > /var/lei/sbom.cdx.json
-              docker run --rm ghcr.io/gtri/lowendinsight:0.8.1 sbom spdx > /var/lei/sbom.spdx.json
+              docker run --rm ghcr.io/kitplummer/lowendinsight:0.8.1 sbom cyclonedx > /var/lei/sbom.cdx.json
+              docker run --rm ghcr.io/kitplummer/lowendinsight:0.8.1 sbom spdx > /var/lei/sbom.spdx.json
             description: "Extract container SBOM"
 
   - name: lei-cache

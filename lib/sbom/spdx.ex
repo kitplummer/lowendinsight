@@ -42,7 +42,7 @@ defmodule Lei.Sbom.SPDX do
       dataLicense: @data_license,
       SPDXID: "SPDXRef-DOCUMENT",
       name: "lowendinsight-sbom",
-      documentNamespace: "https://lowendinsight.gtri.gatech.edu/spdx/#{doc_uuid}",
+      documentNamespace: "https://github.com/kitplummer/lowendinsight/spdx/#{doc_uuid}",
       creationInfo: %{
         created: timestamp,
         creators: ["Tool: LowEndInsight-#{lowendinsight_version()}"],
@@ -66,7 +66,7 @@ defmodule Lei.Sbom.SPDX do
       dataLicense: @data_license,
       SPDXID: "SPDXRef-DOCUMENT",
       name: "lowendinsight-sbom",
-      documentNamespace: "https://lowendinsight.gtri.gatech.edu/spdx/#{doc_uuid}",
+      documentNamespace: "https://github.com/kitplummer/lowendinsight/spdx/#{doc_uuid}",
       creationInfo: %{
         created: report.header[:start_time] || report.header.start_time,
         creators: [

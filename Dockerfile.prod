@@ -131,4 +131,4 @@ LABEL org.opencontainers.image.title="LowEndInsight" \
       org.opencontainers.image.description="OSS supply chain risk analysis tool" \
       org.opencontainers.image.vendor="Georgia Tech Research Institute" \
       org.opencontainers.image.licenses="BSD-3-Clause" \
-      org.opencontainers.image.source="https://github.com/gtri/lowendinsight"
+      org.opencontainers.image.source="https://github.com/kitplummer/lowendinsight"

@@ -7,7 +7,7 @@ set -e
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_DIR="$(dirname "$SCRIPT_DIR")"
 VERSION="${VERSION:-0.8.1}"
-REGISTRY="${REGISTRY:-ghcr.io/gtri}"
+REGISTRY="${REGISTRY:-ghcr.io/kitplummer}"
 
 cd "$PROJECT_DIR"
 

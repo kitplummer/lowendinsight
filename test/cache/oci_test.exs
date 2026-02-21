@@ -47,7 +47,7 @@ defmodule Lei.Cache.OCITest do
       assert manifest.config == config
       assert manifest.layers == layers
       assert manifest.annotations["org.opencontainers.image.title"] == "lei-cache"
-      assert manifest.annotations["org.opencontainers.image.vendor"] == "GTRI"
+      assert manifest.annotations["org.opencontainers.image.vendor"] == "Kit Plummer"
     end
   end
 

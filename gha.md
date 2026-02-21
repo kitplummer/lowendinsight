@@ -1,5 +1,5 @@
 # Lowendinsight GitHub Action
-This is an action for Lowendinsight, a simple "bus-factor" risk analysis library for Open Source Software which is managed by the Georgia Tech Research Institute (GTRI). In its current state, this action works against both NPM and Mix based projects, currently existing in the develop branch of Lowendinsight. When run against a GitHub repository, a `.json` file will be generated of the format `lei--Y-m-d--H-M-S.json` and pushed to that repository's root directory by default.
+This is an action for Lowendinsight, a simple "bus-factor" risk analysis library for Open Source Software. In its current state, this action works against both NPM and Mix based projects, currently existing in the develop branch of Lowendinsight. When run against a GitHub repository, a `.json` file will be generated of the format `lei--Y-m-d--H-M-S.json` and pushed to that repository's root directory by default.
 
 ## Usage
 
@@ -22,7 +22,7 @@ jobs:
         persist-credentials: false # otherwise, the token used is the GITHUB_TOKEN, instead of your personal token
         fetch-depth: 0 # otherwise, you will fail to push refs to dest repo
     - name: Generate Report
-      uses: gtri/lowendinsight@gha
+      uses: kitplummer/lowendinsight@gha
       with:
         github_token: ${{ secrets.GITHUB_TOKEN }}
         branch: main
@@ -54,7 +54,7 @@ jobs:
       with:
         fetch-depth: 0
     - name: Run LowEndInsight SARIF scan
-      uses: gtri/lowendinsight@gha
+      uses: kitplummer/lowendinsight@gha
       with:
         sarif: 'true'
         sarif_file: 'lei-results.sarif'
@@ -101,4 +101,4 @@ severity levels:
 | `lei/sbom-missing` | Dependency has elevated SBOM transparency risk |
 
 ## Privacy
-This action does not, nor will it ever, collect user data.  Any repository used is Lowendinsight's analysis is cloned and deleted without any information being collected by GTRI nor sent to a third party.
+This action does not, nor will it ever, collect user data. Any repository used in Lowendinsight's analysis is cloned and deleted without any information being collected or sent to a third party.
