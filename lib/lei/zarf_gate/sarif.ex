@@ -44,7 +44,7 @@ defmodule Lei.ZarfGate.Sarif do
       "driver" => %{
         "name" => "lei-zarf-gate",
         "version" => "0.1.0",
-        "informationUri" => "https://github.com/gtri/lowendinsight",
+        "informationUri" => "https://github.com/kitplummer/lowendinsight",
         "rules" => rules()
       }
     }

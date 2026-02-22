@@ -63,7 +63,7 @@ defmodule Lei.Sbom.CycloneDX do
       timestamp: timestamp,
       tools: [
         %{
-          vendor: "GTRI",
+          vendor: "Kit Plummer",
           name: "LowEndInsight",
           version: lowendinsight_version()
         }
@@ -76,7 +76,7 @@ defmodule Lei.Sbom.CycloneDX do
       timestamp: header[:start_time] || header.start_time,
       tools: [
         %{
-          vendor: "GTRI",
+          vendor: "Kit Plummer",
           name: "LowEndInsight",
           version: Map.get(header, :library_version, lowendinsight_version())
         }

@@ -108,7 +108,7 @@ The LEI test suite has **significant determinism issues**. Over half the tests (
 | # | Test | Category | Tags | External Deps | Flakiness Risk |
 |---|------|----------|------|---------------|----------------|
 | 1 | analyze files in path repo | e2e | `@moduletag :network, :long` | `github.com/kitplummer/xmpp4rails` | HIGH — hardcoded file counts (15 files) |
-| 2 | analyze files in elixir repo | e2e | (module tags) | `github.com/gtri/lowendinsight` | HIGH — hardcoded file counts (178 files), binary file names |
+| 2 | analyze files in elixir repo | e2e | (module tags) | `github.com/kitplummer/lowendinsight` | HIGH — hardcoded file counts (178 files), binary file names |
 
 **Flakiness sources:**
 - Hardcoded `total_file_count: 178` — breaks when any file is added to upstream repo

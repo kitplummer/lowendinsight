@@ -34,7 +34,7 @@ defmodule FilesTest do
 
   test "analyze files in elixir repo" do
     {:ok, report} =
-      AnalyzerModule.analyze(["https://github.com/gtri/lowendinsight"], "files_path_test", DateTime.utc_now(), %{types: false})
+      AnalyzerModule.analyze(["https://github.com/kitplummer/lowendinsight"], "files_path_test", DateTime.utc_now(), %{types: false})
 
     assert "complete" == report[:state]
     repo_data = List.first(report[:report][:repos])

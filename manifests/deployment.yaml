@@ -25,7 +25,7 @@ spec:
         fsGroup: 1000
       containers:
         - name: lei
-          image: "###ZARF_REGISTRY###/ghcr.io/gtri/lowendinsight:###ZARF_CONST_VERSION###"
+          image: "###ZARF_REGISTRY###/ghcr.io/kitplummer/lowendinsight:###ZARF_CONST_VERSION###"
           imagePullPolicy: IfNotPresent
           command: ["sleep", "infinity"]
           securityContext:

@@ -194,7 +194,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - uses: gtri/lowendinsight-action@v1
+      - uses: kitplummer/lowendinsight-action@v1
         with:
           threshold: high
           fail-on-risk: true

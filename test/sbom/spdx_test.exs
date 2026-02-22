@@ -79,7 +79,7 @@ defmodule Lei.Sbom.SPDXTest do
     assert doc["dataLicense"] == "CC0-1.0"
     assert doc["SPDXID"] == "SPDXRef-DOCUMENT"
     assert doc["name"] == "lowendinsight-sbom"
-    assert String.contains?(doc["documentNamespace"], "lowendinsight.gtri.gatech.edu/spdx/")
+    assert String.contains?(doc["documentNamespace"], "github.com/kitplummer/lowendinsight/spdx/")
 
     assert doc["creationInfo"]["created"] == "2024-01-01T00:00:00Z"
     [creator] = doc["creationInfo"]["creators"]

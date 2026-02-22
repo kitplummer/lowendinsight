@@ -4,688 +4,51 @@
 
 ## Current Version: 0.9.1
 
+<img src="lei_bus_128.png" style="float: left;margin-right: 10px;margin-top: 10px;">
+
+LowEndInsight is a simple "bus-factor" risk analysis library for Open Source Software managed within Git repositories. Provide a git URL, and the library responds with a structured report highlighting potential maintenance and supply-chain risks.
+
+---
+
 ## What's New
 
-**Version 0.9.0** adds:
-- **SARIF Output** - Generate SARIF reports for GitHub Security tab integration (`mix lei.sarif`)
-- **ZarfGate** - Quality gate for CI/CD pipelines with configurable risk thresholds
-- **AI Rules Generation** - Generate rules for Cursor/GitHub Copilot (`mix lei.generate_rules`)
-- **Files Analysis** - Binary file detection, README/LICENSE/CONTRIBUTING presence check
-- **SPDX Parser** - Full SPDX SBOM parsing support
+**Version 0.9.1**
+- Maintenance and documentation cleanup.
+- Standardized project references to GitHub.
 
-**Version 0.7.0** added quick scan for SBOM presence (CycloneDX `bom.xml` or SPDX `*.spdx*`).
+**Version 0.9.0**
+- **SARIF Output**: Generate SARIF reports for GitHub Security tab integration (`mix lei.sarif`).
+- **ZarfGate**: Quality gate for CI/CD pipelines with configurable risk thresholds.
+- **AI Rules Generation**: Generate rules for Cursor/GitHub Copilot (`mix lei.generate_rules`).
+- **Files Analysis**: Binary file detection, README/LICENSE/CONTRIBUTING presence check.
+- **SPDX Parser**: Full SPDX SBOM parsing support.
 
-**Version 0.6.0** introduced breaking changes - the analyze function now requires additional arguments:
+---
 
-```elixir
-AnalyzerModule.analyze(["https://github.com/kitplummer/lowendinsight"], "iex", DateTime.utc_now(), %{types: true})
-```
+## Why LowEndInsight?
 
-<img src="lei_bus_128.png" style="float: left;margin-right: 10px;margin-top: 10px;"> LowEndInsight is a simple "bus-factor" risk analysis library for Open
-Source Software which is managed within a Git repository.  Provide the
-git URL and the library will respond with a basic Elixir Map structure report. (There is a desire to make this a struct.)
+If you are concerned about risks associated with upstream dependency requirements, LowEndInsight provides valuable, actionable information about the likelihood of critical issues being resolved.
 
-**If you are at all concerned about risks associated with upstream
-dependency requirements LowEndInsight can provide valuable, and
-actionable information around the likelihood of critical issues being
-resolved, if ever reported.  For example, a repo with a single
-contributor isn't necessarily bad, but it should be considered with some
-level of risk.  Are you or your organization willing to assume ownership
-(fork) of the repository to resolve issues yourself?  Or if there hasn't
-been a commit against the source repository, in some significant
-amount of time, can you assume that it is inactive, or just stable?**
+- **Single Contributor**: A repo with one contributor isn't necessarily bad, but it carries risk. Are you prepared to fork it if the maintainer disappears?
+- **Stale Commits**: If there hasn't been a commit in a significant amount of time, is it stable or just abandoned?
+- **Supply Chain**: Vulnerability scanning is only part of the picture. LowEndInsight helps you weigh the human and activity-based risks before you include a dependency.
 
-While, in terms of DevSecOps, we are moving towards automation of vulnerability scanning, this doesn't tell the whole picture.  First problem is that not all vulnerabilities are found/known, nor are all reported.  So perhaps some risk reduction should be applied at the dependency inclusion steps.
+LowEndInsight provides a simple mechanism for investigating and applying basic governance (based on configurable tolerance levels) and responds with a useful report for integrating into your DevSecOps automation.
 
-Again, the intent of LowEndInsight isn't to say that any upstream Open
-Source dependency is bad, just that the risks should be smartly weighed,
-and a deeper understanding of the implications should be gained during
-the decision to use.  LowEndInsight provides a simple mechanism for
-investigating and applying basic governance (based on a definition of
-the tolerance level, which you can easily override) and responds with a useful report for integrating into your existing DevSecOps automation.  Or, you can easily use LowEndInsight as an ad-hoc reporting tool, running it manually as part of an [ADR](https://github.com/joelparkerhenderson/architecture_decision_record).
+---
 
 ## Key Metrics
-* **Functional Contributors** - we've found that most projects receive a majority of contributions from one or two contributors.  This highlights a misconception about a project's number of contributors and some notion of health or maturity.  We report both the total number of contributors, and our notion of "functional contributors" making it easy to identify the risk.
 
-* **Commit Currency** - we've found that many projects are active, while many are also dormant or stale.  This isn't saying anthing of the quality of the project, but actually highlights potential supply-chain issues, e.g., is the project staying current with upstream dependencies updates
+*   **Functional Contributors**: We've found that most projects receive the majority of contributions from one or two people. We report both the total number of contributors and "functional contributors" to identify true bus-factor risk.
+*   **Commit Currency**: Many projects are active, while others are dormant. This metric highlights potential supply-chain issues, such as whether a project is staying current with its own upstream dependencies.
+*   **SBOM Presence**: Adoption of standard Software Bill of Materials (SBOM) manifests (CycloneDX or SPDX) is often lagging. Lack of an SBOM highlights the need for better provenance and risk management.
+*   **Recent Commit Change**: High volatility could indicate instability or high activity. LowEndInsight measures recent change relative to the codebase size to prompt further due diligence.
 
-* **SBOM presence** - we've found that adoption of a standard software-bill-of-materials (SBOM) manifest is lagging, especially in smaller projects.  Again, the presence or lack thereof does not indicate quality or maturity, however, it does highlight the need to address provenence and risk management.
-
-* **Recent Commit Change** - we've found that project volatility could indicate project instability, but more likely highlights an active project - though it is very difficult to discern this based on amounts of change, and thus should require more due diligence applied when looking at the stability of a dependency.
-  
-```
-✗ mix lei.analyze https://github.com/facebook/react | jq
-{
-  "state": "complete",
-  "report": {
-    "uuid": "4d1e2b08-7b68-11ea-9ca1-88e9fe666193",
-    "repos": [
-      {
-        "header": {
-          "uuid": "4d1dbee8-7b68-11ea-93b9-88e9fe666193",
-          "start_time": "2020-04-10T20:15:34.912972Z",
-          "source_client": "mix task",
-          "repo": "https://github.com/facebook/react",
-          "library_version": "",
-          "end_time": "2020-04-10T20:17:28.867848Z",
-          "duration": 114
-        },
-        "data": {
-          "risk": "low",
-          "results": {
-            "top10_contributors": [
-              {
-                "name": "Paul O’Shannessy",
-                "merges": 959,
-                "email": "paul@oshannessy.com",
-                "contributions": 1777
-              },
-              {
-                "name": "Dan Abramov",
-                "merges": 86,
-                "email": "dan.abramov@gmail.com",
-                "contributions": 1356
-              },
-              {
-                "name": "Sophie Alpert",
-                "merges": 392,
-                "email": "git@sophiebits.com",
-                "contributions": 1265
-              },
-              {
-                "name": "Brian Vaughn",
-                "merges": 101,
-                "email": "bvaughn@fb.com",
-                "contributions": 995
-              },
-              {
-                "name": "Sebastian Markbåge",
-                "merges": 141,
-                "email": "sebastian@calyptus.eu",
-                "contributions": 803
-              },
-              {
-                "name": "Jim Sproch",
-                "merges": 327,
-                "email": "jsproch@fb.com",
-                "contributions": 456
-              },
-              {
-                "name": "Brian Vaughn",
-                "merges": 65,
-                "email": "brian.david.vaughn@gmail.com",
-                "contributions": 363
-              },
-              {
-                "name": "Dominic Gannaway",
-                "merges": 6,
-                "email": "trueadm@users.noreply.github.com",
-                "contributions": 336
-              },
-              {
-                "name": "Pete Hunt",
-                "merges": 126,
-                "email": "floydophone@gmail.com",
-                "contributions": 332
-              },
-              {
-                "name": "Andrew Clark",
-                "merges": 2,
-                "email": "acdlite@fb.com",
-                "contributions": 264
-              }
-            ],
-            "recent_commit_size_in_percent_of_codebase": 0.00032,
-            "large_recent_commit_risk": "low",
-            "functional_contributors_risk": "low",
-            "functional_contributors": 84,
-            "functional_contributor_names": [
-              "yiminghe",
-              "Marshall Roch",
-              "Flarnie Marchan",
-              "Daniel Lo Nigro",
-              "Philipp Spieß",
-              "Edvin Erikson",
-              "Mateusz Burzyński",
-              "Pete Hunt",
-              "petehunt",
-              "Ingvar Stepanyan",
-              "Jordan Walke",
-              "Jim",
-              "chico",
-              "Rauno Freiberg",
-              "Stefan Dombrowski",
-              "Keyan Zhang",
-              "Benjamin Woodruff",
-              "Nicolas Gallagher",
-              "CommitSyncScript",
-              "Joe Critchley",
-              "Simen Bekkhus",
-              "fisherwebdev",
-              "Andrey Popp",
-              "Lee Byron",
-              "Shim Won",
-              "Christoph Pojer",
-              "Lucas Cordeiro",
-              "Bartosz Kaszubowski",
-              "Sasha Aickin",
-              "Heaven",
-              "Charles Marsh",
-              "Kohei TAKATA",
-              "Cheng Lou",
-              "Dustan Kasten",
-              "Dominic Gannaway",
-              "Ivan Zotov",
-              "Sophie Alpert",
-              "Josh Duck",
-              "Tim Yung",
-              "Sunil Pai",
-              "Timothy Yung",
-              "Thomas Aylott",
-              "Isaac Salier-Hellendag",
-              "iamchenxin",
-              "Raphael Amorim",
-              "Brian Vaughn",
-              "Jinwoo Oh",
-              "Ivan Babak",
-              "Nathan Hunzaker",
-              "Paul O’Shannessy",
-              "Alex Smith",
-              "Paul O'Shannessy",
-              "Sebastian Markbage",
-              "Tom Occhino",
-              "Jan Kassens",
-              "Kunal Mehta",
-              "Luna Ruan",
-              "Baraa Hamodi",
-              "Christopher Chedeau",
-              "Ben Newman",
-              "jim",
-              "Clement Hoang",
-              "Hristo Kanchev",
-              "Scott Feeney",
-              "Connor McSheffrey",
-              "Brandon Dail",
-              "Paul Shen",
-              "Nate Hunzaker",
-              "Vjeux",
-              "Jared Forsyth",
-              "Eli White",
-              "cpojer",
-              "Andrew Clark",
-              "Toru Kobayashi",
-              "Dan",
-              "Jeff Morrison",
-              "Sebastian Markbåge",
-              "Dan Abramov",
-              "Rick Beerendonk",
-              "Andreas Svensson",
-              "Fabio M. Costa",
-              "yungsters",
-              "Ben Alpert",
-              "Jason Quense"
-            ],
-            "contributor_risk": "low",
-            "contributor_count": 1505,
-            "commit_currency_weeks": 0,
-            "commit_currency_risk": "low",
-            "sbom_risk": "medium"
-          },
-          "repo_size": "185M",
-          "repo": "https://github.com/facebook/react",
-          "project_types": {
-            "node": [
-              "/tmp/lei-1586549734-63434-1b1so9e/react/fixtures/art/package.json",
-              "/tmp/lei-1586549734-63434-1b1so9e/react/fixtures/attribute-behavior/package.json",
-              "/tmp/lei-1586549734-63434-1b1so9e/react/fixtures/concurrent/time-slicing/package.json",
-              "/tmp/lei-1586549734-63434-1b1so9e/react/fixtures/dom/package.json",
-              "/tmp/lei-1586549734-63434-1b1so9e/react/fixtures/eslint/package.json",
-              "/tmp/lei-1586549734-63434-1b1so9e/react/fixtures/eslint/proxy/package.json",
-              "/tmp/lei-1586549734-63434-1b1so9e/react/fixtures/expiration/package.json",
-              "/tmp/lei-1586549734-63434-1b1so9e/react/fixtures/fiber-debugger/package.json",
-              "/tmp/lei-1586549734-63434-1b1so9e/react/fixtures/flight/package.json",
-              "/tmp/lei-1586549734-63434-1b1so9e/react/fixtures/packaging/browserify/dev/package.json",
-              "/tmp/lei-1586549734-63434-1b1so9e/react/fixtures/packaging/browserify/prod/package.json",
-              "/tmp/lei-1586549734-63434-1b1so9e/react/fixtures/packaging/brunch/dev/package.json",
-              "/tmp/lei-1586549734-63434-1b1so9e/react/fixtures/packaging/brunch/prod/package.json",
-              "/tmp/lei-1586549734-63434-1b1so9e/react/fixtures/packaging/rjs/dev/package.json",
-              "/tmp/lei-1586549734-63434-1b1so9e/react/fixtures/packaging/rjs/prod/package.json",
-              "/tmp/lei-1586549734-63434-1b1so9e/react/fixtures/packaging/systemjs-builder/dev/package.json",
-              "/tmp/lei-1586549734-63434-1b1so9e/react/fixtures/packaging/systemjs-builder/prod/package.json",
-              "/tmp/lei-1586549734-63434-1b1so9e/react/fixtures/packaging/webpack-alias/dev/package.json",
-              "/tmp/lei-1586549734-63434-1b1so9e/react/fixtures/packaging/webpack-alias/prod/package.json",
-              "/tmp/lei-1586549734-63434-1b1so9e/react/fixtures/packaging/webpack/dev/package.json",
-              "/tmp/lei-1586549734-63434-1b1so9e/react/fixtures/packaging/webpack/prod/package.json",
-              "/tmp/lei-1586549734-63434-1b1so9e/react/fixtures/ssr/package.json",
-              "/tmp/lei-1586549734-63434-1b1so9e/react/package.json",
-              "/tmp/lei-1586549734-63434-1b1so9e/react/packages/create-subscription/package.json",
-              "/tmp/lei-1586549734-63434-1b1so9e/react/packages/dom-event-testing-library/package.json",
-              "/tmp/lei-1586549734-63434-1b1so9e/react/packages/eslint-plugin-react-hooks/package.json",
-              "/tmp/lei-1586549734-63434-1b1so9e/react/packages/jest-mock-scheduler/package.json",
-              "/tmp/lei-1586549734-63434-1b1so9e/react/packages/jest-react/package.json",
-              "/tmp/lei-1586549734-63434-1b1so9e/react/packages/legacy-events/package.json",
-              "/tmp/lei-1586549734-63434-1b1so9e/react/packages/react-art/package.json",
-              "/tmp/lei-1586549734-63434-1b1so9e/react/packages/react-cache/package.json",
-              "/tmp/lei-1586549734-63434-1b1so9e/react/packages/react-client/package.json",
-              "/tmp/lei-1586549734-63434-1b1so9e/react/packages/react-debug-tools/package.json",
-              "/tmp/lei-1586549734-63434-1b1so9e/react/packages/react-devtools-core/package.json",
-              "/tmp/lei-1586549734-63434-1b1so9e/react/packages/react-devtools-extensions/package.json",
-              "/tmp/lei-1586549734-63434-1b1so9e/react/packages/react-devtools-inline/package.json",
-              "/tmp/lei-1586549734-63434-1b1so9e/react/packages/react-devtools-shared/package.json",
-              "/tmp/lei-1586549734-63434-1b1so9e/react/packages/react-devtools-shared/src/node_modules/react-window/package.json",
-              "/tmp/lei-1586549734-63434-1b1so9e/react/packages/react-devtools-shell/package.json",
-              "/tmp/lei-1586549734-63434-1b1so9e/react/packages/react-devtools/package.json",
-              "/tmp/lei-1586549734-63434-1b1so9e/react/packages/react-dom/package.json",
-              "/tmp/lei-1586549734-63434-1b1so9e/react/packages/react-flight-dom-relay/package.json",
-              "/tmp/lei-1586549734-63434-1b1so9e/react/packages/react-flight-dom-webpack/package.json",
-              "/tmp/lei-1586549734-63434-1b1so9e/react/packages/react-interactions/package.json",
-              "/tmp/lei-1586549734-63434-1b1so9e/react/packages/react-is/package.json",
-              "/tmp/lei-1586549734-63434-1b1so9e/react/packages/react-native-renderer/package.json",
-              "/tmp/lei-1586549734-63434-1b1so9e/react/packages/react-noop-renderer/package.json",
-              "/tmp/lei-1586549734-63434-1b1so9e/react/packages/react-reconciler/package.json",
-              "/tmp/lei-1586549734-63434-1b1so9e/react/packages/react-refresh/package.json",
-              "/tmp/lei-1586549734-63434-1b1so9e/react/packages/react-server/package.json",
-              "/tmp/lei-1586549734-63434-1b1so9e/react/packages/react-test-renderer/package.json",
-              "/tmp/lei-1586549734-63434-1b1so9e/react/packages/react/package.json",
-              "/tmp/lei-1586549734-63434-1b1so9e/react/packages/scheduler/package.json",
-              "/tmp/lei-1586549734-63434-1b1so9e/react/packages/shared/package.json",
-              "/tmp/lei-1586549734-63434-1b1so9e/react/packages/use-subscription/package.json",
-              "/tmp/lei-1586549734-63434-1b1so9e/react/scripts/bench/package.json",
-              "/tmp/lei-1586549734-63434-1b1so9e/react/scripts/eslint-rules/package.json",
-              "/tmp/lei-1586549734-63434-1b1so9e/react/scripts/perf-counters/package.json",
-              "/tmp/lei-1586549734-63434-1b1so9e/react/scripts/release/package.json"
-            ]
-          },
-          "git": {
-            "hash": "8e13f099ab0c820c6f97547ad08244340e074266",
-            "default_branch": "refs/remotes/origin/master"
-          },
-          "config": {
-            "medium_large_commit_level": 0.2,
-            "medium_functional_contributors_level": 5,
-            "medium_currency_level": 26,
-            "medium_contributor_level": 5,
-            "high_large_commit_level": 0.3,
-            "high_functional_contributors_level": 3,
-            "high_currency_level": 52,
-            "high_contributor_level": 3,
-            "critical_large_commit_level": 0.4,
-            "critical_functional_contributors_level": 2,
-            "critical_currency_level": 104,
-            "critical_contributor_level": 2,
-            "base_temp_dir": "/tmp"
-          }
-        }
-      }
-    ]
-  },
-  "metadata": {
-    "times": {
-      "start_time": "2020-04-10T20:15:34.901638Z",
-      "end_time": "2020-04-10T20:17:28.885951Z",
-      "duration": 114
-    },
-    "risk_counts": {
-      "low": 1
-    },
-    "repo_count": 1
-  }
-}{
-  "state": "complete",
-  "report": {
-    "uuid": "caa7f920-aaa3-11ec-9c05-f47b09cc5c9a",
-    "repos": [
-      {
-        "header": {
-          "uuid": "caa7c2e8-aaa3-11ec-9481-f47b09cc5c9a",
-          "start_time": "2022-03-23T12:21:13.234974Z",
-          "source_client": "mix task",
-          "repo": "https://github.com/facebook/react",
-          "library_version": "",
-          "end_time": "2022-03-23T12:21:39.762485Z",
-          "duration": 26
-        },
-        "data": {
-          "risk": "medium",
-          "results": {
-            "top10_contributors": [
-              {
-                "name": "Paul O’Shannessy",
-                "merges": 959,
-                "email": "paul@oshannessy.com",
-                "contributions": 1778
-              },
-              {
-                "name": "Dan Abramov",
-                "merges": 86,
-                "email": "dan.abramov@gmail.com",
-                "contributions": 1572
-              },
-              {
-                "name": "Brian Vaughn",
-                "merges": 101,
-                "email": "bvaughn@fb.com",
-                "contributions": 1358
-              },
-              {
-                "name": "Sophie Alpert",
-                "merges": 392,
-                "email": "git@sophiebits.com",
-                "contributions": 1268
-              },
-              {
-                "name": "Sebastian Markbåge",
-                "merges": 143,
-                "email": "sebastian@calyptus.eu",
-                "contributions": 995
-              },
-              {
-                "name": "Andrew Clark",
-                "merges": 0,
-                "email": "git@andrewclark.io",
-                "contributions": 631
-              },
-              {
-                "name": "Jim Sproch",
-                "merges": 327,
-                "email": "jsproch@fb.com",
-                "contributions": 456
-              },
-              {
-                "name": "Dominic Gannaway",
-                "merges": 6,
-                "email": "trueadm@users.noreply.github.com",
-                "contributions": 404
-              },
-              {
-                "name": "Brian Vaughn",
-                "merges": 65,
-                "email": "brian.david.vaughn@gmail.com",
-                "contributions": 363
-              },
-              {
-                "name": "Pete Hunt",
-                "merges": 126,
-                "email": "floydophone@gmail.com",
-                "contributions": 332
-              }
-            ],
-            "sbom_risk": "medium",
-            "recent_commit_size_in_percent_of_codebase": 3e-05,
-            "large_recent_commit_risk": "low",
-            "functional_contributors_risk": "low",
-            "functional_contributors": 97,
-            "functional_contributor_names": [
-              "Andreas Savvides <asavvides@twitter.com>",
-              "Pete Hunt <floydophone@gmail.com>",
-              "Fabio M. Costa <fabiomcosta@gmail.com>",
-              "Andrew Clark <git@andrewclark.io>",
-              "Sunil Pai <threepointone@gmail.com>",
-              "Jeff Morrison <jeff@anafx.com>",
-              "Simen Bekkhus <sbekkhus91@gmail.com>",
-              "Christoph Pojer <christoph.pojer@gmail.com>",
-              "NE-SmallTown <ne_smalltown@163.com>",
-              "Ray <ray@tomo.im>",
-              "Nathan Hunzaker <nate.hunzaker@gmail.com>",
-              "Ingvar Stepanyan <me@rreverser.com>",
-              "Andreas Svensson <andreas@syranide.com>",
-              "E-Liang Tan <eliang@eliangtan.com>",
-              "Dominic Gannaway <dg@domgan.com>",
-              "Jan Kassens <jan@kassens.net>",
-              "Jared Forsyth <jared@jaredforsyth.com>",
-              "Flarnie Marchan <flarnie@users.noreply.github.com>",
-              "Dan Abramov <dan.abramov@me.com>",
-              "dependabot[bot] <49699333+dependabot[bot]@users.noreply.github.com>",
-              "Cheng Lou <chenglou92@gmail.com>",
-              "Marshall Roch <mroch@fb.com>",
-              "Toru Kobayashi <koba0004@gmail.com>",
-              "Rick Hanlon <rickhanlonii@gmail.com>",
-              "Joe Critchley <joecritch@gmail.com>",
-              "Joshua Gross <joshua.gross@gmail.com>",
-              "Sebastian Silbermann <silbermann.sebastian@gmail.com>",
-              "Luna Ruan <luna@fb.com>",
-              "Ben Newman <bn@cs.stanford.edu>",
-              "Sergey Rubanov <chi187@gmail.com>",
-              "Shim Won <marocchino@gmail.com>",
-              "Philipp Spiess <hello@philippspiess.com>",
-              "Sunil Pai <threepointone@fb.com>",
-              "Vjeux <vjeuxx@gmail.com>",
-              "Nicolas Gallagher <nicolasgallagher@gmail.com>",
-              "Ivan Zotov <ivanzotov@gmail.com>",
-              "Sasha Aickin <xander76@yahoo.com>",
-              "Jim Sproch <jsproch@fb.com>",
-              "Dominic Gannaway <trueadm@users.noreply.github.com>",
-              "Brian Vaughn <brian.david.vaughn@gmail.com>",
-              "Eli White <github@eli-white.com>",
-              "Connor McSheffrey <c@conr.me>",
-              "Scott Feeney <scott@oceanbase.org>",
-              "Stefan Dombrowski <sdo451@gmail.com>",
-              "Tay Yang Shun <tay.yang.shun@gmail.com>",
-              "Paul O’Shannessy <paul@oshannessy.com>",
-              "Brandon Dail <aweary@users.noreply.github.com>",
-              "Paul Shen <paul@mnml0.com>",
-              "Raphael Amorim <rapha850@gmail.com>",
-              "Bill Fisher <fisherwebdev@gmail.com>",
-              "Rick Beerendonk <rick@beerendonk.com>",
-              "Daniel Lo Nigro <daniel@dan.cx>",
-              "Andrew Clark <acdlite@fb.com>",
-              "Andrew Clark <github@andrewclark.io>",
-              "Hristo Kanchev <hristokkanchev@gmail.com>",
-              "Luna Ruan <lunaris.ruan@gmail.com>",
-              "Lee Byron <lee@leebyron.com>",
-              "salazarm <salazarm@users.noreply.github.com>",
-              "iamchenxin <iamchenxin@gmail.com>",
-              "Andrey Popp <8mayday@gmail.com>",
-              "Timothy Yung <yungsters@gmail.com>",
-              "Kohei TAKATA <kt.koheitakata@gmail.com>",
-              "Isaac Salier-Hellendag <isaac@fb.com>",
-              "Jason Quense <monastic.panic@gmail.com>",
-              "Joseph Savona <joesavona@fb.com>",
-              "Clement Hoang <clement.hoang24@gmail.com>",
-              "Sunil Pai <threepointone@oculus.com>",
-              "Brandon Dail <brandon.dail@formidable.com>",
-              "Baraa Hamodi <bhamodi@uwaterloo.ca>",
-              "Sebastian Markbåge <sebastian@calyptus.eu>",
-              "Jinwoo Oh <arkist@gmail.com>",
-              "Nicolas Gallagher <necolas@fb.com>",
-              "jstejada <jstejada@fb.com>",
-              "Jordan Walke <jordojw@gmail.com>",
-              "Bartosz Kaszubowski <gosimek@gmail.com>",
-              "Keyan Zhang <root@keyanzhang.com>",
-              "Moti Zilberman <motiz88@gmail.com>",
-              "Charles Marsh <charlie@khanacademy.org>",
-              "Alex Smith <iqwz@ya.ru>",
-              "Rauno Freiberg <freiberggg@gmail.com>",
-              "Tom Occhino <tomocchino@gmail.com>",
-              "Sophie Alpert <git@sophiebits.com>",
-              "Lucas Cordeiro <ecdb.lucas@gmail.com>",
-              "Ivan Babak <babak.john@gmail.com>",
-              "jddxf <740531372@qq.com>",
-              "Kunal Mehta <k.mehta@berkeley.edu>",
-              "Nikita Lebedev <bloomber111@gmail.com>",
-              "Dustan Kasten <dustan.kasten@gmail.com>",
-              "Mateusz Burzyński <mateuszburzynski@gmail.com>",
-              "Thomas Aylott <oblivious@subtlegradient.com>",
-              "Dan Abramov <dan.abramov@gmail.com>",
-              "Benjamin Woodruff <github@benjam.info>",
-              "Josh Duck <josh@fb.com>",
-              "Andrew Clark <acdlite@me.com>",
-              "Brian Vaughn <bvaughn@fb.com>",
-              "Dan Abramov <gaearon@fb.com>",
-              "yiminghe <yiminghe@gmail.com>"
-            ],
-            "contributor_risk": "low",
-            "contributor_count": 1671,
-            "commit_currency_weeks": 0,
-            "commit_currency_risk": "low"
-          },
-          "repo_size": "0",
-          "repo": "https://github.com/facebook/react",
-          "project_types": {
-            "node": [
-              "/tmp/lei-1648038073-504683-b6vw7a/react/fixtures/art/package.json",
-              "/tmp/lei-1648038073-504683-b6vw7a/react/fixtures/art/yarn.lock",
-              "/tmp/lei-1648038073-504683-b6vw7a/react/fixtures/attribute-behavior/package.json",
-              "/tmp/lei-1648038073-504683-b6vw7a/react/fixtures/attribute-behavior/yarn.lock",
-              "/tmp/lei-1648038073-504683-b6vw7a/react/fixtures/blocks/package.json",
-              "/tmp/lei-1648038073-504683-b6vw7a/react/fixtures/blocks/yarn.lock",
-              "/tmp/lei-1648038073-504683-b6vw7a/react/fixtures/concurrent/time-slicing/package.json",
-              "/tmp/lei-1648038073-504683-b6vw7a/react/fixtures/concurrent/time-slicing/yarn.lock",
-              "/tmp/lei-1648038073-504683-b6vw7a/react/fixtures/dom/package.json",
-              "/tmp/lei-1648038073-504683-b6vw7a/react/fixtures/dom/yarn.lock",
-              "/tmp/lei-1648038073-504683-b6vw7a/react/fixtures/eslint/package.json",
-              "/tmp/lei-1648038073-504683-b6vw7a/react/fixtures/eslint/proxy/package.json",
-              "/tmp/lei-1648038073-504683-b6vw7a/react/fixtures/eslint/yarn.lock",
-              "/tmp/lei-1648038073-504683-b6vw7a/react/fixtures/expiration/package.json",
-              "/tmp/lei-1648038073-504683-b6vw7a/react/fixtures/expiration/yarn.lock",
-              "/tmp/lei-1648038073-504683-b6vw7a/react/fixtures/fiber-debugger/package.json",
-              "/tmp/lei-1648038073-504683-b6vw7a/react/fixtures/fiber-debugger/yarn.lock",
-              "/tmp/lei-1648038073-504683-b6vw7a/react/fixtures/flight/config/package.json",
-              "/tmp/lei-1648038073-504683-b6vw7a/react/fixtures/flight/loader/package.json",
-              "/tmp/lei-1648038073-504683-b6vw7a/react/fixtures/flight/package.json",
-              "/tmp/lei-1648038073-504683-b6vw7a/react/fixtures/flight/scripts/package.json",
-              "/tmp/lei-1648038073-504683-b6vw7a/react/fixtures/flight/server/package.json",
-              "/tmp/lei-1648038073-504683-b6vw7a/react/fixtures/flight/yarn.lock",
-              "/tmp/lei-1648038073-504683-b6vw7a/react/fixtures/legacy-jsx-runtimes/package.json",
-              "/tmp/lei-1648038073-504683-b6vw7a/react/fixtures/legacy-jsx-runtimes/react-14/package.json",
-              "/tmp/lei-1648038073-504683-b6vw7a/react/fixtures/legacy-jsx-runtimes/react-14/yarn.lock",
-              "/tmp/lei-1648038073-504683-b6vw7a/react/fixtures/legacy-jsx-runtimes/react-15/package.json",
-              "/tmp/lei-1648038073-504683-b6vw7a/react/fixtures/legacy-jsx-runtimes/react-15/yarn.lock",
-              "/tmp/lei-1648038073-504683-b6vw7a/react/fixtures/legacy-jsx-runtimes/react-16/package.json",
-              "/tmp/lei-1648038073-504683-b6vw7a/react/fixtures/legacy-jsx-runtimes/react-16/yarn.lock",
-              "/tmp/lei-1648038073-504683-b6vw7a/react/fixtures/legacy-jsx-runtimes/react-17/package.json",
-              "/tmp/lei-1648038073-504683-b6vw7a/react/fixtures/legacy-jsx-runtimes/react-17/yarn.lock",
-              "/tmp/lei-1648038073-504683-b6vw7a/react/fixtures/legacy-jsx-runtimes/yarn.lock",
-              "/tmp/lei-1648038073-504683-b6vw7a/react/fixtures/nesting/package.json",
-              "/tmp/lei-1648038073-504683-b6vw7a/react/fixtures/nesting/src/legacy/package.json",
-              "/tmp/lei-1648038073-504683-b6vw7a/react/fixtures/nesting/src/modern/package.json",
-              "/tmp/lei-1648038073-504683-b6vw7a/react/fixtures/packaging/browserify/dev/package.json",
-              "/tmp/lei-1648038073-504683-b6vw7a/react/fixtures/packaging/browserify/dev/yarn.lock",
-              "/tmp/lei-1648038073-504683-b6vw7a/react/fixtures/packaging/browserify/prod/package.json",
-              "/tmp/lei-1648038073-504683-b6vw7a/react/fixtures/packaging/browserify/prod/yarn.lock",
-              "/tmp/lei-1648038073-504683-b6vw7a/react/fixtures/packaging/brunch/dev/package.json",
-              "/tmp/lei-1648038073-504683-b6vw7a/react/fixtures/packaging/brunch/dev/yarn.lock",
-              "/tmp/lei-1648038073-504683-b6vw7a/react/fixtures/packaging/brunch/prod/package.json",
-              "/tmp/lei-1648038073-504683-b6vw7a/react/fixtures/packaging/brunch/prod/yarn.lock",
-              "/tmp/lei-1648038073-504683-b6vw7a/react/fixtures/packaging/rjs/dev/package.json",
-              "/tmp/lei-1648038073-504683-b6vw7a/react/fixtures/packaging/rjs/dev/yarn.lock",
-              "/tmp/lei-1648038073-504683-b6vw7a/react/fixtures/packaging/rjs/prod/package.json",
-              "/tmp/lei-1648038073-504683-b6vw7a/react/fixtures/packaging/rjs/prod/yarn.lock",
-              "/tmp/lei-1648038073-504683-b6vw7a/react/fixtures/packaging/systemjs-builder/dev/package.json",
-              "/tmp/lei-1648038073-504683-b6vw7a/react/fixtures/packaging/systemjs-builder/dev/yarn.lock",
-              "/tmp/lei-1648038073-504683-b6vw7a/react/fixtures/packaging/systemjs-builder/prod/package.json",
-              "/tmp/lei-1648038073-504683-b6vw7a/react/fixtures/packaging/systemjs-builder/prod/yarn.lock",
-              "/tmp/lei-1648038073-504683-b6vw7a/react/fixtures/packaging/webpack-alias/dev/package.json",
-              "/tmp/lei-1648038073-504683-b6vw7a/react/fixtures/packaging/webpack-alias/dev/yarn.lock",
-              "/tmp/lei-1648038073-504683-b6vw7a/react/fixtures/packaging/webpack-alias/prod/package.json",
-              "/tmp/lei-1648038073-504683-b6vw7a/react/fixtures/packaging/webpack-alias/prod/yarn.lock",
-              "/tmp/lei-1648038073-504683-b6vw7a/react/fixtures/packaging/webpack/dev/package.json",
-              "/tmp/lei-1648038073-504683-b6vw7a/react/fixtures/packaging/webpack/dev/yarn.lock",
-              "/tmp/lei-1648038073-504683-b6vw7a/react/fixtures/packaging/webpack/prod/package.json",
-              "/tmp/lei-1648038073-504683-b6vw7a/react/fixtures/packaging/webpack/prod/yarn.lock",
-              "/tmp/lei-1648038073-504683-b6vw7a/react/fixtures/ssr/package.json",
-              "/tmp/lei-1648038073-504683-b6vw7a/react/fixtures/ssr/yarn.lock",
-              "/tmp/lei-1648038073-504683-b6vw7a/react/fixtures/ssr2/package-lock.json",
-              "/tmp/lei-1648038073-504683-b6vw7a/react/fixtures/ssr2/package.json",
-              "/tmp/lei-1648038073-504683-b6vw7a/react/fixtures/ssr2/yarn.lock",
-              "/tmp/lei-1648038073-504683-b6vw7a/react/package.json",
-              "/tmp/lei-1648038073-504683-b6vw7a/react/packages/create-subscription/package.json",
-              "/tmp/lei-1648038073-504683-b6vw7a/react/packages/dom-event-testing-library/package.json",
-              "/tmp/lei-1648038073-504683-b6vw7a/react/packages/eslint-plugin-react-hooks/package.json",
-              "/tmp/lei-1648038073-504683-b6vw7a/react/packages/jest-mock-scheduler/package.json",
-              "/tmp/lei-1648038073-504683-b6vw7a/react/packages/jest-react/package.json",
-              "/tmp/lei-1648038073-504683-b6vw7a/react/packages/react-art/package.json",
-              "/tmp/lei-1648038073-504683-b6vw7a/react/packages/react-cache/package.json",
-              "/tmp/lei-1648038073-504683-b6vw7a/react/packages/react-client/package.json",
-              "/tmp/lei-1648038073-504683-b6vw7a/react/packages/react-debug-tools/package.json",
-              "/tmp/lei-1648038073-504683-b6vw7a/react/packages/react-devtools-core/package.json",
-              "/tmp/lei-1648038073-504683-b6vw7a/react/packages/react-devtools-extensions/package.json",
-              "/tmp/lei-1648038073-504683-b6vw7a/react/packages/react-devtools-inline/package.json",
-              "/tmp/lei-1648038073-504683-b6vw7a/react/packages/react-devtools-shared/package.json",
-              "/tmp/lei-1648038073-504683-b6vw7a/react/packages/react-devtools-shared/src/node_modules/react-window/package.json",
-              "/tmp/lei-1648038073-504683-b6vw7a/react/packages/react-devtools-shell/package.json",
-              "/tmp/lei-1648038073-504683-b6vw7a/react/packages/react-devtools-timeline/package.json",
-              "/tmp/lei-1648038073-504683-b6vw7a/react/packages/react-devtools/package.json",
-              "/tmp/lei-1648038073-504683-b6vw7a/react/packages/react-dom/package.json",
-              "/tmp/lei-1648038073-504683-b6vw7a/react/packages/react-fetch/package.json",
-              "/tmp/lei-1648038073-504683-b6vw7a/react/packages/react-fs/package.json",
-              "/tmp/lei-1648038073-504683-b6vw7a/react/packages/react-interactions/package.json",
-              "/tmp/lei-1648038073-504683-b6vw7a/react/packages/react-is/package.json",
-              "/tmp/lei-1648038073-504683-b6vw7a/react/packages/react-native-renderer/package.json",
-              "/tmp/lei-1648038073-504683-b6vw7a/react/packages/react-noop-renderer/package.json",
-              "/tmp/lei-1648038073-504683-b6vw7a/react/packages/react-pg/package.json",
-              "/tmp/lei-1648038073-504683-b6vw7a/react/packages/react-reconciler/package.json",
-              "/tmp/lei-1648038073-504683-b6vw7a/react/packages/react-refresh/package.json",
-              "/tmp/lei-1648038073-504683-b6vw7a/react/packages/react-server-dom-relay/package.json",
-              "/tmp/lei-1648038073-504683-b6vw7a/react/packages/react-server-dom-webpack/esm/package.json",
-              "/tmp/lei-1648038073-504683-b6vw7a/react/packages/react-server-dom-webpack/npm/esm/package.json",
-              "/tmp/lei-1648038073-504683-b6vw7a/react/packages/react-server-dom-webpack/package.json",
-              "/tmp/lei-1648038073-504683-b6vw7a/react/packages/react-server-native-relay/package.json",
-              "/tmp/lei-1648038073-504683-b6vw7a/react/packages/react-server/package.json",
-              "/tmp/lei-1648038073-504683-b6vw7a/react/packages/react-suspense-test-utils/package.json",
-              "/tmp/lei-1648038073-504683-b6vw7a/react/packages/react-test-renderer/package.json",
-              "/tmp/lei-1648038073-504683-b6vw7a/react/packages/react/package.json",
-              "/tmp/lei-1648038073-504683-b6vw7a/react/packages/scheduler/package.json",
-              "/tmp/lei-1648038073-504683-b6vw7a/react/packages/shared/package.json",
-              "/tmp/lei-1648038073-504683-b6vw7a/react/packages/use-subscription/package.json",
-              "/tmp/lei-1648038073-504683-b6vw7a/react/packages/use-sync-external-store/package.json",
-              "/tmp/lei-1648038073-504683-b6vw7a/react/scripts/bench/package.json",
-              "/tmp/lei-1648038073-504683-b6vw7a/react/scripts/bench/yarn.lock",
-              "/tmp/lei-1648038073-504683-b6vw7a/react/scripts/devtools/package.json",
-              "/tmp/lei-1648038073-504683-b6vw7a/react/scripts/devtools/yarn.lock",
-              "/tmp/lei-1648038073-504683-b6vw7a/react/scripts/eslint-rules/package.json",
-              "/tmp/lei-1648038073-504683-b6vw7a/react/scripts/perf-counters/package.json",
-              "/tmp/lei-1648038073-504683-b6vw7a/react/scripts/release/package.json",
-              "/tmp/lei-1648038073-504683-b6vw7a/react/scripts/release/yarn.lock",
-              "/tmp/lei-1648038073-504683-b6vw7a/react/yarn.lock"
-            ]
-          },
-          "git": {
-            "hash": "de516ca5a635220d0cbe82b8f04003820e3f4072",
-            "default_branch": "refs/remotes/origin/main"
-          },
-          "config": {
-            "sbom_risk_level": "medium",
-            "medium_large_commit_level": 0.2,
-            "medium_functional_contributors_level": 5,
-            "medium_currency_level": 26,
-            "medium_contributor_level": 5,
-            "high_large_commit_level": 0.3,
-            "high_functional_contributors_level": 3,
-            "high_currency_level": 52,
-            "high_contributor_level": 3,
-            "critical_large_commit_level": 0.4,
-            "critical_functional_contributors_level": 2,
-            "critical_currency_level": 104,
-            "critical_contributor_level": 2,
-            "base_temp_dir": null
-          }
-        }
-      }
-    ]
-  },
-  "metadata": {
-    "times": {
-      "start_time": "2022-03-23T12:21:13.228056Z",
-      "end_time": "2022-03-23T12:21:39.803990Z",
-      "duration": 26
-    },
-    "risk_counts": {
-      "medium": 1
-    },
-    "repo_count": 1
-  }
-}
-```
-
-NOTE: that the "file://" is also supporting, but presumes that the directory provided
-is a valid Git clone.  Analysis of a file://-based repo will not conclude with the
-directory structure being removed.
+---
 
 ## Installation
 
-[LowEndInsight available in Hex](https://hex.pm/packages/lowendinsight), the package can be installed
-by adding `lowendinsight` to your list of dependencies in `mix.exs`:
+[LowEndInsight is available on Hex](https://hex.pm/packages/lowendinsight). Add it to your `mix.exs`:
 
 ```elixir
 def deps do
@@ -695,19 +58,11 @@ def deps do
 end
 ```
 
-NOTE: check hex.pm for the latest version.
+### For Scanning in a Mix-based Project
 
-## Running
+Add it as a development dependency:
 
-You either need to have Elixir and Erlang installed locally or possibly
-a container to run stuff in.
-
-### Mix Task for Scanning in a Mix-based Project
-
-It is also possible to drop this in as a library dependency to your Mix-based Elixir project.  Simply add
-the library to your project's dependencies:
-
-```
+```elixir
 defp deps do
   [
     {:lowendinsight, "~> 0.9", only: [:dev, :test], runtime: false}
@@ -715,447 +70,171 @@ defp deps do
 end
 ```
 
-Then run `mix deps.get`, and `mix lei.scan`.  This will produce a report for the dependencies (and transitive dependencies) specified in your Mix definition.
+Then run `mix deps.get` and `mix lei.scan`.
 
-You'll get a full report:
+---
 
-```
-➜  lei_scanner_test mix lei.scan
-{
-  "state": "complete",
-  "report": {
-    "uuid": "3084c312-65ab-11ea-b49b-88e9fe666193",
-    "repos": [
-      {
-        "header": {
-          "uuid": "2fc3853a-65ab-11ea-849f-88e9fe666193",
-          "start_time": "2020-03-14T04:20:47.357888Z",
-          "source_client": "mix.scan",
-          "library_version": "",
-          "end_time": "2020-03-14T04:20:50.335877Z",
-          "duration": 3
-        },
-        "data": {
-          "risk": "low",
-...
+## Usage
+
+### Scanning Local or Remote Repos
+
+```bash
+# Scan a remote repository
+mix lei.analyze https://github.com/facebook/react
+
+# Scan a local directory
+mix lei.scan /path/to/local/repo
 ```
 
-It is also possible to scan against a different repo locally by
-passing the absolute path to the directory where it is cloned:
+### NPM-Based Projects
+LowEndInsight can run against NPM projects. It requires an existing `package.json` for first-degree dependencies, and `package-lock.json` for a complete scan including transitive dependencies.
 
+```bash
+mix lei.scan /path/to/npm/project
 ```
-mix lei.scan /some/path/to/a/git/repo
-```
-### Scanning in a NPM-Based Project
-Lowendinsight can now be run against NPM-Based projects. To do so, simply clone the repository and run the following from lowendinsight's root directory.
-```
-mix deps.get
-mix lei.scan /some/path/to/a/git/repo
-```
-It is important to note that though lowendinsight works on NPM-based projects, scanning still requires a local installation of Mix.
-
-At the least, the above requires an existing `package.json` file in order to scan the first-degree dependencies of an NPM-based project.  A complete scan of both first-degree and transitive dependencies requires a `package-lock.json` file. In other words, due to how NPM handles dependencies, a complete scan of a repository can only be accomplished if all of its dependencies are listed in `package-lock.json`.
-
-In the scope of `package.json`, dependencies listed in both `devDependencies` and `dependencies` are scanned. Future iterations of lowendinsight could offer the ability to disable `devDependencies` from being scanned.
-
-### Mix Task for Generating a Dependencies JSON List
-
-```
-mix lei.dependencies /some/path/to/a/Mix-based-project
-```
-
-### Governance/Parameter Configuration
-
-The library uses a baseline configuration for each of the metrics calculated.  If you want to set your own, all you need to do is add the `:lowendinsight` configuration as mentioned below in the *Configuration* section.  Tuning of these defaults will likely happen over time, as analysis continues to run on a large scale.  The analysis will be made available here soon.
-
-### REPL
-
-```
-iex -S mix
-```
-
-This will get you the `iex` prompt:
-
-```
-Erlang/OTP 22 [erts-10.6.4] [source] [64-bit] [smp:4:4] [ds:4:4:10] [async-threads:1] [hipe] [dtrace]
-
-Interactive Elixir (1.10.2) - press Ctrl+C to exit (type h() ENTER for help)
-iex(1)> AnalyzerModule.analyze "https://github.com/kitplummer/xmpp4rails", "iex", %{types: false}
-{:ok,
- %{
-   data: %{
-     config: %{
-       base_temp_dir: "/tmp",
-       critical_contributor_level: 2,
-       critical_currency_level: 104,
-       critical_functional_contributors_level: 2,
-       critical_large_commit_level: 0.4,
-       high_contributor_level: 3,
-       high_currency_level: 52,
-       high_functional_contributors_level: 3,
-       high_large_commit_level: 0.3,
-       medium_contributor_level: 5,
-       medium_currency_level: 26,
-       medium_functional_contributors_level: 5,
-       medium_large_commit_level: 0.2
-     },
-     git: %{
-       default_branch: "refs/remotes/origin/master",
-       hash: "f47ee5f5ef7fb4dbe3d5d5f54e278ea941cb0332"
-     },
-     project_types: %{},
-     repo: "https://github.com/kitplummer/xmpp4rails",
-     repo_size: "292K",
-     results: %{
-       commit_currency_risk: "critical",
-       commit_currency_weeks: 584,
-       contributor_count: 1,
-       contributor_risk: "critical",
-       functional_contributor_names: ["Kit Plummer"],
-       functional_contributors: 1,
-       functional_contributors_risk: "critical",
-       large_recent_commit_risk: "low",
-       recent_commit_size_in_percent_of_codebase: 0.00368,
-       top10_contributors: [%{"Kit Plummer" => 7}],
-       sbom_risk: "low"
-     },
-     risk: "critical"
-   },
-   header: %{
-     duration: 0,
-     end_time: "2020-03-22T23:45:06.563532Z",
-     library_version: "",
-     repo: "https://github.com/kitplummer/xmpp4rails",
-     source_client: "iex",
-     start_time: "2020-03-22T23:45:06.078198Z",
-     uuid: "28a109ba-6c97-11ea-be3d-88e9fe666193"
-   }
- }}
-```
-
-Here's the command that you would paste in to the `iex` REPL as an example:
-
-```
-AnalyzerModule.analyze "https://github.com/kitplummer/xmpp4rails", "iex", %{types: false}
-```
-
-### Docker
-
-You can pass in this lib and configuration settings, into a base Elixir container.  From the root directory of a clone of this repo run this:
-
-```
-docker run --rm -v $PWD:/app -w /app -it -e LEI_CRITICAL_CURRENCY_LEVEL=60 elixir:latest bash -c "mix local.hex;mix deps.get;iex -S mix"
-```
-
-From iex you can access to the library functions.
-
-```
-Erlang/OTP 22 [erts-10.6.3] [source] [64-bit] [smp:4:4] [ds:4:4:10] [async-threads:1] [hipe] [dtrace]
-
-Interactive Elixir (1.10.0) - press Ctrl+C to exit (type h() ENTER for help)
-iex(1)> AnalyzerModule.analyze(["https://github.com/kitplummer/xmpp4rails"], "iex", DateTime.utc_now(), %{types: true})
-{:ok,
- %{
-   metadata: %{
-     repo_count: 1,
-     risk_counts: %{"critical" => 1},
-     times: %{
-       duration: 1,
-       end_time: "2020-02-08T04:35:35.109053Z",
-       start_time: "2020-02-08T04:35:34.078971Z"
-     }
-   },
-   report: %{
-     repos: [
-       %{
-...
-}
-```
-
-### Mix Tasks for Analyzing Repos
-
-There is also an Elixir `mix` task that you can use to access the
-`AnalyzeModule.analyze(url, client)` function.  So if have this repo cloned:
-
-*mix lei.analyze*
-
-```
-mix lei.analyze https://github.com/kitplummer/xmpp4rails | jq
-```
-
-This will return:
-
-```json
-{
-  "state": "complete",
-  "report": {
-    "uuid": "86ac4538-4a28-11ea-897f-82dd17abe001",
-    "repos": [
-      {
-        "header": {
-          "uuid": "86ac38f4-4a28-11ea-89c1-82dd17abe001",
-          "start_time": "2020-02-08T04:07:29.736126Z",
-          "source_client": "mix task",
-...
-}
-```
-
-There also is a batch/bulk processor:
-
-*mix lei.bulk_analyze*
-
-```
-mix lei.bulk_analyze "./test/scan_list_test" | jq
-```
-
-The expected file is a simple list of URLs, one per line like this:
-
-```
-https://github.com/kitplummer/lowendinsight
-https://github.com/kitplummer/lowendinsight-get
-```
+*Note: A local installation of Mix is still required.*
 
 ### SARIF Output for GitHub Security
-
-Generate SARIF (Static Analysis Results Interchange Format) output for integration with GitHub's Security tab:
+Generate SARIF output for integration with GitHub's Security tab:
 
 ```bash
 mix lei.sarif . --output lei-results.sarif
 ```
 
-Options:
-- `--output` or `-o`: Output file path (default: stdout)
-- `--threshold`: Risk threshold for failing (low, medium, high, critical)
-
-Use in GitHub Actions:
-```yaml
-- name: Run LowEndInsight SARIF Scan
-  run: mix lei.sarif . --output lei-results.sarif
-
-- name: Upload SARIF to GitHub Security tab
-  uses: github/codeql-action/upload-sarif@v3
-  with:
-    sarif_file: lei-results.sarif
-```
-
 ### ZarfGate - Quality Gate for CI/CD
-
-Use ZarfGate to fail CI pipelines when dependencies exceed risk thresholds:
+Fail CI pipelines when dependencies exceed risk thresholds:
 
 ```bash
 # Fail if any dependency has high or critical risk
 mix lei.gate . --threshold high
-
-# JSON output for programmatic use
-mix lei.gate . --threshold medium --format json
 ```
 
 ### AI Rules Generation
-
 Generate rules for AI coding assistants (Cursor, GitHub Copilot):
 
 ```bash
-# Generate rules for all supported targets
-mix lei.generate_rules
-
-# Generate for specific target
 mix lei.generate_rules --target cursor
-mix lei.generate_rules --target copilot
-
-# Custom thresholds
-mix lei.generate_rules --critical-currency 52 --high-contributors 5
 ```
 
-This creates `.cursorrules` or `.github/copilot-instructions.md` with LowEndInsight guidance.
+---
 
-### GitHub Action
-Lowendinsight can also be added to a GitHub workflow as an action. In its current state, it works against both NPM and Mix based projects. When run against a GitHub repository, a `.json` file will be generated of the format `lei--Y-m-d--H-M-S.json` and pushed to that repository's root directory by default. This action currently exists in the develop branch. The following is an example usage:
+## Example Report Output
+
+<details>
+<summary>Click to view a full JSON analysis report for React</summary>
+
+```json
+{
+  "state": "complete",
+  "report": {
+    "uuid": "caa7f920-aaa3-11ec-9c05-f47b09cc5c9a",
+    "repos": [
+      {
+        "header": {
+          "repo": "https://github.com/facebook/react",
+          "start_time": "2022-03-23T12:21:13.234974Z",
+          "end_time": "2022-03-23T12:21:39.762485Z",
+          "duration": 26
+        },
+        "data": {
+          "risk": "medium",
+          "results": {
+            "contributor_count": 1671,
+            "functional_contributors": 97,
+            "contributor_risk": "low",
+            "commit_currency_weeks": 0,
+            "commit_currency_risk": "low",
+            "sbom_risk": "medium",
+            "large_recent_commit_risk": "low"
+          },
+          "git": {
+            "hash": "de516ca5a635220d0cbe82b8f04003820e3f4072",
+            "default_branch": "refs/remotes/origin/main"
+          }
+        }
+      }
+    ]
+  },
+  "metadata": {
+    "risk_counts": { "medium": 1 },
+    "repo_count": 1
+  }
+}
+```
+</details>
+
+---
+
+## Configuration
+
+LowEndInsight allows customization of risk levels. You can set these in your `config/config.exs` or via environment variables.
+
+| Environment Variable | Default | Metric |
+| -------------------- | ------- | ------ |
+| `LEI_CRITICAL_CURRENCY_LEVEL` | 104 | Weeks since last commit |
+| `LEI_CRITICAL_CONTRIBUTOR_LEVEL` | 2 | Minimum discrete contributors |
+| `LEI_CRITICAL_LARGE_COMMIT_LEVEL` | 0.40 | Max percentage of codebase changed in a commit |
+
+Example override:
+```bash
+LEI_CRITICAL_CURRENCY_LEVEL=60 mix lei.scan
+```
+
+---
+
+## GitHub Action
+
+Add LowEndInsight to your GitHub workflow:
 
 ```yaml
 name: LEI
 on:
   push:
-    branches: [ master ]
-  pull_request:
-    branches: [ master ]
+    branches: [ main ]
 
 jobs:
-  build:
+  analyze:
     runs-on: ubuntu-latest
     steps:
-    - uses: actions/checkout@v2
-    - uses: actions/checkout@master
-      with:
-        persist-credentials: false # otherwise, the token used is the GITHUB_TOKEN, instead of your personal token
-        fetch-depth: 0 # otherwise, you will fail to push refs to dest repo
-    - name: Generate Report
-      uses: gtri/lowendinsight@gha
-      with:
-        github_token: ${{ secrets.GITHUB_TOKEN }}
-        branch: main
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Generate Report
+        uses: kitplummer/lowendinsight@gha
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          branch: main
 ```
 
-#### Inputs
-
-| name | value | default | description |
-| ---- | ----- | ------- | ----------- |
-| github_token | string | | Token for the repo. Can be passed in using `${{ secrets.GITHUB_TOKEN }}`. |
-| branch | string | 'master' | Destination branch to push changes. |
-| force | boolean | false | Determines if force push is used. |
-| tags | boolean | false | Determines if `--tags` is used. |
-| directory | string | '.' | Directory to change to before pushing. |
-| repository | string | '' | Repository name. Default or empty repository name represents current github repository. If you want to push to other repository, you should make a [personal access token]
-
-#### Privacy
-This action does not, nor will it ever, collect user data.  Any repository used is Lowendinsight's analysis is cloned and deleted without any information being collected by GTRI nor sent to a third party.
-
-
-### LowEndInsight REST-y API
-
-Also, there is a sister project that wraps this library and provides an HTTP-based interface.
-
-https://github.com/kitplummer/lowendinsight-get
-
-## Docs
-
-API available at: https://hexdocs.pm/lowendinsight/readme.html#content
-
-This is the library piece of the puzzle.  As mentioned above there is an HTTP API available as well.
-
-The library is written in Elixir.
-
-`mix docs` will generate static docs available locally within the repo's root, in the `docs/` subdirectory.
-
-### JSON Schema
-
-LowEndInsight makes available the API's schema in JSON form, which can be found in the `schema/` subdirectory. In addition, the schema docs are available in `schema/docs` as Markdown.
-
-### A Note about the metrics used
-* Recent commit size: This is a measure of how large the most recent commit is in relatino to the size of the codebase. The idea being that a large recent commit is much more likely to be bug filled than a relatively small commit.
-* Functional Contributors: A functional contributor is one that contributes above a certain percentage of commits equal to or greater than their "fair" share. Simply put, a contributor is counted as a functional contributor if the proportion of their commits to the total commits is greater than or equal to 1 / the total number of committers.  If everyone committed the same amount, everyone would be a functional contributor.
-* Currency is a bit of insight into the activity of the source repo.  This value as a measure of risk, again, isn't to state that the repo is bad. The project simply could be stable. But, it could also mean that the project is unmaintained and that as an attribute of the decision making process around whether to not consume should be considered.
-* `risk` is a top-level key that contains the "rolled up" risk, the
-  highest value pulled from any of the discrete analysis items.
-
-### Configuration
-
-LowEndInsight allows for customization of the risk levels, to determine "low", "medium", "high" and "critical" acceptance.  The library reads this configuration from config.exs (or dev|test|prod.exs) as seen here, or as providing in environment variables.
-
-```
-config :lowendinsight,
-  ## Contributor in terms of discrete users
-  ## NOTE: this currently doesn't discern same user with different email
-  critical_contributor_level:
-    String.to_integer(System.get_env("LEI_CRITICAL_CONTRIBUTOR_LEVEL") || "2"),
-  high_contributor_level: System.get_env("LEI_HIGH_CONTRIBUTOR_LEVEL") || 3,
-  medium_contributor_level: System.get_env("LEI_CRITICAL_CONTRIBUTOR_LEVEL") || 5,
-
-  ## Commit currency in weeks - is the project active.  This by itself
-  ## may not indicate anything other than the repo is stable. The reason
-  ## we're reporting it is relative to the likelihood vulnerabilities
-  ## getting fix in a timely manner
-  critical_currency_level:
-    String.to_integer(System.get_env("LEI_CRITICAL_CURRENCY_LEVEL") || "104"),
-  high_currency_level: String.to_integer(System.get_env("LEI_HIGH_CURRENCY_LEVEL") || "52"),
-  medium_currency_level: String.to_integer(System.get_env("LEI_MEDIUM_CURRENCY_LEVEL") || "26"),
-
-  ## Percentage of changes to repo in recent commit - is the codebase
-  ## volatile in terms of quantity of source being changed
-  critical_large_commit_level:
-    String.to_float(System.get_env("LEI_CRITICAL_LARGE_COMMIT_LEVEL") || "0.40"),
-  high_large_commit_level:
-    String.to_float(System.get_env("LEI_HIGH_LARGE_COMMIT_LEVEL") || "0.30"),
-  medium_large_commit_level:
-    String.to_float(System.get_env("LEI_MEDIUM_LARGE_COMMIT_LEVEL") || "0.20"),
-
-  ## Bell curve contributions - if there are 30 contributors
-  ## but 90% of the contributions are from 2...
-  critical_functional_contributors_level:
-    String.to_integer(System.get_env("LEI_CRITICAL_FUNCTIONAL_CONTRIBUTORS_LEVEL") || "2"),
-  high_functional_contributors_level:
-    String.to_integer(System.get_env("LEI_HIGH_FUNCTIONAL_CONTRIBUTORS_LEVEL") || "3"),
-  medium_functional_contributors_level:
-    String.to_integer(System.get_env("LEI_MEDIUM_FUNCTIONAL_CONTRIBUTORS_LEVEL") || "5"),
-
-  ## Jobs per available core for defining max concurrency.  This value
-  ## will be used to set the max_concurrency value.
-  jobs_per_core_max: String.to_integer(System.get_env("LEI_JOBS_PER_CORE_MAX") || "2")
-```
-
-To override with an environment variable you just need to have it set:
-
-```
-LEI_CRITICAL_CURRENCY_PAR_LEVEL=60 mix lei.scan
-```
-
-If you receive an error in the report with the following (or similar missing environment configuration variable) - the required configuration for LowEndInsight hasn't been made available:
-
-```
-could not fetch application environment :critical_contributor_level for application :lowendinsight because the application was not loaded/started. If your application depends on :lowendinsight at runtime, make sure to load/start it or list it under :extra_applications in your mix.exs file
-```
+---
 
 ## Contributing
 
-Thanks for considering, we need your contributions to help this project come to fruition.
+We welcome contributions! 
 
-Here are some important resources:
-
-  * Bugs? [Issues](https://bitbucket.org/kitplummer/lowendinsight/issues/new) is where to report them
-
-### Style
-
-The repo includes auto-formatting, please run `mix format` to format to
-the standard style prescribed by the Elixir project:
-
-https://hexdocs.pm/mix/Mix.Tasks.Format.html
-https://github.com/christopheradams/elixir_style_guide
-
-Code docs for functions are expected.  Examples are a bonus:
-
-https://hexdocs.pm/elixir/writing-documentation.html
-
-### Testing
-
-Required. Please write ExUnit test for new code you create.
-
-Use `mix test --cover` to verify that you're maintaining coverage.
-
-
-### Github Actions
-
-Just getting this built-out.  But the bitbucket-pipeline config is still
-here too.
-
-### Submitting changes
-
-Please send a [Pull Request](https://bitbucket.org/kitplummer/lowendinsight/pull-requests/) with a clear list of what you've done and why. Please follow Elixir coding conventions (above in Style) and make sure all of your commits are atomic (one feature per commit).
-
-Always write a clear log message for your commits. One-line messages are fine for small changes, but bigger changes should look like this:
-
-    $ git commit -m "A brief summary of the commit
-    >
-    > A paragraph describing what changed and its impact."
-
-### JSON Schema
-
-The JSON schema found in `schema` is and should be used to validate the main analysis interfaces' input and expected outputs. Any modifications in implementations should also be made to the schemas and verified/validated by tests.
-
-There is an external tool used to do the schema docs conversion: `jsonschema2md -d schema/ -o schema/docs`. If you make a modification to the schema please run the tool to update the docs with the submission.
-
-`jsonschema2md` is a Node.js tool.
+- **Bugs?** Report them at [GitHub Issues](https://github.com/kitplummer/lowendinsight/issues).
+- **Style**: Run `mix format` before submitting. Documentation for functions is expected.
+- **Testing**: Please write ExUnit tests for new code. Use `mix test --cover` to verify coverage.
+- **PRs**: Submit atomic pull requests to the [develop branch](https://github.com/kitplummer/lowendinsight/pulls).
 
 ## License
 
-BSD 3-Clause.  See https://opensource.org/licenses/BSD-3-Clause or LICENSE file for details.
+BSD 3-Clause. See [LICENSE](LICENSE) for details.
 
-There is code in this project [`mixfile.ex` and `encoder.ex`], taken from [mix-deps-json](https://github.com/librariesio/mix-deps-json), that is copyright:
+Includes code from [mix-deps-json](https://github.com/librariesio/mix-deps-json), Copyright (c) 2016 Andrew Nesbitt, MIT License.
 
-Copyright (c) 2016 Andrew Nesbitt.
+---
 
-Blatant attribution: https://github.com/andrew
+## Advanced Usage & Integration
 
-And licensed with the MIT license.  See the [mix-deps-json](https://github.com/librariesio/mix-deps-json) for more details.
+For more specialized use cases, refer to the following:
 
-For a bit of insight into the licensing part of inclusion within another licensed repo, there's [this](https://softwareengineering.stackexchange.com/questions/121998/mit-vs-bsd-vs-dual-license), which is really interesting.
-
-The logic for pulling the code in versus the project as a dependency is that `mix-deps-json` is really a server I the transitive dependencies aren't worth the weight.
+*   **REST-y API**: A sister project that wraps this library in an HTTP-based interface: [lowendinsight-get](https://github.com/kitplummer/lowendinsight-get).
+*   **JSON Schema**: The API schema is available in the `schema/` directory, with documentation in `schema/docs`.
+*   **REPL & Docker**:
+    *   **IEx**: Run `iex -S mix` and use `AnalyzerModule.analyze/3`.
+    *   **Docker**: 
+        ```bash
+        docker run --rm -v $PWD:/app -w /app -it elixir:latest bash -c "mix local.hex; mix deps.get; iex -S mix"
+        ```
+*   **Documentation**: Detailed API docs are available via `mix docs` or on [HexDocs](https://hexdocs.pm/lowendinsight/).

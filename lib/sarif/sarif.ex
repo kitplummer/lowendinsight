@@ -131,7 +131,7 @@ defmodule Lei.Sarif do
             driver: %{
               name: "LowEndInsight",
               semanticVersion: lowendinsight_version(),
-              informationUri: "https://github.com/gtri/lowendinsight",
+              informationUri: "https://github.com/kitplummer/lowendinsight",
               rules: Enum.map(@rules, &build_rule/1)
             }
           },
@@ -151,7 +151,7 @@ defmodule Lei.Sarif do
       name: rule.name,
       shortDescription: %{text: rule.short_description},
       fullDescription: %{text: rule.full_description},
-      helpUri: "https://github.com/gtri/lowendinsight",
+      helpUri: "https://github.com/kitplummer/lowendinsight",
       help: %{
         text: rule.short_description,
         markdown: rule.help_markdown

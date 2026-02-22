@@ -15,7 +15,7 @@ defmodule GithubModule.MixProject do
       deps: deps(),
       package: package(),
       name: "LowEndInsight",
-      source_url: "https://github.com/gtri/lowendinsight",
+      source_url: "https://github.com/kitplummer/lowendinsight",
       docs: [
         extras: ["README.md"]
       ],
@@ -62,7 +62,7 @@ defmodule GithubModule.MixProject do
   end
 
   defp links() do
-    %{"GitHub" => "https://github.com/gtri/lowendinsight"}
+    %{"GitHub" => "https://github.com/kitplummer/lowendinsight"}
   end
 
   defp description() do
