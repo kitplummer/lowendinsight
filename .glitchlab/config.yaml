@@ -1,0 +1,12 @@
+# GLITCHLAB configuration for lowendinsight (Elixir library)
+
+boundaries:
+  protected_paths:
+    - "mix.lock"
+    - ".formatter.exs"
+    - "config/"
+
+limits:
+  max_tool_turns: 12
+  max_dollars_per_task: 2.00
+  max_fix_attempts: 3
