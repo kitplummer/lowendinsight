@@ -10,3 +10,35 @@ limits:
   max_tool_turns: 12
   max_dollars_per_task: 2.00
   max_fix_attempts: 3
+
+# Elixir-aware tool allowlist (replaces defaults entirely via deep_merge)
+allowed_tools:
+  # Elixir / Mix
+  - "mix test"
+  - "mix format"
+  - "mix compile"
+  - "mix deps.get"
+  - "mix docs"
+  - "mix credo"
+  - "elixir"
+  # Git / GitHub
+  - "git diff"
+  - "git add"
+  - "git commit"
+  - "git status"
+  - "git log"
+  - "gh pr create"
+  - "gh issue view"
+  - "gh issue list"
+  # Read-only discovery
+  - "find "
+  - "ls"
+  - "cat "
+  - "head "
+  - "tail "
+  - "grep "
+  - "rg "
+  - "wc "
+  - "sed "
+  - "awk "
+  - "make"

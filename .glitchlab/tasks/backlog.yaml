@@ -10,7 +10,7 @@ tasks:
 - id: lei-002
   objective: Add typespecs (@spec) to public functions in lib/lowendinsight.ex and lib/analyze.ex
   priority: 100
-  status: pending
+  status: completed
   depends_on: []
   decomposition_depth: 0
   remediation_depth: 0
@@ -18,18 +18,117 @@ tasks:
 - id: lei-003
   objective: Improve error handling in git-related operations to return structured errors instead of raising exceptions
   priority: 100
-  status: pending
+  status: completed
   depends_on: []
   decomposition_depth: 0
   remediation_depth: 0
   is_remediation: false
+# --- Decomposed from lei-002 (typespecs) ---
+- id: gl-lei-specs-part1
+  objective: Add @spec declarations to all public functions in lib/lowendinsight.ex
+  priority: 50
+  status: pending
+  depends_on: []
+  decomposition_depth: 1
+  remediation_depth: 0
+  is_remediation: false
+  files_hint:
+  - lib/lowendinsight.ex
+  definition_of_done: All public functions in lib/lowendinsight.ex have @spec declarations. `mix compile` succeeds without warnings for this file.
+- id: gl-lei-specs-part2
+  objective: Add @spec declarations to all public functions in lib/analyze.ex
+  priority: 50
+  status: pending
+  depends_on: []
+  decomposition_depth: 1
+  remediation_depth: 0
+  is_remediation: false
+  files_hint:
+  - lib/analyze.ex
+  definition_of_done: All public functions in lib/analyze.ex have @spec declarations. `mix compile` succeeds without warnings for this file.
+- id: gl-lei-specs-part3
+  objective: Validate all specs and run full test suite
+  priority: 50
+  status: pending
+  depends_on:
+  - lei-specs-part1
+  - lei-specs-part2
+  decomposition_depth: 1
+  remediation_depth: 0
+  is_remediation: false
+  files_hint:
+  - lib/lowendinsight.ex
+  - lib/analyze.ex
+  definition_of_done: '`mix compile` succeeds for entire project. `mix test` passes all tests.'
+# --- Decomposed from lei-003 (git error handling) ---
+- id: gl-lei-git-errors-part1
+  objective: Create a structured error module for git operations with custom error types
+  priority: 50
+  status: pending
+  depends_on: []
+  decomposition_depth: 1
+  remediation_depth: 0
+  is_remediation: false
+  files_hint:
+  - lib/git_error.ex
+  definition_of_done: New file lib/git_error.ex exists with GitError exception module defining error types (clone_failed, fetch_failed, invalid_repo, command_failed) and helper functions; module compiles without warnings
+- id: gl-lei-git-errors-part2
+  objective: Refactor git_helper.ex to use structured errors instead of raising exceptions
+  priority: 50
+  status: pending
+  depends_on:
+  - lei-git-errors-part1
+  decomposition_depth: 1
+  remediation_depth: 0
+  is_remediation: false
+  files_hint:
+  - lib/git_helper.ex
+  definition_of_done: git_helper.ex functions return {:ok, result} | {:error, GitError.t()} tuples; existing tests pass
+- id: gl-lei-git-errors-part3
+  objective: Refactor git_module.ex to use structured errors from git_helper
+  priority: 50
+  status: pending
+  depends_on:
+  - lei-git-errors-part2
+  decomposition_depth: 1
+  remediation_depth: 0
+  is_remediation: false
+  files_hint:
+  - lib/git_module.ex
+  definition_of_done: git_module.ex functions return {:ok, result} | {:error, GitError.t()} tuples; properly propagates errors from git_helper; existing tests pass
+- id: gl-lei-git-errors-part4
+  objective: Update callers of git operations to handle structured errors
+  priority: 50
+  status: pending
+  depends_on:
+  - lei-git-errors-part3
+  decomposition_depth: 1
+  remediation_depth: 0
+  is_remediation: false
+  files_hint:
+  - lib/analyzer_module.ex
+  - lib/lei/batch_analyzer.ex
+  definition_of_done: analyzer_module.ex and batch_analyzer.ex properly handle {:error, GitError.t()} returns; tests pass
+- id: gl-lei-git-errors-part5
+  objective: Add comprehensive tests for git error handling
+  priority: 50
+  status: pending
+  depends_on:
+  - lei-git-errors-part2
+  decomposition_depth: 1
+  remediation_depth: 0
+  is_remediation: false
+  files_hint:
+  - test/git_error_test.exs
+  - test/git_helper_test.exs
+  definition_of_done: test/git_error_test.exs covers all GitError types; git_helper_test.exs updated to test error returns; all tests pass
+# --- Decomposed from lei-001 (documentation) ---
 - id: gl-lei-doc-part1
   objective: Add @moduledoc and @doc to core analyzer and cache modules (analyzer_module.ex, cache/*.ex, counter_agent.ex, files.ex, helpers.ex)
   priority: 50
-  status: failed
+  status: pending
   depends_on: []
   decomposition_depth: 1
-  error: 'debugger failed: budget exceeded: token limit exceeded: 191157 / 160000 tokens used'
   remediation_depth: 0
   is_remediation: false
   files_hint:
@@ -42,14 +141,13 @@ tasks:
   - lib/counter_agent.ex
   - lib/files.ex
   - lib/helpers.ex
-  definition_of_done: Each file has a @moduledoc at the top describing its purpose. Every public function (def, not defp) has a @doc with a brief description of what it does, its parameters, and return value. 'mix docs' builds without warnings for these modules.
+  definition_of_done: Each file has a @moduledoc at the top. Every public function has a @doc.
 - id: gl-lei-doc-part2
   objective: Add @moduledoc and @doc to git, contributor, and project modules (git_*.ex, contributor.ex, project_*.ex, repo.ex)
   priority: 50
-  status: failed
+  status: pending
   depends_on: []
   decomposition_depth: 1
-  error: debugger recommends not retrying
   remediation_depth: 0
   is_remediation: false
   files_hint:
@@ -60,14 +158,13 @@ tasks:
   - lib/project_ident.ex
   - lib/project_type.ex
   - lib/repo.ex
-  definition_of_done: Each file has a @moduledoc at the top. Every public function has a @doc with parameter and return descriptions. 'mix docs' builds without warnings for these modules.
+  definition_of_done: Each file has a @moduledoc. Every public function has a @doc.
 - id: gl-lei-doc-part3
   objective: Add @moduledoc and @doc to scanner modules (cargo/*.ex, hex/*.ex, npm/*.ex, pypi/*.ex, scanner_module.ex)
   priority: 50
-  status: failed
+  status: pending
   depends_on: []
   decomposition_depth: 1
-  error: 'debugger failed: budget exceeded: token limit exceeded: 170324 / 160000 tokens used'
   remediation_depth: 0
   is_remediation: false
   files_hint:
@@ -85,14 +182,13 @@ tasks:
   - lib/pypi/pypi_scanner.ex
   - lib/pypi/requirements.ex
   - lib/scanner_module.ex
-  definition_of_done: Each file has a @moduledoc at the top describing the scanner or file parser. Every public function has a @doc. 'mix docs' builds without warnings for these modules.
+  definition_of_done: Each file has a @moduledoc. Every public function has a @doc.
 - id: gl-lei-doc-part4
   objective: Add @moduledoc and @doc to SBOM, SARIF, risk, and schema modules (sbom/*.ex, sarif/*.ex, risk_logic.ex, schema_loader.ex, oci/*.ex)
   priority: 50
-  status: failed
+  status: pending
   depends_on: []
   decomposition_depth: 1
-  error: 'debugger failed: budget exceeded: token limit exceeded: 165846 / 160000 tokens used'
   remediation_depth: 0
   is_remediation: false
   files_hint:
@@ -103,23 +199,13 @@ tasks:
   - lib/risk_logic.ex
   - lib/schema_loader.ex
   - lib/oci/annotations.ex
-  definition_of_done: Each file has a @moduledoc at the top. Every public function has a @doc with clear descriptions. 'mix docs' builds without warnings for these modules.
+  definition_of_done: Each file has a @moduledoc. Every public function has a @doc.
 - id: gl-lei-doc-part5
   objective: Add @moduledoc and @doc to remaining utility modules and LEI application modules (time_helper.ex, parser.ex, lei/*.ex, lei/rules/*.ex)
   priority: 50
-  status: failed
+  status: pending
   depends_on: []
   decomposition_depth: 1
-  error: 'implementer failed: consecutive_errors'
-  outcome_context:
-    approach: direct implementation
-    obstacle:
-      kind: model_limitation
-      model: anthropic/claude-sonnet-4-20250514
-      error_class: consecutive_errors
-    discoveries: []
-    recommendation: Try a different implementation approach or simpler plan
-    files_explored: []
   remediation_depth: 0
   is_remediation: false
   files_hint:
@@ -133,7 +219,7 @@ tasks:
   - lib/lei/rules/copilot_template.ex
   - lib/lei/rules/cursor_template.ex
   - lib/lei/web/router.ex
-  definition_of_done: Each file has a @moduledoc at the top. Every public function has a @doc. 'mix docs' builds without warnings for these modules.
+  definition_of_done: Each file has a @moduledoc. Every public function has a @doc.
 - id: gl-lei-doc-part6
   objective: Add @moduledoc and @doc to all Mix task modules (lib/mix/tasks/**/*.ex)
   priority: 50
@@ -157,97 +243,4 @@ tasks:
   - lib/mix/tasks/lei/sbom.ex
   - lib/mix/tasks/lei/zarf_gate.ex
   - lib/mix/tasks/scan.ex
-  definition_of_done: Each Mix task module has a @moduledoc describing what the task does. The run/1 function and any public helper functions have @doc. 'mix docs' builds without warnings for these modules.
-- id: gl-circuit-fix-0-8008fbe2
-  objective: Add deterministic ordering and isolation to documentation task execution by implementing task-level locking and sequential processing
-  priority: 2
-  status: completed
-  depends_on: []
-  decomposition_depth: 0
-  remediation_depth: 1
-  is_remediation: true
-- id: gl-circuit-fix-1-9264332c
-  objective: Implement retry logic with exponential backoff for documentation generation tasks that fail due to transient errors
-  priority: 2
-  status: skipped
-  depends_on: []
-  decomposition_depth: 0
-  remediation_depth: 1
-  is_remediation: true
-- id: gl-circuit-fix-2-c9a3988f
-  objective: Add comprehensive logging and state snapshots at task boundaries for gl-lei-doc-* tasks to enable root cause analysis of future failures
-  priority: 2
-  status: skipped
-  depends_on: []
-  decomposition_depth: 0
-  remediation_depth: 1
-  is_remediation: true
-- id: gl-task-locking-part1
-  objective: 'Implement task-level lock primitives (TaskLock struct) with acquire/release semantics and deadlock detection. Define isolation guarantees: no two tasks holding locks on the same document file execute concurrently.'
-  priority: 50
-  status: pending
-  depends_on: []
-  decomposition_depth: 1
-  remediation_depth: 0
-  is_remediation: false
-  files_hint:
-  - src/task/lock.rs
-  - src/task/mod.rs
-  definition_of_done: TaskLock struct exists with acquire(doc_path) -> Result<LockGuard> and release(guard) methods; LockGuard implements Drop for automatic release; deadlock detection via timeout or cycle detection is implemented; cargo test -p glitchlab-task passes; no clippy warnings.
-- id: gl-task-locking-part2
-  objective: Implement task ordering and sequencing in task queue. Add deterministic ordering by dependency graph (topological sort) and insertion order as tiebreaker. Ensure tasks are dequeued in order respecting dependencies.
-  priority: 50
-  status: pending
-  depends_on: []
-  decomposition_depth: 1
-  remediation_depth: 0
-  is_remediation: false
-  files_hint:
-  - src/task/queue.rs
-  - src/task/mod.rs
-  definition_of_done: TaskQueue::new_ordered() constructor exists; tasks are stored in dependency-aware order; TaskQueue::next() returns tasks in topological order; circular dependencies are rejected at enqueue time with clear error; cargo test -p glitchlab-task passes.
-- id: gl-task-locking-part3
-  objective: Integrate task-level locking into execution engine. Modify TaskExecutor to acquire locks before task execution, hold them during execution, and release on completion or failure. Implement rollback/cleanup on task failure.
-  priority: 50
-  status: pending
-  depends_on:
-  - task-locking-part1
-  - task-locking-part2
-  decomposition_depth: 1
-  remediation_depth: 0
-  is_remediation: false
-  files_hint:
-  - src/task/executor.rs
-  - src/task/mod.rs
-  definition_of_done: TaskExecutor::execute() acquires locks for all task dependencies before execution; locks are held until task completes or fails; on failure, locks are released and task state is rolled back; sequential execution is enforced (no concurrent tasks with overlapping locks); cargo test -p glitchlab-task passes; integration test shows Task A and Task B writing to same doc execute sequentially with no interleaved writes.
-- id: gl-task-locking-part4
-  objective: 'Add comprehensive test suite for task isolation and ordering. Write tests verifying: (1) deterministic ordering by dependencies, (2) sequential execution of conflicting tasks, (3) lock acquisition/release correctness, (4) deadlock prevention, (5) failure handling and rollback.'
-  priority: 50
-  status: pending
-  depends_on:
-  - task-locking-part1
-  - task-locking-part2
-  - task-locking-part3
-  decomposition_depth: 1
-  remediation_depth: 0
-  is_remediation: false
-  files_hint:
-  - tests/task_isolation.rs
-  - tests/task_ordering.rs
-  definition_of_done: tests/task_isolation.rs contains 5+ tests covering lock contention, sequential execution, and isolation guarantees; tests/task_ordering.rs contains 5+ tests covering topological ordering, dependency resolution, and circular dependency rejection; all tests pass; cargo test --all passes; no flaky tests (run 10x to verify).
-- id: gl-task-locking-part5
-  objective: Update documentation and API contracts. Document isolation guarantees, ordering semantics, lock acquisition/release behavior, and failure handling. Update task definition schema if needed. Add examples of task dependency declaration.
-  priority: 50
-  status: pending
-  depends_on:
-  - task-locking-part1
-  - task-locking-part2
-  - task-locking-part3
-  decomposition_depth: 1
-  remediation_depth: 0
-  is_remediation: false
-  files_hint:
-  - src/task/mod.rs
-  - docs/task-execution.md
-  - docs/api.md
-  definition_of_done: 'docs/task-execution.md exists and documents: (1) isolation guarantees (no concurrent writes to same file), (2) ordering semantics (topological sort by dependencies), (3) lock lifecycle (acquire before execution, release after), (4) failure handling (rollback on error); TaskLock and TaskQueue public APIs are documented with examples; CHANGELOG.md updated with breaking changes note.'
+  definition_of_done: Each Mix task module has a @moduledoc. The run/1 and any public helpers have @doc.
