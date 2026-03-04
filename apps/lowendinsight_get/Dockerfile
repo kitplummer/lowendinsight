@@ -66,13 +66,16 @@ RUN apk update && \
       libstdc++ \
       libgcc \
       libpq \
-      ncurses-libs
+      ncurses-libs \
+      tzdata
 
 ENV REPLACE_OS_VARS=true \
     APP_NAME=lowendinsight_get \
     ERL_AFLAGS="-proto_dist inet6_tcp" \
     DATABASE_URL="ecto://postgres:postgres@localhost/lowendinsight_get_prod" \
-    REDIS_URL="redis://localhost:6379"
+    REDIS_URL="redis://localhost:6379" \
+    TZ=UTC \
+    TZDIR=/tmp/tzdata
 
 WORKDIR /opt/app
 

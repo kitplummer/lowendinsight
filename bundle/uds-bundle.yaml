@@ -1,0 +1,79 @@
+kind: UDSBundle
+metadata:
+  name: lei-dev
+  description: "LEI development bundle with k3d, UDS Core slim, and lei-get"
+  version: 0.1.0
+  architecture: arm64
+
+packages:
+  - name: uds-k3d
+    repository: ghcr.io/defenseunicorns/packages/uds-k3d
+    ref: 0.19.4
+
+  - name: init
+    repository: ghcr.io/zarf-dev/packages/init
+    ref: v0.43.0
+
+  - name: core
+    repository: ghcr.io/defenseunicorns/packages/uds/core
+    ref: 0.61.0-upstream
+    optionalComponents:
+      - metrics-server
+
+  - name: postgres-operator
+    repository: ghcr.io/uds-packages/postgres-operator
+    ref: 1.15.1-uds.1-upstream
+    overrides:
+      postgres-operator:
+        uds-postgres-config:
+          values:
+            - path: postgresql
+              value:
+                enabled: true
+                teamId: "uds"
+                numberOfInstances: 1
+                users:
+                  lei.lei: []
+                databases:
+                  lowendinsight_get: lei.lei
+                version: "16"
+                volume:
+                  size: 1Gi
+                ingress:
+                  - remoteNamespace: lei
+
+  - name: valkey
+    repository: ghcr.io/uds-packages/valkey
+    ref: 8.1.3-uds.2-upstream
+    overrides:
+      valkey:
+        uds-valkey-config:
+          values:
+            - path: copyPassword
+              value:
+                enabled: true
+                namespace: lei
+                secretName: lei-valkey-password
+                secretKey: password
+            - path: additionalNetworkAllow
+              value:
+                - direction: Ingress
+                  selector:
+                    app.kubernetes.io/name: valkey
+                  remoteNamespace: lei
+                  remoteSelector:
+                    app.kubernetes.io/name: lowendinsight-get
+                  port: 6379
+                  description: "LEI app access to Valkey"
+
+  - name: lei-get
+    path: ./
+    ref: 0.9.3
+    overrides:
+      lei-get:
+        lei-get:
+          values:
+            - path: database.existingSecret
+              value: "lei.lei.pg-cluster.credentials.postgresql.acid.zalan.do"
+            - path: valkey.existingSecret
+              value: "lei-valkey-password"

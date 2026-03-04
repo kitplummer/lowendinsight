@@ -1,0 +1,137 @@
+replicaCount: 1
+
+image:
+  repository: ghcr.io/kitplummer/lowendinsight-get
+  tag: "0.9.3"
+  pullPolicy: IfNotPresent
+
+imagePullSecrets: []
+nameOverride: ""
+fullnameOverride: "lei-get"
+
+serviceAccount:
+  create: true
+  name: ""
+  annotations: {}
+
+service:
+  type: ClusterIP
+  port: 4000
+
+resources:
+  requests:
+    memory: "256Mi"
+    cpu: "250m"
+  limits:
+    memory: "1Gi"
+    cpu: "2"
+
+podSecurityContext:
+  runAsNonRoot: true
+  runAsUser: 1000
+  runAsGroup: 1000
+  fsGroup: 1000
+
+securityContext:
+  allowPrivilegeEscalation: false
+  readOnlyRootFilesystem: true
+  capabilities:
+    drop:
+      - ALL
+
+livenessProbe:
+  httpGet:
+    path: /
+    port: http
+  initialDelaySeconds: 10
+  periodSeconds: 15
+  failureThreshold: 3
+
+readinessProbe:
+  httpGet:
+    path: /
+    port: http
+  initialDelaySeconds: 15
+  periodSeconds: 10
+  failureThreshold: 3
+
+autoscaling:
+  enabled: false
+  minReplicas: 1
+  maxReplicas: 4
+  targetCPUUtilizationPercentage: 80
+
+nodeSelector: {}
+tolerations: []
+affinity: {}
+
+# -- Application configuration (environment variables)
+config:
+  # -- HTTP server port
+  port: "4000"
+  # -- Redis/Valkey connection URL (uds-package-valkey default endpoint)
+  redisUrl: "redis://valkey-primary.valkey.svc.cluster.local:6379"
+  # -- PostgreSQL connection URL (fallback if not using operator secret)
+  databaseUrl: ""
+  # -- Cache TTL in days
+  cacheTtl: "30"
+  # -- Enable cache cleanup job
+  cacheCleanEnable: "true"
+  # -- Check repo size before cloning
+  checkRepoSize: "true"
+  # -- Default cache timeout in milliseconds
+  defaultCacheTimeout: "30000"
+  # -- Analysis wait time in milliseconds
+  waitTime: "7200000"
+  # -- Max concurrent analysis jobs per core
+  jobsPerCoreMax: "1"
+  # -- Base directory for temp git clones
+  baseTempDir: "/tmp"
+
+# -- Database configuration for Zalando postgres-operator integration
+database:
+  # -- PostgreSQL host
+  host: "pg-cluster.postgres.svc.cluster.local"
+  # -- PostgreSQL port
+  port: "5432"
+  # -- Database name
+  name: "lowendinsight_get"
+  # -- Existing secret with Zalando operator credentials (username + password keys)
+  existingSecret: ""
+  # -- Key names in the existing secret
+  secretKeys:
+    username: "username"
+    password: "password"
+
+# -- Valkey/Redis configuration
+valkey:
+  # -- Existing secret with Valkey password
+  existingSecret: ""
+  # -- Key name in the existing secret
+  secretKey: "password"
+
+# -- Sensitive configuration (stored in Secret)
+secrets:
+  # -- Secret key base for signing/encryption (minimum 64 chars)
+  secretKeyBase: ""
+  # -- GitHub API token (optional, recommended for rate limits)
+  ghToken: ""
+
+# -- Use an existing secret instead of creating one
+existingSecret: ""
+
+# -- Risk threshold configuration
+riskThresholds:
+  sbomRiskLevel: "medium"
+  criticalContributorLevel: "2"
+  highContributorLevel: "3"
+  mediumContributorLevel: "5"
+  criticalCurrencyLevel: "104"
+  highCurrencyLevel: "52"
+  mediumCurrencyLevel: "26"
+  criticalLargeCommitLevel: "0.30"
+  highLargeCommitLevel: "0.15"
+  mediumLargeCommitLevel: "0.05"
+  criticalFunctionalContributorsLevel: "2"
+  highFunctionalContributorsLevel: "3"
+  mediumFunctionalContributorsLevel: "5"

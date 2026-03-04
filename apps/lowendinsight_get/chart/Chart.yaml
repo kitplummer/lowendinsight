@@ -1,0 +1,18 @@
+apiVersion: v2
+name: lowendinsight-get
+description: LowEndInsight GET - OSS Supply Chain Risk Analysis API
+type: application
+version: 0.1.0
+appVersion: "0.9.3"
+home: https://github.com/kitplummer/lowendinsight-get
+sources:
+  - https://github.com/kitplummer/lowendinsight-get
+  - https://github.com/kitplummer/lowendinsight
+maintainers:
+  - name: kitplummer
+keywords:
+  - lowendinsight
+  - supply-chain
+  - security
+  - sbom
+  - risk-analysis

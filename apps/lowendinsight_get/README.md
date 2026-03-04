@@ -63,53 +63,31 @@ Don't forget to get fetch the dependencies:
 mix deps.get && mix run --no-halt
 ```
 
-### Production
+### Production (Docker Compose)
 
-Well, if you're at this point I'd recommend using the Docker Compose or Kubernetes deployments.  Configuration for both are found in the repo.
+The `docker-compose.yml` will spin up Redis, PostgreSQL, and LEI containers.
+You can simply run `docker-compose up` to launch things.
 
-The `docker-compose.yml` will spin up a Redis db and the LowEndInsight containers, exposing the services.  You can simply run `docker-compose up` to launch things.
+### Production (UDS / Kubernetes)
 
-Within the `k8s` subdirectory you'll find configuration files for both Redis (single node configuration) and LowEndInsight.  For example:
+LEI-GET includes a Helm chart, Zarf package, and UDS bundle for Kubernetes deployment
+with [UDS](https://github.com/defenseunicorns/uds-core) (Unicorn Delivery Service).
 
 ```bash
-➜  kubectl apply -f k8s/redis-master-deployment.yaml
-deployment.apps/redis-master created
-➜  kubectl apply -f k8s/redis-master-service.yaml
-service/redis-master created
-➜  kubectl apply -f k8s/deployment.yaml
-deployment.apps/lei-get created
-➜  kubectl apply -f k8s/service.yaml
-service/lei-get created
-➜  kubectl get all
-NAME                                READY   STATUS    RESTARTS   AGE
-pod/lei-get-7f4bd755c9-7m6fz        1/1     Running   0          23s
-pod/redis-master-7db7f6579f-x97df   1/1     Running   0          37s
+# Build Zarf package (from repo root) and deploy with the development bundle
+zarf package create . --confirm
+cd bundle && uds create . --confirm
+uds deploy uds-bundle-lei-dev-*.tar.zst --confirm
 
-
-NAME                   TYPE           CLUSTER-IP      EXTERNAL-IP   PORT(S)          AGE
-service/kubernetes     ClusterIP      10.96.0.1       <none>        443/TCP          17d
-service/lei-get        LoadBalancer   10.96.15.135    <pending>     4000:32224/TCP   17s
-service/redis-master   ClusterIP      10.96.247.238   <none>        6379/TCP         33s
-
-
-NAME                           READY   UP-TO-DATE   AVAILABLE   AGE
-deployment.apps/lei-get        1/1     1            1           23s
-deployment.apps/redis-master   1/1     1            1           37s
-
-NAME                                      DESIRED   CURRENT   READY   AGE
-replicaset.apps/lei-get-7f4bd755c9        1         1         1       23s
-replicaset.apps/redis-master-7db7f6579f   1         1         1       37s
+# Access at https://lei.uds.dev
 ```
 
-### Heroku
+The bundle deploys a complete stack: k3d, UDS Core (Istio, monitoring),
+PostgreSQL (Zalando operator), Valkey, and lei-get with full network policies
+and service mesh integration.
 
-It's also possible to run this in Heroku using the Elixir buildpack.  The Redis configuration requires the Heroku Redis addon which will set the REDIS_URL environment variable.  The `procfile` at the root of the repo is used by the buildpack to run the app.  While this isn't a Phoenix app I used this URL as a guide:
-
-https://hexdocs.pm/phoenix/heroku.html
-
-And this one for the Redis setup:
-
-https://devcenter.heroku.com/articles/heroku-redis#provisioning-the-add-on
+See **[Operations Guide](docs/OPERATIONS.md)** for complete UDS documentation
+including Helm values, bundle overrides, custom image builds, and architecture details.
 
 ## REST API
 
