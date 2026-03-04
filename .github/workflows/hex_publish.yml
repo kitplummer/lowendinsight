@@ -28,5 +28,5 @@ jobs:
       if: github.event.pull_request.merged == true
       run: |
         git config --global --add safe.directory /__w/lowendinsight/lowendinsight
-        mix hex.publish --yes
+        cd apps/lowendinsight && mix hex.publish --yes
 

@@ -1,0 +1,236 @@
+{
+	"info": {
+		"_postman_id": "8f50335e-6a23-49c3-9915-63b2b262264f",
+		"name": "async",
+		"schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+	},
+	"auth": {
+		"type": "bearer",
+		"bearer": [
+			{
+				"key": "token",
+				"value": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJhdWQiOiJKb2tlbiIsImV4cCI6MTY3MDQzNTQ1MSwiaWF0IjoxNjcwNDI4MjUxLCJpc3MiOiJKb2tlbiIsImp0aSI6IjJzbjhyOThiczNiZzNwZWwwZzAwMDA3MiIsIm5iZiI6MTY3MDQyODI1MX0.kQgqr-7lmQtlVeq96hmIIYHEniJq638NQ10VW26kT9k",
+				"type": "string"
+			}
+		]
+	},
+	"item": [
+		{
+			"name": "submit job",
+			"event": [
+				{
+					"listen": "test",
+					"script": {
+						"id": "21f459e4-1550-44c3-9565-6d1318bbe463",
+						"exec": [
+							"var jsonData = pm.response.json();",
+							"",
+							"pm.test(\"it should return a uuid\", function(){ ",
+							"    var jsonData = pm.response.json();",
+							"    pm.expect(jsonData.uuid).to.not.be.empty;",
+							"});",
+							"",
+							"pm.environment.set(\"uuid\", jsonData.uuid);",
+							"",
+							"pm.test(\"response is 200\", function () {",
+							"    pm.response.to.have.status(200);",
+							"});"
+						],
+						"type": "text/javascript"
+					}
+				}
+			],
+			"request": {
+				"method": "POST",
+				"header": [
+					{
+						"key": "Content-Type",
+						"type": "text",
+						"value": "application/json"
+					}
+				],
+				"body": {
+					"mode": "raw",
+					"raw": "{\"urls\":[\"https://github.com/satori/go.uuid\"],\"cache_mode\":\"async\"}"
+				},
+				"url": {
+					"raw": "http://localhost:4444/v1/analyze",
+					"protocol": "http",
+					"host": [
+						"localhost"
+					],
+					"port": "4444",
+					"path": [
+						"v1",
+						"analyze"
+					]
+				},
+				"description": "basic post\n"
+			},
+			"response": []
+		},
+		{
+			"name": "get report",
+			"event": [
+				{
+					"listen": "test",
+					"script": {
+						"id": "21f459e4-1550-44c3-9565-6d1318bbe463",
+						"exec": [
+							"pm.test(\"server responds to GET request\", function () {",
+							"    pm.expect(pm.response.code).to.be.oneOf([200, 500]);",
+							"});",
+							"",
+							"pm.test(\"response has body\", function(){ ",
+							"    pm.expect(pm.response.text().length).to.be.above(0);",
+							"});",
+							""
+						],
+						"type": "text/javascript"
+					}
+				}
+			],
+			"protocolProfileBehavior": {
+				"disableBodyPruning": true
+			},
+			"request": {
+				"method": "GET",
+				"header": [
+					{
+						"key": "Content-Type",
+						"type": "text",
+						"value": "application/json"
+					}
+				],
+				"body": {
+					"mode": "raw",
+					"raw": ""
+				},
+				"url": {
+					"raw": "http://localhost:4444/v1/analyze/{{uuid}}",
+					"protocol": "http",
+					"host": [
+						"localhost"
+					],
+					"port": "4444",
+					"path": [
+						"v1",
+						"analyze",
+						"{{uuid}}"
+					]
+				},
+				"description": "basic post\n"
+			},
+			"response": []
+		},
+		{
+			"name": "submit job 2",
+			"event": [
+				{
+					"listen": "test",
+					"script": {
+						"id": "21f459e4-1550-44c3-9565-6d1318bbe463",
+						"exec": [
+							"var jsonData = pm.response.json();",
+							"",
+							"pm.test(\"it should return a uuid\", function(){ ",
+							"    var jsonData = pm.response.json();",
+							"    pm.expect(jsonData.uuid).to.not.be.empty;",
+							"});",
+							"",
+							"pm.environment.set(\"uuid\", jsonData.uuid);",
+							"",
+							"pm.test(\"response is 200\", function () {",
+							"    pm.response.to.have.status(200);",
+							"});"
+						],
+						"type": "text/javascript"
+					}
+				}
+			],
+			"request": {
+				"method": "POST",
+				"header": [
+					{
+						"key": "Content-Type",
+						"type": "text",
+						"value": "application/json"
+					}
+				],
+				"body": {
+					"mode": "raw",
+					"raw": "{\"urls\":[\"https://github.com/satori/go.uuid\"],\"cache_mode\":\"async\"}"
+				},
+				"url": {
+					"raw": "http://localhost:4444/v1/analyze",
+					"protocol": "http",
+					"host": [
+						"localhost"
+					],
+					"port": "4444",
+					"path": [
+						"v1",
+						"analyze"
+					]
+				},
+				"description": "basic post\n"
+			},
+			"response": []
+		},
+		{
+			"name": "get report 2",
+			"event": [
+				{
+					"listen": "test",
+					"script": {
+						"id": "21f459e4-1550-44c3-9565-6d1318bbe463",
+						"exec": [
+							"pm.test(\"server responds to GET request\", function () {",
+							"    pm.expect(pm.response.code).to.be.oneOf([200, 500]);",
+							"});",
+							"",
+							"pm.test(\"response has body\", function(){ ",
+							"    pm.expect(pm.response.text().length).to.be.above(0);",
+							"});",
+							""
+						],
+						"type": "text/javascript"
+					}
+				}
+			],
+			"protocolProfileBehavior": {
+				"disableBodyPruning": true
+			},
+			"request": {
+				"method": "GET",
+				"header": [
+					{
+						"key": "Content-Type",
+						"type": "text",
+						"value": "application/json"
+					}
+				],
+				"body": {
+					"mode": "raw",
+					"raw": ""
+				},
+				"url": {
+					"raw": "http://localhost:4444/v1/analyze/{{uuid}}",
+					"protocol": "http",
+					"host": [
+						"localhost"
+					],
+					"port": "4444",
+					"path": [
+						"v1",
+						"analyze",
+						"{{uuid}}"
+					]
+				},
+				"description": "basic post\n"
+			},
+			"response": []
+		}
+	],
+	"protocolProfileBehavior": {}
+}

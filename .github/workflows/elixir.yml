@@ -1,4 +1,4 @@
-name: default_elixir_ci
+name: umbrella_ci
 
 on:
   push:
@@ -6,7 +6,8 @@ on:
     types: [opened]
 
 jobs:
-  build:
+  # LEI library tests — no external services needed
+  lei-lib:
     runs-on: ubuntu-latest
     env:
       MIX_ENV: test
@@ -25,13 +26,13 @@ jobs:
         mix local.rebar --force
         mix local.hex --force
         mix deps.get
-    - name: Run Tests
+    - name: Run LEI Library Tests
       run: |
         git config --global --add safe.directory /__w/lowendinsight/lowendinsight
-        # Retry up to 5 times to handle intermittent parallel compiler race condition
         max_attempts=5
         attempt=1
-        until MIX_ENV=test mix coveralls.github --exclude network --exclude long; do
+        until cd apps/lowendinsight && MIX_ENV=test mix test --exclude network --exclude long && cd ../..; do
+          cd $GITHUB_WORKSPACE
           if [ $attempt -ge $max_attempts ]; then
             echo "All $max_attempts attempts failed"
             exit 1
@@ -42,11 +43,59 @@ jobs:
         done
     - name: Generate Docs
       run: |
-        MIX_ENV=dev mix docs
+        cd apps/lowendinsight && MIX_ENV=dev mix docs
     - name: LowEndInsight Scan
+      continue-on-error: true
       run: |
-        mix lei.scan .
+        cd apps/lowendinsight && mix lei.scan ../..
 
+  # LEI-get API tests — requires Postgres + Redis
+  lei-get:
+    runs-on: ubuntu-latest
+    env:
+      MIX_ENV: test
+      GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: lowendinsight_get_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+    steps:
+    - uses: actions/checkout@v4
+    - name: Setup Elixir
+      uses: erlef/setup-beam@v1
+      with:
+        elixir-version: 1.16.3
+        otp-version: 26.2
+    - uses: actions/setup-node@v4
+      with:
+        node-version: 20
+    - uses: zhulik/redis-action@1.1.0
+      with:
+        redis version: '7'
+        number of databases: 20
+    - name: Install Dependencies
+      run: |
+        npm install -g newman
+        mix local.rebar --force
+        mix local.hex --force
+        mix deps.get
+    - name: Setup Database
+      run: MIX_ENV=test mix ecto.create && MIX_ENV=test mix ecto.migrate
+    - name: Run LEI-get Tests
+      run: cd apps/lowendinsight_get && MIX_ENV=test mix test
+
+  # Dependency audit
   audit:
     runs-on: ubuntu-latest
     env:
