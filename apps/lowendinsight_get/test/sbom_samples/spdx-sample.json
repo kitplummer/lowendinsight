@@ -1,0 +1,73 @@
+{
+  "spdxVersion": "SPDX-2.3",
+  "dataLicense": "CC0-1.0",
+  "SPDXID": "SPDXRef-DOCUMENT",
+  "name": "lei-test-sbom",
+  "documentNamespace": "https://example.com/lei-test-sbom",
+  "creationInfo": {
+    "created": "2024-01-15T10:30:00Z",
+    "creators": [
+      "Tool: lei-sbom-generator-1.0.0"
+    ]
+  },
+  "packages": [
+    {
+      "SPDXID": "SPDXRef-Package-httpoison",
+      "name": "httpoison",
+      "versionInfo": "2.0.0",
+      "downloadLocation": "https://github.com/edgurgel/httpoison/archive/v2.0.0.tar.gz",
+      "homepage": "https://github.com/edgurgel/httpoison",
+      "externalRefs": [
+        {
+          "referenceCategory": "PACKAGE-MANAGER",
+          "referenceType": "purl",
+          "referenceLocator": "pkg:github/edgurgel/httpoison@2.0.0"
+        }
+      ]
+    },
+    {
+      "SPDXID": "SPDXRef-Package-jason",
+      "name": "jason",
+      "versionInfo": "1.4.0",
+      "downloadLocation": "https://github.com/michalmuskala/jason/archive/v1.4.0.tar.gz",
+      "externalRefs": [
+        {
+          "referenceCategory": "PACKAGE-MANAGER",
+          "referenceType": "purl",
+          "referenceLocator": "pkg:github/michalmuskala/jason@1.4.0"
+        }
+      ]
+    },
+    {
+      "SPDXID": "SPDXRef-Package-ecto",
+      "name": "ecto",
+      "versionInfo": "3.10.0",
+      "downloadLocation": "https://github.com/elixir-ecto/ecto/archive/v3.10.0.tar.gz",
+      "externalRefs": [
+        {
+          "referenceCategory": "PACKAGE-MANAGER",
+          "referenceType": "purl",
+          "referenceLocator": "pkg:github/elixir-ecto/ecto@3.10.0"
+        }
+      ]
+    },
+    {
+      "SPDXID": "SPDXRef-Package-phoenix",
+      "name": "phoenix",
+      "versionInfo": "1.7.0",
+      "downloadLocation": "NOASSERTION",
+      "externalRefs": [
+        {
+          "referenceCategory": "PACKAGE-MANAGER",
+          "referenceType": "purl",
+          "referenceLocator": "pkg:github/phoenixframework/phoenix@1.7.0"
+        },
+        {
+          "referenceCategory": "OTHER",
+          "referenceType": "vcs",
+          "referenceLocator": "https://github.com/phoenixframework/phoenix"
+        }
+      ]
+    }
+  ]
+}

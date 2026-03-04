@@ -1,0 +1,10 @@
+id: example-001
+objective: "Add a --verbose flag to the CLI"
+constraints:
+  - "No new dependencies"
+  - "Must not change existing flag behavior"
+acceptance:
+  - "Tests pass"
+  - "New test covers the flag"
+  - "Help text updated"
+risk: low

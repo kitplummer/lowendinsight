@@ -2,77 +2,42 @@
 # This software may be modified and distributed under the terms of
 # the BSD 3-Clause license. See the LICENSE file for details.
 
-defmodule GithubModule.MixProject do
+defmodule Lowendinsight.Umbrella.MixProject do
   use Mix.Project
 
   def project do
     [
-      app: :lowendinsight,
-      description: description(),
+      apps_path: "apps",
       version: "0.9.1",
-      elixir: "~> 1.14",
       start_permanent: Mix.env() == :prod,
       deps: deps(),
-      package: package(),
-      name: "LowEndInsight",
-      source_url: "https://github.com/gtri/lowendinsight",
-      docs: [
-        extras: ["README.md"]
-      ],
-      test_coverage: [tool: ExCoveralls],
-      releases: [
-        demo: [
-          include_executables_for: [:unix],
-          applications: [runtime_tools: :permanent]
-        ],
-      ]
+      aliases: aliases(),
+      test_coverage: [tool: ExCoveralls]
     ]
   end
 
-  # Run "mix help compile.app" to learn about applications.
-  def application do
-    [
-      extra_applications: [:logger, :crypto],
-      mod: {Lei.Application, []}
-    ]
-  end
-
-  # Run "mix help deps" to learn about dependencies.
   defp deps do
+    []
+  end
+
+  defp aliases do
     [
-      {:httpoison, "~> 1.8"},
-      {:httpoison_retry, "~> 1.1"},
-      {:git_cli, "~> 0.3"},
-      {:poison, "~> 6.0"},
-      {:elixir_uuid, "~> 1.2"},
-      {:ex_doc, "~> 0.34", runtime: false},
-      {:credo, "~> 1.7", only: [:dev, :test], runtime: false},
-      {:mix_audit, "~> 0.1", only: [:dev, :test], runtime: false},
-      {:json_xema, "~> 0.6"},
-      {:temp, "~> 0.4"},
-      {:excoveralls, "~> 0.18", only: :test},
-      {:mox, "~> 1.1", only: :test},
-      {:yarn_parser, "~> 0.3"},
-      {:sweet_xml, "~> 0.7.1"},
-      {:sbom, "~> 0.6", only: :dev, runtime: false},
-      {:exqlite, "~> 0.27"},
-      {:plug, "~> 1.15"},
-      {:plug_cowboy, "~> 2.7"}
+      "test.lei": &test_lei/1,
+      "test.get": &test_get/1,
+      "ecto.setup": &ecto_setup/1,
+      "ecto.reset": &ecto_reset/1
     ]
   end
 
-  defp links() do
-    %{"GitHub" => "https://github.com/gtri/lowendinsight"}
-  end
+  defp test_lei(args), do: run_in_app("lowendinsight", "mix test #{Enum.join(args, " ")}")
+  defp test_get(args), do: run_in_app("lowendinsight_get", "mix test #{Enum.join(args, " ")}")
+  defp ecto_setup(_), do: run_in_app("lowendinsight_get", "mix do ecto.create, ecto.migrate")
 
-  defp description() do
-    "LowEndInsight is a simple 'bus-factor' risk analysis library for Open Source Software which is managed within a Git repository. Provide the git URL and the library will respond with a basic Elixir Map structure report."
-  end
+  defp ecto_reset(_),
+    do: run_in_app("lowendinsight_get", "mix do ecto.drop, ecto.create, ecto.migrate")
 
-  defp package() do
-    [
-      licenses: ["BSD-3-Clause"],
-      links: links()
-    ]
+  defp run_in_app(app, command) do
+    {_, status} = System.shell(command, cd: Path.join("apps", app), into: IO.stream())
+    if status != 0, do: System.at_exit(fn _ -> exit({:shutdown, status}) end)
   end
 end

@@ -6,50 +6,44 @@ import Config
 
 config :logger, level: :error
 
+# --- lowendinsight_get test overrides ---
+
+config :lowendinsight_get, LowendinsightGet.Endpoint, port: 4444
+
+config :lowendinsight_get,
+  cache_ttl: String.to_integer(System.get_env("LEI_CACHE_TTL") || "30"),
+  cache_clean_enable: String.to_atom(System.get_env("LEI_CACHE_CLEAN_ENABLE") || "true"),
+  check_repo_size?: String.to_atom(System.get_env("LEI_CHECK_REPO_SIZE") || "true"),
+  wait_time: String.to_integer(System.get_env("LEI_WAIT_TIME") || "1800000"),
+  num_of_repos: String.to_integer(System.get_env("LEI_NUM_OF_REPOS") || "10"),
+  gh_token: System.get_env("LEI_GH_TOKEN") || "",
+  use_workers: false
+
+config :lowendinsight_get, LowendinsightGet.Repo,
+  database: "lowendinsight_get_test",
+  username: "postgres",
+  password: "postgres",
+  hostname: "localhost",
+  pool: Ecto.Adapters.SQL.Sandbox,
+  pool_size: 5
+
+config :lowendinsight_get, Oban,
+  repo: LowendinsightGet.Repo,
+  testing: :manual,
+  queues: false,
+  plugins: false
+
+config :redix,
+  redis_url: System.get_env("REDIS_URL") || "redis://localhost:6379/2"
+
+# --- lowendinsight (library) test overrides ---
+# Use LEI library's original thresholds so library unit tests pass
+
 config :lowendinsight,
-  ## SBOM file failure - when not present
-  sbom_risk_level: System.get_env("LEI_SBOM_RISK_LEVEL") || "medium",
-
-  ## Contributor in terms of discrete users
-  ## NOTE: this currently doesn't discern same user with different email
-  critical_contributor_level:
-    String.to_integer(System.get_env("LEI_CRITICAL_CONTRIBUTOR_LEVEL") || "2"),
-  high_contributor_level: System.get_env("LEI_HIGH_CONTRIBUTOR_LEVEL") || 3,
-  medium_contributor_level: System.get_env("LEI_CRITICAL_CONTRIBUTOR_LEVEL") || 5,
-
-  ## Commit currency in weeks - is the project active.  This by itself
-  ## may not indicate anything other than the repo is stable. The reason
-  ## we're reporting it is relative to the likelihood vulnerabilities
-  ## getting fix in a timely manner
-  critical_currency_level:
-    String.to_integer(System.get_env("LEI_CRITICAL_CURRENCY_LEVEL") || "104"),
-  high_currency_level: String.to_integer(System.get_env("LEI_HIGH_CURRENCY_LEVEL") || "52"),
-  medium_currency_level: String.to_integer(System.get_env("LEI_MEDIUM_CURRENCY_LEVEL") || "26"),
-
-  ## Percentage of changes to repo in recent commit - is the codebase
-  ## volatile in terms of quantity of source being changed
   critical_large_commit_level:
     String.to_float(System.get_env("LEI_CRITICAL_LARGE_COMMIT_LEVEL") || "0.40"),
   high_large_commit_level:
     String.to_float(System.get_env("LEI_HIGH_LARGE_COMMIT_LEVEL") || "0.30"),
   medium_large_commit_level:
     String.to_float(System.get_env("LEI_MEDIUM_LARGE_COMMIT_LEVEL") || "0.20"),
-
-  ## Bell curve contributions - if there are 30 contributors
-  ## but 90% of the contributions are from 2...
-  critical_functional_contributors_level:
-    String.to_integer(System.get_env("LEI_CRITICAL_FUNCTIONAL_CONTRIBUTORS_LEVEL") || "2"),
-  high_functional_contributors_level:
-    String.to_integer(System.get_env("LEI_HIGH_FUNCTIONAL_CONTRIBUTORS_LEVEL") || "3"),
-  medium_functional_contributors_level:
-    String.to_integer(System.get_env("LEI_MEDIUM_FUNCTIONAL_CONTRIBUTORS_LEVEL") || "5"),
-
-  ## Jobs per available core for defining max concurrency.  This value
-  ## will be used to set the max_concurrency value.
-  jobs_per_core_max: String.to_integer(System.get_env("LEI_JOBS_PER_CORE_MAX") || "1"),
-
-  ## Base directory structure for temp clones
-  base_temp_dir: System.get_env("LEI_BASE_TEMP_DIR" || "/tmp")
-
-# JsonXema Schema Loader
-config :xema, loader: SchemaLoader
+  jobs_per_core_max: String.to_integer(System.get_env("LEI_JOBS_PER_CORE_MAX") || "1")
