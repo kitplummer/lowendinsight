@@ -1,0 +1,31 @@
+kind: ZarfPackageConfig
+metadata:
+  name: lei-get
+  description: "LowEndInsight GET - OSS Supply Chain Risk Analysis API"
+  version: "0.9.3"
+  url: https://github.com/kitplummer/lowendinsight
+
+components:
+  - name: lei-get
+    required: true
+    description: "LEI-GET API service with UDS integration"
+    charts:
+      - name: lei-get
+        localPath: apps/lowendinsight_get/chart/
+        namespace: lei
+        version: 0.1.0
+    images:
+      - ghcr.io/kitplummer/lowendinsight-get:0.9.3
+    manifests:
+      - name: uds-package
+        files:
+          - apps/lowendinsight_get/uds-package.yaml
+    actions:
+      onDeploy:
+        after:
+          - wait:
+              cluster:
+                kind: deployment
+                name: lei-get
+                namespace: lei
+                condition: available

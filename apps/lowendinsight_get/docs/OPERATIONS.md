@@ -70,18 +70,207 @@ See `k8s/` directory for Kubernetes manifests:
 
 ### UDS (Unicorn Delivery Service)
 
-LEI-GET is designed for UDS integration:
+LEI-GET includes first-class UDS integration via a Helm chart, Zarf package, and UDS
+Package CR. Infrastructure services (PostgreSQL, Valkey) are deployed as separate
+UDS packages in the bundle — this follows the standard UDS convention used by
+GitLab, Mattermost, SonarQube, and other UDS applications.
+
+#### Architecture
+
+```
+┌─────────────────────────────────────────────────────────────┐
+│  UDS Core (Istio, Pepr, Keycloak, Monitoring)               │
+├──────────┬──────────────┬──────────────┬────────────────────┤
+│ lei (ns) │ postgres (ns)│ valkey (ns)  │ istio-system (ns)  │
+│          │              │              │                     │
+│ lei-get ─┼─▶ pg-cluster │              │ tenant-gateway ◀──┐│
+│          │              │              │                    ││
+│ lei-get ─┼──────────────┼─▶ valkey     │                    ││
+│          │              │   primary    │                    ││
+│ lei-get ─┼──────────────┼──────────────┼─▶ HTTPS (443)     ││
+│  (git)   │              │              │   (git clone)      ││
+│          │              │              │                    ││
+│ ◀────────┼──────────────┼──────────────┼── lei.uds.dev ────┘│
+└──────────┴──────────────┴──────────────┴────────────────────┘
+```
+
+**Key files:**
+
+| File | Purpose |
+|------|---------|
+| `apps/lowendinsight_get/chart/` | Helm chart for lei-get deployment |
+| `zarf.yaml` | Zarf package definition (wraps Helm chart + images + UDS Package CR) |
+| `apps/lowendinsight_get/uds-package.yaml` | UDS Package CR (network policies, virtual service, monitoring) |
+| `bundle/uds-bundle.yaml` | Development bundle (k3d + UDS Core + postgres + valkey + lei-get) |
+
+#### Prerequisites
+
+- [UDS CLI](https://github.com/defenseunicorns/uds-cli) (`uds` command)
+- [Zarf](https://zarf.dev) (`zarf` command)
+- Docker (for building images and running k3d)
+
+#### Quick Start (Development Bundle)
+
+The development bundle creates a complete local environment with k3d:
+
+```bash
+# 1. Build the Zarf package (from repo root)
+zarf package create . --confirm
+
+# 2. Create the UDS bundle
+cd bundle
+uds create . --confirm
+
+# 3. Deploy everything (k3d cluster, UDS Core, PostgreSQL, Valkey, lei-get)
+uds deploy uds-bundle-lei-dev-*.tar.zst --confirm
+
+# 4. Access the app
+curl -sk https://lei.uds.dev/
+```
+
+The bundle deploys in order:
+1. **uds-k3d** — Local k3d cluster with load balancer
+2. **init** — Zarf init package (internal registry, agent)
+3. **core** — UDS Core (Istio, Pepr operator, monitoring)
+4. **postgres-operator** — Zalando PostgreSQL operator + `pg-cluster` instance
+5. **valkey** — Valkey (Redis-compatible) with password copied to `lei` namespace
+6. **lei-get** — LEI application with Helm chart + UDS Package CR
+
+#### Helm Chart Configuration
+
+The Helm chart is in `apps/lowendinsight_get/chart/` and supports both standalone and UDS deployments.
+
+**Database credentials (Zalando operator):**
+
+When using the Zalando postgres-operator, credentials are auto-generated and stored
+in a Kubernetes secret. The chart wires these into the `DATABASE_URL` using
+Kubernetes variable substitution:
 
 ```yaml
-# zarf.yaml example
-components:
-  - name: lei-get
-    charts:
-      - name: lei-get
-        valuesFiles:
-          - values.yaml
-    images:
-      - ghcr.io/kitplummer/lowendinsight-get:latest
+# In bundle overrides or helm install --set:
+database:
+  existingSecret: "lei.lei.pg-cluster.credentials.postgresql.acid.zalan.do"
+
+# The deployment template constructs DATABASE_URL automatically:
+# ecto://$(DB_USERNAME):$(DB_PASSWORD)@pg-cluster.postgres.svc.cluster.local:5432/lowendinsight_get
+```
+
+**Valkey credentials (copied secret):**
+
+The UDS valkey package can copy the password to the `lei` namespace. The chart
+constructs `REDIS_URL` with proper ACL auth:
+
+```yaml
+valkey:
+  existingSecret: "lei-valkey-password"
+
+# Produces: redis://default:$(VALKEY_PASSWORD)@valkey-primary.valkey.svc.cluster.local:6379
+```
+
+**Key values:**
+
+| Value | Default | Description |
+|-------|---------|-------------|
+| `fullnameOverride` | `"lei-get"` | Resource name (must match UDS Package CR service name) |
+| `image.tag` | `"0.9.3"` | Container image tag |
+| `config.port` | `"4000"` | HTTP server port |
+| `config.cacheTtl` | `"30"` | Cache TTL in days |
+| `config.waitTime` | `"7200000"` | Analysis wait time (ms) |
+| `database.existingSecret` | `""` | Zalando operator credentials secret name |
+| `valkey.existingSecret` | `""` | Valkey password secret name |
+| `secrets.secretKeyBase` | `""` | Secret key for signing (min 64 chars) |
+| `secrets.ghToken` | `""` | GitHub API token |
+
+See `apps/lowendinsight_get/chart/values.yaml` for the complete list with descriptions.
+
+#### UDS Package CR
+
+The `apps/lowendinsight_get/uds-package.yaml` defines network policies and service exposure for the UDS
+Pepr operator:
+
+- **Ingress**: Exposed via Istio tenant gateway at `lei.<domain>` (port 4000)
+- **Egress**: DNS (53), Valkey (6379), PostgreSQL (5432), HTTPS (443 for git clone)
+- **Monitoring**: ServiceMonitor on port 4000
+
+#### Bundle Overrides
+
+The bundle wires infrastructure services to lei-get via overrides:
+
+```yaml
+# postgres-operator: create database and user, allow ingress from lei namespace
+- path: postgresql
+  value:
+    databases:
+      lowendinsight_get: lei.lei
+    ingress:
+      - remoteNamespace: lei
+
+# valkey: copy password to lei namespace, allow ingress from lei namespace
+- path: copyPassword
+  value:
+    enabled: true
+    namespace: lei
+    secretName: lei-valkey-password
+- path: additionalNetworkAllow
+  value:
+    - direction: Ingress
+      selector:
+        app.kubernetes.io/name: valkey
+      remoteNamespace: lei
+      remoteSelector:
+        app.kubernetes.io/name: lowendinsight-get
+      port: 6379
+
+# lei-get: use operator-managed secrets
+- path: database.existingSecret
+  value: "lei.lei.pg-cluster.credentials.postgresql.acid.zalan.do"
+- path: valkey.existingSecret
+  value: "lei-valkey-password"
+```
+
+#### Security Context
+
+The container runs with a hardened security context:
+- `readOnlyRootFilesystem: true` — writable paths via emptyDir: `/tmp`, `/opt/app/var`
+- `runAsNonRoot: true` (UID 1000)
+- All capabilities dropped
+- tzdata configured to write to `/tmp/tzdata`
+
+#### Startup Resilience
+
+The application starts the OTP supervisor tree (including the Ecto Repo connection
+pool) before running database migrations. Migrations retry up to 10 times with
+2-second delays, handling transient connectivity issues common in service mesh
+environments (e.g., Istio ambient mode where ztunnel networking takes a moment
+to initialize for new pods).
+
+#### Building a Custom Image
+
+```bash
+# Build (from repo root)
+docker build -f apps/lowendinsight_get/Dockerfile -t ghcr.io/kitplummer/lowendinsight-get:0.9.3-dev .
+
+# Push to Zarf internal registry (for dev cluster testing)
+kubectl port-forward svc/zarf-docker-registry -n zarf 5000:5000 &
+ZARF_PASS=$(kubectl get secret zarf-state -n zarf -o jsonpath='{.data.state}' \
+  | base64 -d | python3 -c "import sys,json; print(json.load(sys.stdin)['registryInfo']['pushPassword'])")
+echo "$ZARF_PASS" | docker login localhost:5000 -u zarf-push --password-stdin
+docker tag ghcr.io/kitplummer/lowendinsight-get:0.9.3-dev \
+  localhost:5000/kitplummer/lowendinsight-get:0.9.3-dev
+docker push localhost:5000/kitplummer/lowendinsight-get:0.9.3-dev
+
+# Deploy with Helm
+helm upgrade lei-get apps/lowendinsight_get/chart/ -n lei \
+  --set image.tag=0.9.3-dev \
+  --set database.existingSecret="lei.lei.pg-cluster.credentials.postgresql.acid.zalan.do" \
+  --set valkey.existingSecret="lei-valkey-password"
+```
+
+#### Teardown
+
+```bash
+# Remove the k3d cluster (removes everything)
+k3d cluster delete uds
 ```
 
 ## Configuration

@@ -8,12 +8,27 @@ defmodule LowendinsightGet.Application do
   require Logger
 
   def start(_type, _args) do
-    {:ok, _, _} =
-      Ecto.Migrator.with_repo(LowendinsightGet.Repo, fn repo ->
-        Ecto.Migrator.run(repo, Ecto.Migrator.migrations_path(repo), :up, all: true)
-      end)
+    {:ok, pid} = Supervisor.start_link(children(), opts())
+    run_migrations()
+    {:ok, pid}
+  end
 
-    Supervisor.start_link(children(), opts())
+  defp run_migrations(retries \\ 10, delay \\ 2_000) do
+    Ecto.Migrator.run(
+      LowendinsightGet.Repo,
+      Ecto.Migrator.migrations_path(LowendinsightGet.Repo),
+      :up,
+      all: true
+    )
+  rescue
+    e ->
+      if retries > 0 do
+        Logger.warning("Database not ready, retrying in #{delay}ms... (#{retries} attempts left)")
+        Process.sleep(delay)
+        run_migrations(retries - 1, delay)
+      else
+        reraise e, __STACKTRACE__
+      end
   end
 
   defp children do

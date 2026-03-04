@@ -1,0 +1,57 @@
+apiVersion: uds.dev/v1alpha1
+kind: Package
+metadata:
+  name: lei-get
+  namespace: lei
+spec:
+  network:
+    expose:
+      - service: lei-get
+        selector:
+          app.kubernetes.io/name: lowendinsight-get
+        gateway: tenant
+        host: lei
+        port: 4000
+    allow:
+      # DNS
+      - direction: Egress
+        selector:
+          app.kubernetes.io/name: lowendinsight-get
+        remoteNamespace: kube-system
+        remoteSelector:
+          k8s-app: kube-dns
+        port: 53
+        description: "DNS lookup"
+      # Valkey/Redis
+      - direction: Egress
+        selector:
+          app.kubernetes.io/name: lowendinsight-get
+        remoteNamespace: valkey
+        port: 6379
+        description: "Valkey cache"
+      # PostgreSQL
+      - direction: Egress
+        selector:
+          app.kubernetes.io/name: lowendinsight-get
+        remoteNamespace: postgres
+        port: 5432
+        description: "PostgreSQL database"
+      # Intra-namespace
+      - direction: Ingress
+        remoteGenerated: IntraNamespace
+        description: "Intra-namespace traffic"
+      # HTTPS egress for git clone operations
+      - direction: Egress
+        selector:
+          app.kubernetes.io/name: lowendinsight-get
+        port: 443
+        description: "HTTPS egress for git clone"
+
+  monitor:
+    - selector:
+        app.kubernetes.io/name: lowendinsight-get
+      targetPort: 4000
+      portName: http
+      path: /
+      description: "lei-get-metrics"
+      kind: ServiceMonitor

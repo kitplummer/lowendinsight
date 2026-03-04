@@ -1,0 +1,31 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "lei-get.fullname" . }}
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "lei-get.labels" . | nindent 4 }}
+data:
+  PORT: {{ .Values.config.port | quote }}
+  REDIS_URL: {{ .Values.config.redisUrl | quote }}
+  DATABASE_URL: {{ .Values.config.databaseUrl | quote }}
+  LEI_CACHE_TTL: {{ .Values.config.cacheTtl | quote }}
+  LEI_CACHE_CLEAN_ENABLE: {{ .Values.config.cacheCleanEnable | quote }}
+  LEI_CHECK_REPO_SIZE: {{ .Values.config.checkRepoSize | quote }}
+  LEI_DEFAULT_CACHE_TIMEOUT: {{ .Values.config.defaultCacheTimeout | quote }}
+  LEI_WAIT_TIME: {{ .Values.config.waitTime | quote }}
+  LEI_JOBS_PER_CORE_MAX: {{ .Values.config.jobsPerCoreMax | quote }}
+  LEI_BASE_TEMP_DIR: {{ .Values.config.baseTempDir | quote }}
+  LEI_SBOM_RISK_LEVEL: {{ .Values.riskThresholds.sbomRiskLevel | quote }}
+  LEI_CRITICAL_CONTRIBUTOR_LEVEL: {{ .Values.riskThresholds.criticalContributorLevel | quote }}
+  LEI_HIGH_CONTRIBUTOR_LEVEL: {{ .Values.riskThresholds.highContributorLevel | quote }}
+  LEI_MEDIUM_CONTRIBUTOR_LEVEL: {{ .Values.riskThresholds.mediumContributorLevel | quote }}
+  LEI_CRITICAL_CURRENCY_LEVEL: {{ .Values.riskThresholds.criticalCurrencyLevel | quote }}
+  LEI_HIGH_CURRENCY_LEVEL: {{ .Values.riskThresholds.highCurrencyLevel | quote }}
+  LEI_MEDIUM_CURRENCY_LEVEL: {{ .Values.riskThresholds.mediumCurrencyLevel | quote }}
+  LEI_CRITICAL_LARGE_COMMIT_LEVEL: {{ .Values.riskThresholds.criticalLargeCommitLevel | quote }}
+  LEI_HIGH_LARGE_COMMIT_LEVEL: {{ .Values.riskThresholds.highLargeCommitLevel | quote }}
+  LEI_MEDIUM_LARGE_COMMIT_LEVEL: {{ .Values.riskThresholds.mediumLargeCommitLevel | quote }}
+  LEI_CRITICAL_FUNCTIONAL_CONTRIBUTORS_LEVEL: {{ .Values.riskThresholds.criticalFunctionalContributorsLevel | quote }}
+  LEI_HIGH_FUNCTIONAL_CONTRIBUTORS_LEVEL: {{ .Values.riskThresholds.highFunctionalContributorsLevel | quote }}
+  LEI_MEDIUM_FUNCTIONAL_CONTRIBUTORS_LEVEL: {{ .Values.riskThresholds.mediumFunctionalContributorsLevel | quote }}
