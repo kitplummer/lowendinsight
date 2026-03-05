@@ -76,7 +76,8 @@ if config_env() == :prod do
 
   config :lowendinsight_get, LowendinsightGet.Repo,
     url: database_url,
-    pool_size: String.to_integer(System.get_env("POOL_SIZE") || "5")
+    pool_size: String.to_integer(System.get_env("POOL_SIZE") || "5"),
+    socket_options: [:inet6]
 
   config :lowendinsight_get, Oban,
     repo: LowendinsightGet.Repo,
