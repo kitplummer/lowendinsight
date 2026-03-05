@@ -12,7 +12,16 @@ defmodule Lowendinsight.Umbrella.MixProject do
       start_permanent: Mix.env() == :prod,
       deps: deps(),
       aliases: aliases(),
-      test_coverage: [tool: ExCoveralls]
+      test_coverage: [tool: ExCoveralls],
+      releases: [
+        lowendinsight_get: [
+          applications: [
+            lowendinsight: :permanent,
+            lowendinsight_get: :permanent,
+            runtime_tools: :permanent
+          ]
+        ]
+      ]
     ]
   end
 

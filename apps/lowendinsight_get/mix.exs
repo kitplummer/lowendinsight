@@ -43,7 +43,6 @@ defmodule LowendinsightGet.MixProject do
       {:postgrex, "~> 0.18"},
       {:lowendinsight, in_umbrella: true},
       {:httpoison_retry, "~> 1.1"},
-      {:distillery, "~> 2.1", only: :prod, runtime: false},
       {:excoveralls, "~> 0.18", only: :test}
     ]
   end

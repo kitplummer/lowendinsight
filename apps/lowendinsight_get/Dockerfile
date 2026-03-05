@@ -10,12 +10,6 @@ ARG ALPINE_VERSION=3.18
 FROM elixir:1.15.7-alpine AS builder
 
 ARG MIX_ENV=prod
-ARG RELEASE_ROOT_DIR=/opt/app
-
-ENV APP_NAME=lowendinsight_get \
-    APP_VSN=0.9.3 \
-    MIX_ENV=${MIX_ENV} \
-    RELEASE_ROOT_DIR=${RELEASE_ROOT_DIR}
 
 WORKDIR /opt/app
 
@@ -35,25 +29,13 @@ COPY config/ config/
 COPY apps/lowendinsight/mix.exs apps/lowendinsight/mix.exs
 COPY apps/lowendinsight_get/mix.exs apps/lowendinsight_get/mix.exs
 
-RUN HEX_HTTP_CONCURRENCY=1 HEX_HTTP_TIMEOUT=120 MIX_ENV=${MIX_ENV} mix do deps.get, deps.compile
+RUN HEX_HTTP_CONCURRENCY=1 HEX_HTTP_TIMEOUT=120 MIX_ENV=prod mix do deps.get, deps.compile
 
 # Copy full source
 COPY apps/ apps/
 
-RUN MIX_ENV=${MIX_ENV} mix compile
-
-# Distillery expects rel/config.exs at project root (File.cwd!)
-RUN ln -s apps/lowendinsight_get/rel rel
-
-RUN \
-  mkdir -p /opt/built && \
-  mkdir -p /opt/app/_build/prod/rel/${APP_NAME}/releases && \
-  touch /opt/app/_build/prod/rel/${APP_NAME}/releases/RELEASES && \
-  MIX_ENV=${MIX_ENV} mix distillery.release --verbose --env=prod && \
-  cp _build/${MIX_ENV}/rel/${APP_NAME}/releases/${APP_VSN}/${APP_NAME}.tar.gz /opt/built && \
-  cd /opt/built && \
-  tar -xvzf ${APP_NAME}.tar.gz && \
-  rm ${APP_NAME}.tar.gz
+RUN MIX_ENV=prod mix compile
+RUN MIX_ENV=prod mix release lowendinsight_get
 
 # --- Runtime image ---
 FROM alpine:${ALPINE_VERSION}
@@ -68,14 +50,8 @@ RUN apk update && \
       libpq \
       ncurses-libs
 
-ENV REPLACE_OS_VARS=true \
-    APP_NAME=lowendinsight_get \
-    ERL_AFLAGS="-proto_dist inet6_tcp" \
-    DATABASE_URL="ecto://postgres:postgres@localhost/lowendinsight_get_prod" \
-    REDIS_URL="redis://localhost:6379"
-
 WORKDIR /opt/app
 
-COPY --from=builder /opt/built .
+COPY --from=builder /opt/app/_build/prod/rel/lowendinsight_get ./
 
-CMD trap 'exit' INT; /opt/app/bin/${APP_NAME} foreground
+CMD ["/opt/app/bin/lowendinsight_get", "start"]
