@@ -38,7 +38,8 @@ defmodule LowendinsightGet.Endpoint do
   end
 
   def start_link(_opts) do
-    with {:ok, [port: port] = config} <- config() do
+    with {:ok, config} <- config() do
+      port = Keyword.get(config, :port, 4444)
       Logger.info("Starting server at http://localhost:#{port}/")
       # Increase idle_timeout to support blocking analysis with longer cache_timeouts
       # Default Cowboy idle_timeout is 60s, but blocking analysis may take 2+ minutes
