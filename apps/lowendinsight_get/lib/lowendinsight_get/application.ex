@@ -17,9 +17,10 @@ defmodule LowendinsightGet.Application do
   end
 
   defp children do
-    Logger.info("REDIS_URL: #{Application.get_env(:redix, :redis_url)}")
+    redis_url = Application.get_env(:redix, :redis_url)
+    Logger.info("REDIS_URL: #{redis_url}")
 
-    uri = URI.parse(Application.get_env(:redix, :redis_url))
+    uri = URI.parse(redis_url)
 
     password =
       if uri.userinfo == nil do
@@ -35,20 +36,21 @@ defmodule LowendinsightGet.Application do
         uri.port
       end
 
-    # Logger.info("HOST: #{uri.host}, P: #{port}, PW: #{password}")
+    ssl? = uri.scheme == "rediss"
+
+    redix_opts = [
+      name: :redix,
+      sync_connect: false,
+      exit_on_disconnection: false,
+      host: uri.host,
+      port: port,
+      password: password
+    ]
+
+    redix_opts = if ssl?, do: redix_opts ++ [ssl: true], else: redix_opts
 
     kids = [
-      {Redix,
-       {Application.get_env(:redix, :redis_url),
-        [
-          name: :redix,
-          sync_connect: true,
-          exit_on_disconnection: false,
-          # socket_opts: [:inet6],
-          host: uri.host,
-          port: port,
-          password: password
-        ]}},
+      {Redix, {redis_url, redix_opts}},
       LowendinsightGet.Repo,
       {Oban, Application.fetch_env!(:lowendinsight_get, Oban)},
       LowendinsightGet.Endpoint,
