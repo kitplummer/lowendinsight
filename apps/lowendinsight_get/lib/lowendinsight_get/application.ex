@@ -29,15 +29,7 @@ defmodule LowendinsightGet.Application do
       end
 
     port = uri.port || 6379
-
-    # Resolve hostname to IPv6 address for fly.io DNS64 compatibility.
-    # Redix's socket_opts can't accept bare :inet6 atom, so we resolve
-    # manually and connect via IP tuple.
-    host =
-      case :inet.getaddr(String.to_charlist(uri.host), :inet6) do
-        {:ok, ip_tuple} -> ip_tuple
-        {:error, _} -> uri.host
-      end
+    host = String.to_charlist(uri.host)
 
     redix_opts =
       [name: :redix, sync_connect: false, exit_on_disconnection: false,
