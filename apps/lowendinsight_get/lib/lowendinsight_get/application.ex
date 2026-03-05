@@ -20,8 +20,31 @@ defmodule LowendinsightGet.Application do
     redis_url = Application.get_env(:redix, :redis_url)
     Logger.info("REDIS_URL: #{redis_url}")
 
+    uri = URI.parse(redis_url)
+    ssl? = uri.scheme == "rediss"
+
+    password =
+      if uri.userinfo do
+        uri.userinfo |> String.split(":") |> Enum.at(1)
+      end
+
+    port = uri.port || 6379
+
+    # Resolve hostname to IPv6 address for fly.io DNS64 compatibility.
+    # Redix's socket_opts can't accept bare :inet6 atom, so we resolve
+    # manually and connect via IP tuple.
+    host =
+      case :inet.getaddr(String.to_charlist(uri.host), :inet6) do
+        {:ok, ip_tuple} -> ip_tuple
+        {:error, _} -> uri.host
+      end
+
+    redix_opts =
+      [name: :redix, sync_connect: false, exit_on_disconnection: false,
+       host: host, port: port, password: password, ssl: ssl?]
+
     kids = [
-      {Redix, {redis_url, [name: :redix, sync_connect: false, exit_on_disconnection: false]}},
+      {Redix, redix_opts},
       LowendinsightGet.Repo,
       {Oban, Application.fetch_env!(:lowendinsight_get, Oban)},
       LowendinsightGet.Endpoint,
