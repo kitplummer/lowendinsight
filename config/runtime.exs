@@ -12,7 +12,12 @@ if config_env() == :prod do
     port: String.to_integer(System.get_env("PORT") || "4444"),
     ip: {0, 0, 0, 0}
 
+  jwt_secret =
+    System.get_env("LEI_JWT_SECRET") ||
+      raise "LEI_JWT_SECRET env var is required in production"
+
   config :lowendinsight_get,
+    jwt_secret: jwt_secret,
     cache_ttl: String.to_integer(System.get_env("LEI_CACHE_TTL") || "30"),
     cache_clean_enable: String.to_atom(System.get_env("LEI_CACHE_CLEAN_ENABLE") || "true"),
     check_repo_size?: String.to_atom(System.get_env("LEI_CHECK_REPO_SIZE") || "true"),

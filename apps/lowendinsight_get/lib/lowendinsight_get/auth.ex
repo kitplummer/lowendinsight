@@ -1,16 +1,18 @@
 defmodule LowendinsightGet.Auth do
   import Plug.Conn
   require Logger
-  @secret "my super secret"
-  @alg "HS256"
-  @signer Joken.Signer.create(@alg, @secret)
 
   def init(opts) do
     opts
   end
 
+  defp signer do
+    secret = Application.get_env(:lowendinsight_get, :jwt_secret, "my super secret")
+    Joken.Signer.create("HS256", secret)
+  end
+
   defp authenticate({conn, "Bearer " <> jwt}) do
-    case Joken.verify(jwt, @signer) do
+    case Joken.verify(jwt, signer()) do
       {:ok, _} ->
         Logger.debug("Valid Token, proceed")
         conn

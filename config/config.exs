@@ -14,6 +14,7 @@ config :lowendinsight_get, LowendinsightGet.Endpoint,
   port: String.to_integer(System.get_env("PORT") || "4000")
 
 config :lowendinsight_get,
+  jwt_secret: System.get_env("LEI_JWT_SECRET") || "my super secret",
   cache_ttl: String.to_integer(System.get_env("LEI_CACHE_TTL") || "30"),
   cache_ttl_seconds:
     String.to_integer(
