@@ -40,6 +40,7 @@ defmodule LowendinsightGet.MixProject do
       {:timex, "~> 3.7"},
       {:oban, "~> 2.17"},
       {:ecto_sql, "~> 3.11"},
+      {:jason, "~> 1.4"},
       {:postgrex, "~> 0.18"},
       {:lowendinsight, in_umbrella: true},
       {:httpoison_retry, "~> 1.1"},
