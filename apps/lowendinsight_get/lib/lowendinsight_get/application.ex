@@ -29,13 +29,13 @@ defmodule LowendinsightGet.Application do
       end
 
     port = uri.port || 6379
-    host = String.to_charlist(uri.host)
+    host = uri.host || "localhost"
 
     redix_opts =
       [name: :redix, sync_connect: false, exit_on_disconnection: false,
        host: host, port: port, password: password, ssl: ssl?]
 
-    Logger.info("Redix opts (sans password): host=#{inspect(host)} port=#{port} ssl=#{ssl?}")
+    Logger.info("Redix opts (sans password): host=#{host} port=#{port} ssl=#{ssl?}")
 
     kids = [
       {Redix, redix_opts},
