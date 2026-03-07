@@ -3,6 +3,7 @@
 # the BSD 3-Clause license. See the LICENSE file for details.
 
 ExUnit.start()
+Ecto.Adapters.SQL.Sandbox.mode(LowendinsightGet.Repo, :manual)
 
 defmodule Getter do
   def there_yet?(test, key) do

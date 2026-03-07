@@ -11,6 +11,19 @@ defmodule LowendinsightGet.Auth do
     Joken.Signer.create("HS256", secret)
   end
 
+  defp authenticate({conn, "Bearer lei_" <> _rest = token}) do
+    raw_key = String.replace_prefix(token, "Bearer ", "")
+
+    case LowendinsightGet.ApiKeys.authenticate_key(raw_key) do
+      {:ok, api_key} ->
+        LowendinsightGet.ApiKeys.touch_last_used(api_key)
+        conn |> assign(:current_api_key, api_key) |> assign(:auth_method, :api_key)
+
+      {:error, _} ->
+        send_401(conn, %{error: "invalid API key"})
+    end
+  end
+
   defp authenticate({conn, "Bearer " <> jwt}) do
     case Joken.verify(jwt, signer()) do
       {:ok, _} ->
