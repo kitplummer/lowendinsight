@@ -38,6 +38,7 @@ defmodule LowendinsightGet.Application do
     Logger.info("Redix opts (sans password): host=#{inspect(host)} port=#{port} ssl=#{ssl?}")
 
     kids = [
+      {Redix, redix_opts},
       LowendinsightGet.Repo,
       {Oban, Application.fetch_env!(:lowendinsight_get, Oban)},
       LowendinsightGet.Endpoint,
