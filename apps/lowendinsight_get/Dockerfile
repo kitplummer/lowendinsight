@@ -45,6 +45,7 @@ RUN apk update && \
       bash \
       git \
       openssl \
+      ca-certificates \
       libstdc++ \
       libgcc \
       libpq \

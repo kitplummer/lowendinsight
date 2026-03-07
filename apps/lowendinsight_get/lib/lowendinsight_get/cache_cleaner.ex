@@ -8,20 +8,28 @@ defmodule LowendinsightGet.CacheCleaner do
   def clean() do
     cache_ttl = Application.get_env(:lowendinsight_get, :cache_ttl, 2_592_000)
     Logger.info("SCHEDULER: TTL -> #{cache_ttl}")
-    {:ok, conn} = Redix.start_link(Application.get_env(:redix, :redis_url))
 
-    # Match both legacy URL keys (http*) and new structured keys (*:*:latest)
-    Enum.each(["http*", "*:*:latest"], fn pattern ->
-      case Redix.command(conn, ["KEYS", pattern]) do
-        {:ok, keys} ->
-          Enum.each(keys, fn key ->
-            Logger.debug("key -> #{key}")
-            check_ttl(conn, key)
-          end)
-      end
-    end)
+    case Redix.start_link(Application.get_env(:redix, :redis_url)) do
+      {:ok, conn} ->
+        # Match both legacy URL keys (http*) and new structured keys (*:*:latest)
+        Enum.each(["http*", "*:*:latest"], fn pattern ->
+          case Redix.command(conn, ["KEYS", pattern]) do
+            {:ok, keys} ->
+              Enum.each(keys, fn key ->
+                Logger.debug("key -> #{key}")
+                check_ttl(conn, key)
+              end)
 
-    Redix.stop(conn)
+            {:error, reason} ->
+              Logger.warning("Redis KEYS #{pattern} failed: #{inspect(reason)}")
+          end
+        end)
+
+        Redix.stop(conn)
+
+      {:error, reason} ->
+        Logger.warning("Redis connection failed during cache clean: #{inspect(reason)}")
+    end
   end
 
   def check_ttl(conn, key, force_delete? \\ false) do
@@ -43,6 +51,10 @@ defmodule LowendinsightGet.CacheCleaner do
             :deleted
           end
         end
+
+      {:error, reason} ->
+        Logger.warning("Redis GET #{key} failed: #{inspect(reason)}")
+        {:error, reason}
     end
   end
 
