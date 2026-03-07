@@ -14,14 +14,14 @@ packages:
   # UDS Core provides: Istio, Keycloak, Pepr, Prometheus, Loki, Grafana
   - name: core
     repository: ghcr.io/defenseunicorns/packages/uds/core
-    ref: 0.33.0
+    ref: 0.62.0
 
   # PostgreSQL for LEI metadata and API key storage
   - name: postgresql
     repository: ghcr.io/defenseunicorns/packages/uds/postgres-operator
-    ref: 1.12.2
+    ref: 1.15.0-uds.5
 
-  # LowEndInsight application
+  # LowEndInsight application (Zarf package built in apps/lowendinsight)
   - name: lei
-    path: .
+    path: apps/lowendinsight
     ref: 0.9.1
