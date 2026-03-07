@@ -5,4 +5,10 @@
 import Config
 
 config :logger, :console, format: "lei: $time $metadata[$level] $message\n"
+
+config :lowendinsight, ecto_repos: [Lei.Repo]
+
+config :lowendinsight,
+  jwt_secret: System.get_env("LEI_JWT_SECRET") || "lei_dev_secret"
+
 import_config "#{Mix.env()}.exs"

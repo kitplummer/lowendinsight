@@ -51,5 +51,13 @@ config :lowendinsight,
   ## Base directory structure for temp clones
   base_temp_dir: System.get_env("LEI_BASE_TEMP_DIR" || "/tmp")
 
+config :lowendinsight, Lei.Repo,
+  database: "lowendinsight_test",
+  username: "postgres",
+  password: "postgres",
+  hostname: "localhost",
+  pool: Ecto.Adapters.SQL.Sandbox,
+  pool_size: 5
+
 # JsonXema Schema Loader
 config :xema, loader: SchemaLoader

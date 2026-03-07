@@ -8,8 +8,9 @@ defmodule Lei.Web.Router do
   use Plug.Router
 
   plug Plug.Logger
-  plug :match
   plug Plug.Parsers, parsers: [:json], json_decoder: Poison
+  plug Lei.Auth
+  plug :match
   plug :dispatch
 
   post "/v1/analyze/batch" do

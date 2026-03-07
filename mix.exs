@@ -57,7 +57,10 @@ defmodule GithubModule.MixProject do
       {:sbom, "~> 0.6", only: :dev, runtime: false},
       {:exqlite, "~> 0.27"},
       {:plug, "~> 1.15"},
-      {:plug_cowboy, "~> 2.7"}
+      {:plug_cowboy, "~> 2.7"},
+      {:ecto_sql, "~> 3.11"},
+      {:postgrex, "~> 0.18"},
+      {:joken, "~> 2.6"}
     ]
   end
 
