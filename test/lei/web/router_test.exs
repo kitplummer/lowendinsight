@@ -7,6 +7,7 @@ defmodule Lei.Web.RouterTest do
 
   setup do
     Lei.BatchCache.clear()
+    Lei.RateLimiter.clear()
 
     secret = Application.get_env(:lowendinsight, :jwt_secret, "lei_dev_secret")
     signer = Joken.Signer.create("HS256", secret)
