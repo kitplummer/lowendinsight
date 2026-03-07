@@ -193,8 +193,9 @@ defmodule Helpers do
   @spec convert_config_to_list([any]) :: map
   def convert_config_to_list(config) do
     config
-    |> Enum.reject(fn {_k, v} -> is_list(v) or is_tuple(v) end)
-    |> Enum.reject(fn {k, _v} -> k in [:jobs_per_core_max, :ecto_repos] end)
+    |> Enum.reject(fn {k, _v} ->
+      k in [:jobs_per_core_max, :ecto_repos] or (is_atom(k) and k == Lei.Repo)
+    end)
     |> Enum.into(%{})
   end
 
