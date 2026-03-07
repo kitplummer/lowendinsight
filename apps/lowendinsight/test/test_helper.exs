@@ -22,6 +22,8 @@ exclusions =
 
 ExUnit.start(exclude: exclusions)
 
+Ecto.Adapters.SQL.Sandbox.mode(Lei.Repo, :manual)
+
 # Compile support files
 Code.require_file("support/fixture_helper.ex", __DIR__)
 

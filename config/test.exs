@@ -37,6 +37,15 @@ config :redix,
   redis_url: System.get_env("REDIS_URL") || "redis://localhost:6379/2"
 
 # --- lowendinsight (library) test overrides ---
+
+config :lowendinsight, Lei.Repo,
+  database: "lowendinsight_test",
+  username: "postgres",
+  password: "postgres",
+  hostname: "localhost",
+  pool: Ecto.Adapters.SQL.Sandbox,
+  pool_size: 5
+
 # Use LEI library's original thresholds so library unit tests pass
 
 config :lowendinsight,

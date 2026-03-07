@@ -4,9 +4,9 @@
 # Build: docker build -f Dockerfile.prod -t lei:latest .
 # Run:   docker run --rm -v /path/to/repo:/workspace lei:latest analyze /workspace
 
-ARG ELIXIR_VERSION=1.14.1
-ARG ERLANG_VERSION=24.3.4
-ARG ALPINE_VERSION=3.16
+ARG ELIXIR_VERSION=1.16.3
+ARG ERLANG_VERSION=26.2
+ARG ALPINE_VERSION=3.19
 
 # ==============================================================================
 # Stage 1: Builder - compile application and dependencies
@@ -43,6 +43,7 @@ COPY lib ./lib
 COPY config ./config
 COPY schema ./schema
 COPY scripts ./scripts
+COPY priv ./priv
 
 # Compile application
 RUN mix compile
@@ -83,6 +84,7 @@ RUN apk update && \
       git \
       openssh-client \
       ca-certificates \
+      curl \
       tini && \
     mix local.rebar --force && \
     mix local.hex --force && \
@@ -122,6 +124,13 @@ VOLUME ["/workspace"]
 
 # Use tini as init system for proper signal handling
 ENTRYPOINT ["/sbin/tini", "--", "/usr/local/bin/docker-entrypoint.sh"]
+
+# Expose HTTP port
+EXPOSE 4000
+
+# Health check
+HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 \
+  CMD curl -f http://localhost:4000/healthz || exit 1
 
 # Default command: show help
 CMD ["help"]

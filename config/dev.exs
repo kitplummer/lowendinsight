@@ -31,5 +31,12 @@ config :lowendinsight_get, Oban,
 
 # --- lowendinsight (library) dev overrides ---
 
+config :lowendinsight, Lei.Repo,
+  database: "lowendinsight_dev",
+  username: "postgres",
+  password: "postgres",
+  hostname: "localhost",
+  pool_size: 5
+
 config :lowendinsight,
   jobs_per_core_max: String.to_integer(System.get_env("LEI_JOBS_PER_CORE_MAX") || "2")
