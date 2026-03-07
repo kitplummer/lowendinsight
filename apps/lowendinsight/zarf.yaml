@@ -1,14 +1,14 @@
 # Zarf Package Definition for LowEndInsight (LEI)
 # For air-gapped deployment of OSS supply chain risk analysis
 #
-# Build:  zarf package create .
-# Deploy: zarf package deploy zarf-package-lei-*.tar.zst
+# Build:  uds zarf package create . --confirm --set VERSION=0.9.1
+# Deploy: uds zarf package deploy zarf-package-lei-*.tar.zst
 
 kind: ZarfPackageConfig
 metadata:
   name: lei
   description: "LowEndInsight - OSS Supply Chain Risk Analysis Tool"
-  version: "0.8.1"
+  version: "###ZARF_PKG_TMPL_VERSION###"
   url: https://github.com/kitplummer/lowendinsight
   authors: Kit Plummer
   documentation: https://github.com/kitplummer/lowendinsight#readme
@@ -16,46 +16,24 @@ metadata:
   vendor: Kit Plummer
 
 variables:
+  - name: VERSION
+    description: "Application version"
   - name: LEI_REGISTRY
     description: "Container registry for LEI image"
     default: "ghcr.io/kitplummer"
   - name: LEI_CACHE_REGISTRY
     description: "OCI registry for LEI cache artifacts"
-    default: "ghcr.io/defenseunicorns"
+    default: "ghcr.io/kitplummer"
   - name: LEI_AIRGAPPED_MODE
     description: "Enable air-gapped mode"
     default: "true"
 
 components:
-  - name: lei-risk-gate
-    description: "LEI supply chain risk gate - blocks package creation on high-risk dependencies"
-    required: false
-    actions:
-      onCreate:
-        before:
-          - cmd: mix lei.zarf_gate --path . --threshold high --format json
-            description: "LEI supply chain risk assessment"
-
   - name: lei-image
     description: "LowEndInsight container image"
     required: true
     images:
       - "###ZARF_PKG_TMPL_LEI_REGISTRY###/lowendinsight:###ZARF_PKG_TMPL_VERSION###"
-    actions:
-      onCreate:
-        before:
-          - cmd: |
-              echo "Building LEI container image..."
-              docker build -f Dockerfile.prod -t ghcr.io/kitplummer/lowendinsight:0.8.1 .
-            description: "Build LEI production container"
-
-  - name: lei-cli
-    description: "LEI command-line interface scripts"
-    required: false
-    files:
-      - source: scripts/docker-entrypoint.sh
-        target: /usr/local/bin/lei-entrypoint.sh
-        executable: true
 
   - name: lei-config
     description: "LEI configuration files"
@@ -74,32 +52,6 @@ components:
         after:
           - cmd: |
               echo "Extracting SBOM from LEI container..."
-              docker run --rm ghcr.io/kitplummer/lowendinsight:0.8.1 sbom cyclonedx > /var/lei/sbom.cdx.json
-              docker run --rm ghcr.io/kitplummer/lowendinsight:0.8.1 sbom spdx > /var/lei/sbom.spdx.json
+              docker run --rm ###ZARF_PKG_TMPL_LEI_REGISTRY###/lowendinsight:###ZARF_PKG_TMPL_VERSION### sbom cyclonedx > /var/lei/sbom.cdx.json
+              docker run --rm ###ZARF_PKG_TMPL_LEI_REGISTRY###/lowendinsight:###ZARF_PKG_TMPL_VERSION### sbom spdx > /var/lei/sbom.spdx.json
             description: "Extract container SBOM"
-
-  - name: lei-cache
-    description: "LEI analysis cache as OCI artifact for air-gapped environments"
-    required: false
-    images:
-      - "###ZARF_PKG_TMPL_LEI_CACHE_REGISTRY###/lei-cache:latest"
-    actions:
-      onDeploy:
-        after:
-          - cmd: |
-              echo "Importing LEI cache from OCI artifact..."
-              mix lei.cache.pull oci://###ZARF_PKG_TMPL_LEI_CACHE_REGISTRY###/lei-cache:latest -o /var/lei/cache
-              mix lei.cache.import /var/lei/cache
-            description: "Pull and import LEI analysis cache"
-
-  - name: lei-k8s
-    description: "Kubernetes deployment manifests for LEI"
-    required: false
-    manifests:
-      - name: lei-deployment
-        namespace: lei
-        files:
-          - manifests/namespace.yaml
-          - manifests/configmap.yaml
-          - manifests/deployment.yaml
-          - manifests/service.yaml
