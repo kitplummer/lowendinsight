@@ -1,6 +1,6 @@
-ARG ALPINE_VERSION=3.16
+ARG ALPINE_VERSION=3.19
 
-FROM elixir:1.14.1-alpine AS builder
+FROM elixir:1.16.3-alpine AS builder
 
 ARG MIX_ENV=gha
 
@@ -20,6 +20,7 @@ RUN apk update && \
 COPY lib ./lib
 COPY config ./config
 COPY schema ./schema
+COPY priv ./priv
 COPY mix.exs ./mix.exs
 COPY scripts ./scripts
 COPY mix.lock ./mix.lock
