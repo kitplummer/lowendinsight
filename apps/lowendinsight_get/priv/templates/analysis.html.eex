@@ -71,13 +71,15 @@
               <th>Project</th>
               <th>Risk</th>
               <th>Contributor Count</th>
-              <th>Functional Contributor Count
+              <th>Contributor Risk</th>
+              <th>Functional Contributors
                 <div class="tooltip">
                     <i class="fas fa-info-circle"></i>
                     <span class="tooltiptext">A functional contributor is one that contributes above a certain
                     percentage of commits equal to or greater than their "fair" share.</span>
                 </div>
               </th>
+              <th>Functional Contributors Risk</th>
               <th>Large Recent Commit Risk
                 <div class="tooltip">
                     <i class="fas fa-info-circle"></i>
@@ -85,7 +87,14 @@
                     commit is in relation to the size of the codebase.</span>
                 </div>
               </th>
+              <th>Recent Commit Size %</th>
               <th>Commit Currency (weeks)</th>
+              <th>Commit Currency Risk</th>
+              <th>SBOM Risk</th>
+              <th>Repo Size</th>
+              <th>Last Commit</th>
+              <th>Total Commits</th>
+              <th>Default Branch</th>
               <th>JSON</th>
             </tr>
           </thead>
@@ -97,10 +106,21 @@
                 var slug = "<%= slug %>";
                 var risk = report["data"]["risk"];
                 var ccount = report["data"]["results"]["contributor_count"];
+                var contributor_risk = report["data"]["results"]["contributor_risk"];
                 var fccount = report["data"]["results"]["functional_contributors"];
+                var fc_risk = report["data"]["results"]["functional_contributors_risk"];
                 var large_commit_risk = report["data"]["results"]["large_recent_commit_risk"];
+                var recent_commit_pct = report["data"]["results"]["recent_commit_size_in_percent_of_codebase"];
                 var commit_currency = report["data"]["results"]["commit_currency_weeks"];
-                display_row(project, slug, risk, ccount, fccount, large_commit_risk, commit_currency, report);
+                var commit_currency_risk = report["data"]["results"]["commit_currency_risk"];
+                var sbom_risk = report["data"]["results"]["sbom_risk"];
+                var repo_size = report["data"]["repo_size"];
+                var last_commit = report["data"]["git"] ? report["data"]["git"]["last_commit_date"] : null;
+                var total_commits = report["data"]["git"] ? report["data"]["git"]["total_commits_on_default_branch"] : null;
+                var default_branch = report["data"]["git"] ? report["data"]["git"]["default_branch"] : null;
+                display_row(project, slug, risk, ccount, contributor_risk, fccount, fc_risk,
+                            large_commit_risk, recent_commit_pct, commit_currency, commit_currency_risk,
+                            sbom_risk, repo_size, last_commit, total_commits, default_branch, report);
               </script>
           </tbody>
         </table>

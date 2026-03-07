@@ -89,13 +89,15 @@
               <th>Project</th>
                 <th>Risk</th>
                 <th>Contributor Count</th>
-                <th>Functional Contributor Count
+                <th>Contributor Risk</th>
+                <th>Functional Contributors
                   <div class="tooltip">
                       <i class="fas fa-info-circle"></i>
                       <span class="tooltiptext">A functional contributor is one that contributes above a certain
                       percentage of commits equal to or greater than their "fair" share.</span>
                   </div>
                 </th>
+                <th>Functional Contributors Risk</th>
                 <th>Large Recent Commit Risk
                   <div class="tooltip">
                         <i class="fas fa-info-circle"></i>
@@ -103,7 +105,14 @@
                         to the size of the codebase.</span>
                     </div>
                 </th>
+                <th>Recent Commit Size %</th>
                 <th>Commit Currency (weeks)</th>
+                <th>Commit Currency Risk</th>
+                <th>SBOM Risk</th>
+                <th>Repo Size</th>
+                <th>Last Commit</th>
+                <th>Total Commits</th>
+                <th>Default Branch</th>
                 <th>JSON</th>
             </tr>
           </thead>
@@ -115,12 +124,23 @@
                   var slug = "<%= slug %>";
                   var risk = "<%= repo["data"]["risk"] %>";
                   var ccount = "<%= repo["data"]["results"]["contributor_count"] %>";
+                  var contributor_risk = "<%= repo["data"]["results"]["contributor_risk"] %>";
                   var fccount = "<%= repo["data"]["results"]["functional_contributors"] %>";
+                  var fc_risk = "<%= repo["data"]["results"]["functional_contributors_risk"] %>";
                   var large_commit_risk = "<%= repo["data"]["results"]["large_recent_commit_risk"] %>";
+                  var recent_commit_pct = "<%= repo["data"]["results"]["recent_commit_size_in_percent_of_codebase"] %>";
                   var commit_currency = "<%= repo["data"]["results"]["commit_currency_weeks"] %>";
+                  var commit_currency_risk = "<%= repo["data"]["results"]["commit_currency_risk"] %>";
+                  var sbom_risk = "<%= repo["data"]["results"]["sbom_risk"] %>";
+                  var repo_size = "<%= repo["data"]["repo_size"] %>";
+                  var last_commit = "<%= repo["data"]["git"]["last_commit_date"] %>";
+                  var total_commits = "<%= repo["data"]["git"]["total_commits_on_default_branch"] %>";
+                  var default_branch = "<%= repo["data"]["git"]["default_branch"] %>";
                   var json_data = <%= Poison.encode!(repo) %>;
 
-                  display_row(project, slug, risk, ccount, fccount, large_commit_risk, commit_currency, json_data);
+                  display_row(project, slug, risk, ccount, contributor_risk, fccount, fc_risk,
+                              large_commit_risk, recent_commit_pct, commit_currency, commit_currency_risk,
+                              sbom_risk, repo_size, last_commit, total_commits, default_branch, json_data);
                 </script>
             <% end %>
           </tbody>
