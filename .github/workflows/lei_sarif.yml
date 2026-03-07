@@ -18,20 +18,38 @@ jobs:
     runs-on: ubuntu-latest
     env:
       MIX_ENV: test
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: lowendinsight_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
     steps:
     - uses: actions/checkout@v4
 
     - name: Setup Elixir
       uses: erlef/setup-beam@v1
       with:
-        elixir-version: 1.14.1
-        otp-version: 25.2
+        elixir-version: 1.16.3
+        otp-version: 26.2
 
     - name: Install Dependencies
       run: |
         mix local.rebar --force
         mix local.hex --force
         mix deps.get
+
+    - name: Setup Database
+      run: MIX_ENV=test mix ecto.create && MIX_ENV=test mix ecto.migrate
 
     - name: Run LowEndInsight SARIF Scan
       run: |

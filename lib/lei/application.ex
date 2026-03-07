@@ -10,14 +10,13 @@ defmodule Lei.Application do
   def start(_type, _args) do
     port = Application.get_env(:lowendinsight, :http_port, 4000)
 
+    base = [Lei.Repo, Lei.BatchCache]
+
     children =
       if Application.get_env(:lowendinsight, :start_http, false) do
-        [
-          Lei.BatchCache,
-          {Plug.Cowboy, scheme: :http, plug: Lei.Web.Router, options: [port: port]}
-        ]
+        base ++ [{Plug.Cowboy, scheme: :http, plug: Lei.Web.Router, options: [port: port]}]
       else
-        [Lei.BatchCache]
+        base
       end
 
     opts = [strategy: :one_for_one, name: Lei.Supervisor]
