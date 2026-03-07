@@ -2,6 +2,10 @@ defmodule Lei.ApiKeys do
   import Ecto.Query
   alias Lei.{Repo, Org, ApiKey}
 
+  def get_org_by_slug(slug) do
+    Repo.get_by(Org, slug: slug)
+  end
+
   def find_or_create_org(name) do
     slug =
       name

@@ -2,6 +2,13 @@ defmodule Lei.Auth do
   import Plug.Conn
   require Logger
 
+  @scope_map %{
+    {"/v1/analyze", "POST"} => "analyze",
+    {"/v1/health", "GET"} => nil,
+    {"/v1/orgs", "POST"} => "admin",
+    {"/v1/orgs", "GET"} => "admin"
+  }
+
   def init(opts), do: opts
 
   def call(%Plug.Conn{request_path: path} = conn, _opts) do
@@ -9,6 +16,8 @@ defmodule Lei.Auth do
       conn
       |> get_auth_header()
       |> authenticate()
+      |> check_scope()
+      |> check_rate_limit()
     else
       conn
     end
@@ -52,10 +61,79 @@ defmodule Lei.Auth do
     send_401(conn)
   end
 
+  defp check_scope(%Plug.Conn{halted: true} = conn), do: conn
+
+  defp check_scope(conn) do
+    required = required_scope(conn)
+
+    cond do
+      # No scope required for this endpoint
+      is_nil(required) ->
+        conn
+
+      # JWT auth skips scope check (full access)
+      conn.assigns[:auth_method] != :api_key ->
+        conn
+
+      # API key — check scopes
+      true ->
+        scopes = conn.assigns[:current_api_key].scopes
+
+        if required in scopes or "admin" in scopes do
+          conn
+        else
+          send_403(conn, %{error: "insufficient scope", required: required})
+        end
+    end
+  end
+
+  defp check_rate_limit(%Plug.Conn{halted: true} = conn), do: conn
+
+  defp check_rate_limit(conn) do
+    # Only rate-limit API key auth; JWT is internal/trusted
+    if conn.assigns[:auth_method] == :api_key do
+      api_key = conn.assigns[:current_api_key]
+      tier = api_key.org.tier
+
+      case Lei.RateLimiter.check(api_key.key_prefix, tier) do
+        {:ok, remaining} ->
+          conn
+          |> put_resp_header("x-ratelimit-remaining", to_string(remaining))
+
+        {:error, :rate_limited, retry_after} ->
+          retry_secs = div(retry_after, 1000) + 1
+
+          conn
+          |> put_resp_header("retry-after", to_string(retry_secs))
+          |> put_resp_content_type("application/json")
+          |> send_resp(429, Poison.encode!(%{error: "rate limit exceeded", retry_after: retry_secs}))
+          |> halt()
+      end
+    else
+      conn
+    end
+  end
+
+  defp required_scope(conn) do
+    # Match path prefix (e.g., /v1/analyze/batch matches /v1/analyze)
+    Enum.find_value(@scope_map, fn {{prefix, method}, scope} ->
+      if String.starts_with?(conn.request_path, prefix) and conn.method == method do
+        scope
+      end
+    end)
+  end
+
   defp send_401(conn, data \\ %{message: "authentication required"}) do
     conn
     |> put_resp_content_type("application/json")
     |> send_resp(401, Poison.encode!(data))
+    |> halt()
+  end
+
+  defp send_403(conn, data) do
+    conn
+    |> put_resp_content_type("application/json")
+    |> send_resp(403, Poison.encode!(data))
     |> halt()
   end
 end
