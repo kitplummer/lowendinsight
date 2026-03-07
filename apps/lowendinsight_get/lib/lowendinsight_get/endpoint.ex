@@ -400,6 +400,8 @@ defmodule LowendinsightGet.Endpoint do
 
   defp render(%{status: status} = conn, template, assigns) do
     template_dir = Path.join(:code.priv_dir(:lowendinsight_get), "templates")
+    version = Application.spec(:lowendinsight_get, :vsn) |> to_string()
+    assigns = Keyword.put(assigns, :version, version)
 
     body =
       template_dir

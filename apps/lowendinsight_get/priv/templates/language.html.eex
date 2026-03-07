@@ -151,6 +151,7 @@
   <footer id="footer" class="footer">
     <div class="content has-text-centered">
       <img id="gtri" src="../images/gtri.png">
+      <p style="font-size: 0.75rem; color: #999;">v<%= version %></p>
     </div>
   </footer>
 </html>

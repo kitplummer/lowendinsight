@@ -8,7 +8,7 @@ defmodule LowendinsightGet.MixProject do
   def project do
     [
       app: :lowendinsight_get,
-      version: "0.9.3",
+      version: "0.9.4",
       elixir: "~> 1.14",
       start_permanent: Mix.env() == :prod,
       build_path: "../../_build",

@@ -120,9 +120,14 @@
               <div class="content">
                 <ul>
                   <li><strong>Contributor count</strong> &mdash; bus factor risk</li>
+                  <li><strong>Contributor risk</strong> &mdash; overall contributor risk level</li>
                   <li><strong>Functional contributors</strong> &mdash; concentration of commits</li>
+                  <li><strong>Functional contributors risk</strong> &mdash; contributor concentration risk level</li>
                   <li><strong>Commit currency</strong> &mdash; weeks since last commit</li>
-                  <li><strong>Large commit ratio</strong> &mdash; codebase volatility</li>
+                  <li><strong>Commit currency risk</strong> &mdash; staleness risk level</li>
+                  <li><strong>Large recent commit risk</strong> &mdash; codebase volatility</li>
+                  <li><strong>Recent commit size %</strong> &mdash; last commit as % of codebase</li>
+                  <li><strong>SBOM risk</strong> &mdash; dependency/supply chain risk</li>
                 </ul>
               </div>
             </div>
@@ -172,6 +177,7 @@
     <footer class="footer" style="padding: 1.5rem;">
       <div class="content has-text-centered">
         <p>LowEndInsight &mdash; originally by <a href="https://gtri.gatech.edu">GTRI</a> &mdash; BSD 3-Clause License</p>
+        <p style="font-size: 0.75rem; color: #999;">v<%= version %></p>
       </div>
     </footer>
 
