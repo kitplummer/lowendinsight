@@ -50,6 +50,13 @@ config :lowendinsight_get,
     "typescript"
   ]
 
+# --- lowendinsight (library) Ecto repo ---
+
+config :lowendinsight, ecto_repos: [Lei.Repo]
+
+config :lowendinsight,
+  jwt_secret: System.get_env("LEI_JWT_SECRET") || "lei_dev_secret"
+
 # --- lowendinsight (library) risk thresholds ---
 
 config :lowendinsight,

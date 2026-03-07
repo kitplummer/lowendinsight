@@ -29,15 +29,22 @@ defmodule LowendinsightGet.Application do
       end
 
     port = uri.port || 6379
-    host = String.to_charlist(uri.host)
+    host = uri.host || "localhost"
+
+    database =
+      case uri.path do
+        "/" <> db when db != "" -> String.to_integer(db)
+        _ -> 0
+      end
 
     redix_opts =
       [name: :redix, sync_connect: false, exit_on_disconnection: false,
-       host: host, port: port, password: password, ssl: ssl?]
+       host: host, port: port, password: password, ssl: ssl?, database: database]
 
-    Logger.info("Redix opts (sans password): host=#{inspect(host)} port=#{port} ssl=#{ssl?}")
+    Logger.info("Redix opts (sans password): host=#{host} port=#{port} db=#{database} ssl=#{ssl?}")
 
     kids = [
+      {Redix, redix_opts},
       LowendinsightGet.Repo,
       {Oban, Application.fetch_env!(:lowendinsight_get, Oban)},
       LowendinsightGet.Endpoint,

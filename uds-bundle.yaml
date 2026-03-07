@@ -1,0 +1,27 @@
+# UDS Bundle Definition for LowEndInsight
+# Combines UDS Core + PostgreSQL + LEI into a single deployable artifact
+#
+# Build:  uds create .
+# Deploy: uds deploy uds-bundle-lei-*.tar.zst --config uds-config.yaml
+
+kind: UDSBundle
+metadata:
+  name: lei
+  description: "LowEndInsight - OSS Supply Chain Risk Analysis"
+  version: "0.9.1"
+
+packages:
+  # UDS Core provides: Istio, Keycloak, Pepr, Prometheus, Loki, Grafana
+  - name: core
+    repository: ghcr.io/defenseunicorns/packages/uds/core
+    ref: 0.33.0
+
+  # PostgreSQL for LEI metadata and API key storage
+  - name: postgresql
+    repository: ghcr.io/defenseunicorns/packages/uds/postgres-operator
+    ref: 1.12.2
+
+  # LowEndInsight application
+  - name: lei
+    path: .
+    ref: 0.9.1
