@@ -61,12 +61,18 @@ jobs:
     - name: Publish bundle to GHCR
       if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/')
       run: |
-        uds publish uds-bundle-lei-*.tar.zst \
-          oci://ghcr.io/${{ github.repository_owner }}/bundles
+        if ls uds-bundle-lei-*.tar.zst 1>/dev/null 2>&1; then
+          uds publish uds-bundle-lei-*.tar.zst \
+            oci://ghcr.io/${{ github.repository_owner }}/bundles
+        else
+          echo "No bundle artifact found — skipping publish"
+        fi
 
     - name: Upload bundle artifact
+      if: always()
       uses: actions/upload-artifact@v4
       with:
         name: uds-bundle-lei
         path: uds-bundle-lei-*.tar.zst
+        if-no-files-found: ignore
         retention-days: 14
