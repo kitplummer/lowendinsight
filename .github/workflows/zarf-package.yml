@@ -28,10 +28,7 @@ jobs:
         fi
 
     - name: Install UDS CLI
-      run: |
-        curl -fsSL https://uds.defenseunicorns.com/install.sh | bash
-        sudo mv uds /usr/local/bin/
-        uds version
+      uses: defenseunicorns/setup-uds@v1
 
     - name: Login to GHCR
       uses: docker/login-action@v3
@@ -41,14 +38,15 @@ jobs:
         password: ${{ secrets.GITHUB_TOKEN }}
 
     - name: Lint Zarf package
-      run: uds zarf dev lint .
+      run: uds zarf dev lint apps/lowendinsight
 
     - name: Build container image
       run: |
-        docker build -f Dockerfile.prod \
+        cp mix.lock apps/lowendinsight/
+        docker build -f apps/lowendinsight/Dockerfile.prod \
           -t ghcr.io/${{ github.repository_owner }}/lowendinsight:${VERSION} \
           -t ghcr.io/${{ github.repository_owner }}/lowendinsight:latest \
-          .
+          apps/lowendinsight/
 
     - name: Push container image
       run: |
@@ -57,18 +55,19 @@ jobs:
 
     - name: Create Zarf package
       run: |
+        cd apps/lowendinsight
         uds zarf package create . --confirm \
           --set VERSION=${VERSION} \
           --set LEI_REGISTRY=ghcr.io/${{ github.repository_owner }}
 
     - name: Publish Zarf package to GHCR
       run: |
-        uds zarf package publish zarf-package-lei-*.tar.zst \
+        uds zarf package publish apps/lowendinsight/zarf-package-lei-*.tar.zst \
           oci://ghcr.io/${{ github.repository_owner }}/packages
 
     - name: Upload Zarf package artifact
       uses: actions/upload-artifact@v4
       with:
         name: zarf-package-lei
-        path: zarf-package-lei-*.tar.zst
+        path: apps/lowendinsight/zarf-package-lei-*.tar.zst
         retention-days: 30

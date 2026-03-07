@@ -30,10 +30,7 @@ jobs:
         fi
 
     - name: Install UDS CLI
-      run: |
-        curl -fsSL https://uds.defenseunicorns.com/install.sh | bash
-        sudo mv uds /usr/local/bin/
-        uds version
+      uses: defenseunicorns/setup-uds@v1
 
     - name: Login to GHCR
       if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/')
@@ -45,11 +42,14 @@ jobs:
 
     - name: Build LEI container image
       run: |
-        docker build -f Dockerfile.prod \
-          -t ghcr.io/${{ github.repository_owner }}/lowendinsight:${VERSION} .
+        cp mix.lock apps/lowendinsight/
+        docker build -f apps/lowendinsight/Dockerfile.prod \
+          -t ghcr.io/${{ github.repository_owner }}/lowendinsight:${VERSION} \
+          apps/lowendinsight/
 
     - name: Create Zarf package
       run: |
+        cd apps/lowendinsight
         uds zarf package create . --confirm \
           --set VERSION=${VERSION} \
           --set LEI_REGISTRY=ghcr.io/${{ github.repository_owner }}
