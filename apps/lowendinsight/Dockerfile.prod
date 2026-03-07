@@ -1,8 +1,8 @@
 # Production Dockerfile for LowEndInsight (LEI)
-# Optimized for Zarf packaging and air-gapped deployment
+# Must be built from the umbrella root context:
+#   docker build -f apps/lowendinsight/Dockerfile.prod -t lei:latest .
 #
-# Build: docker build -f Dockerfile.prod -t lei:latest .
-# Run:   docker run --rm -v /path/to/repo:/workspace lei:latest analyze /workspace
+# Run: docker run --rm -v /path/to/repo:/workspace lei:latest analyze /workspace
 
 ARG ELIXIR_VERSION=1.16.3
 ARG ERLANG_VERSION=26.2
@@ -31,19 +31,17 @@ RUN apk update && \
     mix local.rebar --force && \
     mix local.hex --force
 
-# Copy dependency and config files first for caching
+# Copy umbrella root files (config, mix.exs, mix.lock)
 COPY mix.exs mix.lock ./
 COPY config ./config
 
-# Fetch and compile dependencies (cached layer)
+# Copy the lowendinsight app
+COPY apps/lowendinsight ./apps/lowendinsight
+
+# Fetch and compile dependencies from the app directory
+WORKDIR /build/apps/lowendinsight
 RUN mix deps.get --only ${MIX_ENV} && \
     mix deps.compile
-
-# Copy application source
-COPY lib ./lib
-COPY schema ./schema
-COPY scripts ./scripts
-COPY priv ./priv
 
 # Compile application
 RUN mix compile
@@ -56,8 +54,6 @@ FROM builder AS sbom-generator
 # Install syft for SBOM generation
 RUN apk add --no-cache curl && \
     curl -sSfL https://raw.githubusercontent.com/anchore/syft/main/install.sh | sh -s -- -b /usr/local/bin
-
-WORKDIR /build
 
 # Generate SBOM in multiple formats
 RUN syft dir:/build -o cyclonedx-json=/build/sbom.cdx.json && \
@@ -95,12 +91,12 @@ RUN apk update && \
     mkdir -p /workspace /tmp/lei && \
     chown -R lei:lei /opt/lei /workspace /tmp/lei
 
-# Copy compiled application from builder
+# Copy compiled application from builder (umbrella structure)
 COPY --from=builder --chown=lei:lei /build/_build/${MIX_ENV} ./_build/${MIX_ENV}
 COPY --from=builder --chown=lei:lei /build/deps ./deps
-COPY --from=builder --chown=lei:lei /build/lib ./lib
+COPY --from=builder --chown=lei:lei /build/apps/lowendinsight/lib ./lib
 COPY --from=builder --chown=lei:lei /build/config ./config
-COPY --from=builder --chown=lei:lei /build/schema ./schema
+COPY --from=builder --chown=lei:lei /build/apps/lowendinsight/schema ./schema
 COPY --from=builder --chown=lei:lei /build/mix.exs ./mix.exs
 COPY --from=builder --chown=lei:lei /build/mix.lock ./mix.lock
 
@@ -109,7 +105,7 @@ COPY --from=sbom-generator --chown=lei:lei /build/sbom.cdx.json /opt/lei/sbom.cd
 COPY --from=sbom-generator --chown=lei:lei /build/sbom.spdx.json /opt/lei/sbom.spdx.json
 
 # Copy entrypoint script
-COPY --chown=lei:lei scripts/docker-entrypoint.sh /usr/local/bin/docker-entrypoint.sh
+COPY --chown=lei:lei apps/lowendinsight/scripts/docker-entrypoint.sh /usr/local/bin/docker-entrypoint.sh
 RUN chmod +x /usr/local/bin/docker-entrypoint.sh
 
 # Switch to non-root user

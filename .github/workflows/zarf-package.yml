@@ -42,15 +42,15 @@ jobs:
         cd apps/lowendinsight
         uds zarf dev lint . \
           --set VERSION=${VERSION} \
-          --set LEI_REGISTRY=ghcr.io/${{ github.repository_owner }}
+          --set LEI_REGISTRY=ghcr.io/${{ github.repository_owner }} \
+          --set LEI_CACHE_REGISTRY=ghcr.io/${{ github.repository_owner }}
 
     - name: Build container image
       run: |
-        cp mix.lock apps/lowendinsight/
         docker build -f apps/lowendinsight/Dockerfile.prod \
           -t ghcr.io/${{ github.repository_owner }}/lowendinsight:${VERSION} \
           -t ghcr.io/${{ github.repository_owner }}/lowendinsight:latest \
-          apps/lowendinsight/
+          .
 
     - name: Push container image
       run: |
