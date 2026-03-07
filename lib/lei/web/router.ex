@@ -122,6 +122,33 @@ defmodule Lei.Web.Router do
     end
   end
 
+  # Unauthenticated health/metrics endpoints (outside /v1 prefix)
+
+  get "/healthz" do
+    data = Lei.Health.liveness()
+
+    conn
+    |> put_resp_content_type("application/json")
+    |> send_resp(200, Poison.encode!(data))
+  end
+
+  get "/readyz" do
+    data = Lei.Health.readiness()
+    status = if data.status == "ok", do: 200, else: 503
+
+    conn
+    |> put_resp_content_type("application/json")
+    |> send_resp(status, Poison.encode!(data))
+  end
+
+  get "/metrics" do
+    metrics = Lei.Metrics.collect()
+
+    conn
+    |> put_resp_content_type("text/plain")
+    |> send_resp(200, metrics)
+  end
+
   match _ do
     conn
     |> put_resp_content_type("application/json")
