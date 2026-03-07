@@ -86,6 +86,15 @@ jobs:
           --health-interval 10s
           --health-timeout 5s
           --health-retries 5
+      redis:
+        image: redis:7-alpine
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
 
     steps:
     - uses: actions/checkout@v4
@@ -97,10 +106,6 @@ jobs:
     - uses: actions/setup-node@v4
       with:
         node-version: 20
-    - uses: zhulik/redis-action@1.1.0
-      with:
-        redis version: '7'
-        number of databases: 20
     - name: Install Dependencies
       run: |
         npm install -g newman

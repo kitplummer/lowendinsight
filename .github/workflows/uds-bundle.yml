@@ -3,13 +3,6 @@ name: uds_bundle
 on:
   push:
     tags: ['v*']
-  pull_request:
-    branches: [develop, main]
-    paths:
-      - 'uds-bundle.yaml'
-      - 'uds-config.yaml'
-      - 'zarf.yaml'
-      - 'Dockerfile.prod'
   workflow_dispatch:
     inputs:
       version:
