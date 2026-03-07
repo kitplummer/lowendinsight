@@ -40,10 +40,13 @@ jobs:
             type=semver,pattern={{major}}.{{minor}}
             type=sha
 
+      - name: Prepare build context
+        run: cp mix.lock apps/lowendinsight/
+
       - name: Build and push Docker image
         uses: docker/build-push-action@v5
         with:
-          context: .
+          context: apps/lowendinsight
           file: apps/lowendinsight/Dockerfile.prod
           push: true
           tags: ${{ steps.meta.outputs.tags }}

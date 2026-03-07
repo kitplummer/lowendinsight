@@ -28,7 +28,7 @@ jobs:
         fi
 
     - name: Install UDS CLI
-      uses: defenseunicorns/setup-uds@v1
+      uses: defenseunicorns/setup-uds@v1.0.1
 
     - name: Login to GHCR
       uses: docker/login-action@v3
