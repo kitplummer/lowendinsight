@@ -62,7 +62,8 @@ jobs:
         cd apps/lowendinsight
         uds zarf package create . --confirm \
           --set VERSION=${VERSION} \
-          --set LEI_REGISTRY=ghcr.io/${{ github.repository_owner }}
+          --set LEI_REGISTRY=ghcr.io/${{ github.repository_owner }} \
+          --set LEI_CACHE_REGISTRY=ghcr.io/${{ github.repository_owner }}
 
     - name: Publish Zarf package to GHCR
       run: |
