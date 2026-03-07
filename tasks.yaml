@@ -71,15 +71,22 @@ tasks:
         description: "Validate LEI deployment"
 
   - name: journey-test
-    description: "Run full journey tests"
+    description: "Full journey: build + deploy + validate + cleanup"
     actions:
-      - cmd: tests/journey.sh
+      - task: dev
+      - cmd: bash tests/journey.sh
         description: "Execute journey test suite"
+      - task: remove
+
+  - name: journey-test-only
+    description: "Run journey tests against an existing deployment"
+    actions:
+      - cmd: bash tests/journey.sh
 
   - name: upgrade-test
-    description: "Run upgrade tests"
+    description: "Run upgrade tests (requires two bundle files)"
     actions:
-      - cmd: tests/upgrade.sh
+      - cmd: bash tests/upgrade.sh
         description: "Execute upgrade test suite"
 
   # ---------- Utility Tasks ----------
