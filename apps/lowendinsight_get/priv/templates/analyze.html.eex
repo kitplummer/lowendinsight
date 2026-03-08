@@ -31,6 +31,14 @@
               <p class="subtitle">Open source supply chain risk analysis</p>
             </div>
             <div class="column is-narrow">
+              <a class="button is-success is-outlined" href="/signup">
+                <span class="icon"><i class="fas fa-user-plus"></i></span>
+                <span>Signup</span>
+              </a>
+              <a class="button is-info is-outlined" href="/login">
+                <span class="icon"><i class="fas fa-sign-in-alt"></i></span>
+                <span>Login</span>
+              </a>
               <a class="button is-warning is-outlined" href="/doc">
                 <span class="icon"><i class="fas fa-book-open"></i></span>
                 <span>API Docs</span>
