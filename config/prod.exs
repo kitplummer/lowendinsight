@@ -45,6 +45,10 @@ config :lowendinsight_get, LowendinsightGet.Repo,
   url: database_url,
   pool_size: 5
 
+config :lowendinsight, Lei.Repo,
+  url: database_url,
+  pool_size: 5
+
 config :lowendinsight_get, Oban,
   repo: LowendinsightGet.Repo,
   queues: [
