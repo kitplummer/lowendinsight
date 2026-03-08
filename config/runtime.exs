@@ -42,6 +42,8 @@ if config_env() == :prod do
     ]
 
   config :lowendinsight,
+    start_http: true,
+    http_port: String.to_integer(System.get_env("LEI_HTTP_PORT") || "4000"),
     critical_contributor_level:
       String.to_integer(System.get_env("LEI_CRITICAL_CONTRIBUTOR_LEVEL") || "2"),
     high_contributor_level: System.get_env("LEI_HIGH_CONTRIBUTOR_LEVEL") || 3,
