@@ -11,7 +11,10 @@ defmodule Lei.AuthTest do
     Lei.RateLimiter.clear()
 
     {:ok, org} = Lei.ApiKeys.find_or_create_org("Auth Test Org")
-    {:ok, raw_key, _api_key} = Lei.ApiKeys.create_api_key(org, "auth-test-key", ["analyze", "admin"])
+
+    {:ok, raw_key, _api_key} =
+      Lei.ApiKeys.create_api_key(org, "auth-test-key", ["analyze", "admin"])
+
     %{raw_key: raw_key}
   end
 

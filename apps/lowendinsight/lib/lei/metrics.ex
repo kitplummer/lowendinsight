@@ -4,7 +4,7 @@ defmodule Lei.Metrics do
   """
 
   def collect do
-    vm_metrics() ++ app_metrics()
+    (vm_metrics() ++ app_metrics())
     |> Enum.join("\n")
     |> Kernel.<>("\n")
   end

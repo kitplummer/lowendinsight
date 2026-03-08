@@ -123,6 +123,25 @@ defmodule AnalyzerModule do
 
       {:ok, top10_contributors} = GitModule.get_top10_contributors_map(repo)
 
+      # Agentic detection: classify contributors and compute ratio
+      {:ok, contributors} = GitModule.get_contributors(repo)
+      {:ok, commit_trailers} = GitModule.get_commits_with_trailers(repo)
+
+      contributors_with_messages =
+        Enum.map(contributors, fn contributor ->
+          messages =
+            commit_trailers
+            |> Enum.filter(&(&1.author_email == contributor.email))
+            |> Enum.map(& &1.body)
+
+          {contributor, messages}
+        end)
+
+      agentic_analysis =
+        Lei.AgenticDetector.analyze(contributors_with_messages, num_filtered_contributors)
+
+      {:ok, agentic_risk} = RiskLogic.agentic_risk(agentic_analysis.agentic_contribution_ratio)
+
       project_types_identified =
         case Map.has_key?(options, :types) && options.types == true do
           true ->
@@ -183,7 +202,12 @@ defmodule AnalyzerModule do
             functional_contributors: num_filtered_contributors,
             functional_contributor_names: functional_contributors,
             top10_contributors: top10_contributors,
-            sbom_risk: sbom_risk
+            sbom_risk: sbom_risk,
+            agentic_risk: agentic_risk,
+            agentic_contribution_ratio: agentic_analysis.agentic_contribution_ratio,
+            human_contributor_count: agentic_analysis.human_contributor_count,
+            human_functional_contributors: agentic_analysis.human_functional_contributors,
+            agentic_contributors: agentic_analysis.classified_contributors
           }
         }
       }

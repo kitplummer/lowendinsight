@@ -50,7 +50,7 @@ defmodule Lei.ApiKeys do
     key_hash = hash_key(raw_key)
 
     case Repo.one(
-           from k in ApiKey, where: k.key_hash == ^key_hash and k.active == true, preload: :org
+           from(k in ApiKey, where: k.key_hash == ^key_hash and k.active == true, preload: :org)
          ) do
       nil -> {:error, :invalid_key}
       api_key -> {:ok, api_key}
@@ -66,7 +66,7 @@ defmodule Lei.ApiKeys do
   end
 
   def list_keys(%Org{} = org) do
-    Repo.all(from k in ApiKey, where: k.org_id == ^org.id, order_by: [desc: :inserted_at])
+    Repo.all(from(k in ApiKey, where: k.org_id == ^org.id, order_by: [desc: :inserted_at]))
   end
 
   def revoke_key(key_id) do

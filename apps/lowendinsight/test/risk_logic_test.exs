@@ -178,6 +178,29 @@ defmodule RiskLogicTest do
     assert RiskLogic.functional_contributors_risk(100) == {:ok, "low"}
   end
 
+  describe "agentic_risk" do
+    test "low when ratio below 0.5" do
+      assert RiskLogic.agentic_risk(0.0) == {:ok, "low"}
+      assert RiskLogic.agentic_risk(0.3) == {:ok, "low"}
+      assert RiskLogic.agentic_risk(0.49) == {:ok, "low"}
+    end
+
+    test "medium when ratio at or above 0.5" do
+      assert RiskLogic.agentic_risk(0.5) == {:ok, "medium"}
+      assert RiskLogic.agentic_risk(0.6) == {:ok, "medium"}
+    end
+
+    test "high when ratio at or above 0.7" do
+      assert RiskLogic.agentic_risk(0.7) == {:ok, "high"}
+      assert RiskLogic.agentic_risk(0.8) == {:ok, "high"}
+    end
+
+    test "critical when ratio at or above 0.9" do
+      assert RiskLogic.agentic_risk(0.9) == {:ok, "critical"}
+      assert RiskLogic.agentic_risk(1.0) == {:ok, "critical"}
+    end
+  end
+
   describe "config fallback branches" do
     test "contributor_risk uses defaults when config is missing" do
       # Save and remove the config
@@ -290,6 +313,31 @@ defmodule RiskLogicTest do
             :critical_functional_contributors_level,
             original_critical
           )
+    end
+
+    test "agentic_risk uses defaults when config is missing" do
+      original_critical = Application.get_env(:lowendinsight, :critical_agentic_level)
+      original_high = Application.get_env(:lowendinsight, :high_agentic_level)
+      original_medium = Application.get_env(:lowendinsight, :medium_agentic_level)
+
+      Application.delete_env(:lowendinsight, :critical_agentic_level)
+      Application.delete_env(:lowendinsight, :high_agentic_level)
+      Application.delete_env(:lowendinsight, :medium_agentic_level)
+
+      # Defaults: medium=0.5, high=0.7, critical=0.9
+      assert RiskLogic.agentic_risk(0.3) == {:ok, "low"}
+      assert RiskLogic.agentic_risk(0.5) == {:ok, "medium"}
+      assert RiskLogic.agentic_risk(0.7) == {:ok, "high"}
+      assert RiskLogic.agentic_risk(0.9) == {:ok, "critical"}
+
+      if original_critical,
+        do: Application.put_env(:lowendinsight, :critical_agentic_level, original_critical)
+
+      if original_high,
+        do: Application.put_env(:lowendinsight, :high_agentic_level, original_high)
+
+      if original_medium,
+        do: Application.put_env(:lowendinsight, :medium_agentic_level, original_medium)
     end
   end
 end

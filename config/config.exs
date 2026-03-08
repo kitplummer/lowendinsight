@@ -87,7 +87,16 @@ config :lowendinsight,
       System.get_env("LEI_MEDIUM_FUNCTIONAL_CONTRIBUTORS_LEVEL") || "5"
     ),
   jobs_per_core_max: String.to_integer(System.get_env("LEI_JOBS_PER_CORE_MAX") || "1"),
-  base_temp_dir: System.get_env("LEI_BASE_TEMP_DIR") || "/tmp"
+  base_temp_dir: System.get_env("LEI_BASE_TEMP_DIR") || "/tmp",
+  critical_agentic_level:
+    String.to_float(System.get_env("LEI_CRITICAL_AGENTIC_LEVEL") || "0.9"),
+  high_agentic_level:
+    String.to_float(System.get_env("LEI_HIGH_AGENTIC_LEVEL") || "0.7"),
+  medium_agentic_level:
+    String.to_float(System.get_env("LEI_MEDIUM_AGENTIC_LEVEL") || "0.5"),
+  session_secret_key_base:
+    System.get_env("LEI_SESSION_SECRET") ||
+      "lei_dev_session_secret_that_is_at_least_64_bytes_long_for_cookie_store_to_work_properly"
 
 # JsonXema Schema Loader
 config :xema, loader: SchemaLoader

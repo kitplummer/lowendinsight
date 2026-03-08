@@ -4,7 +4,8 @@ defmodule Contributor do
             count: 0,
             merges: 0,
             last_contribution_date: "",
-            commits: []
+            commits: [],
+            classification: :unknown
 
   @type t :: %__MODULE__{
           name: String.t(),
@@ -12,6 +13,7 @@ defmodule Contributor do
           count: integer,
           merges: integer,
           last_contribution_date: String.t(),
-          commits: [String.t()]
+          commits: [String.t()],
+          classification: :human | :bot | :agent | :unknown
         }
 end

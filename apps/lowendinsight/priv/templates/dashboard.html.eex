@@ -1,0 +1,66 @@
+<h1 class="title">Dashboard &mdash; <%= @org.name %></h1>
+
+<h2 class="subtitle">API Keys</h2>
+
+<%= if assigns[:new_key] do %>
+  <div class="notification is-warning">
+    <strong>New key created!</strong> Save it now &mdash; it will not be shown again.
+    <br>
+    <code><%= @new_key %></code>
+  </div>
+<% end %>
+
+<table class="table is-fullwidth is-striped">
+  <thead>
+    <tr>
+      <th>Name</th>
+      <th>Prefix</th>
+      <th>Scopes</th>
+      <th>Active</th>
+      <th>Last Used</th>
+      <th>Actions</th>
+    </tr>
+  </thead>
+  <tbody>
+    <%= for key <- @keys do %>
+      <tr>
+        <td><%= key.name %></td>
+        <td><code><%= key.key_prefix %></code></td>
+        <td><%= Enum.join(key.scopes, ", ") %></td>
+        <td><%= if key.active, do: "Yes", else: "No" %></td>
+        <td><%= key.last_used_at || "Never" %></td>
+        <td>
+          <%= if key.active do %>
+            <form method="post" action="/keys/<%= key.id %>/revoke" style="display:inline">
+              <button class="button is-small is-danger is-outlined" type="submit">Revoke</button>
+            </form>
+          <% end %>
+        </td>
+      </tr>
+    <% end %>
+  </tbody>
+</table>
+
+<h2 class="subtitle mt-5">Create New Key</h2>
+<div class="box" style="max-width: 480px;">
+  <form method="post" action="/keys">
+    <div class="field">
+      <label class="label">Key Name</label>
+      <div class="control">
+        <input class="input" type="text" name="name" placeholder="ci-pipeline" required>
+      </div>
+    </div>
+    <div class="field">
+      <label class="label">Scopes (comma-separated)</label>
+      <div class="control">
+        <input class="input" type="text" name="scopes" placeholder="analyze,admin">
+      </div>
+      <p class="help">Available: analyze, admin</p>
+    </div>
+    <div class="field">
+      <div class="control">
+        <button class="button is-primary" type="submit">Create Key</button>
+      </div>
+    </div>
+  </form>
+</div>

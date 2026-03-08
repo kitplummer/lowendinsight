@@ -355,6 +355,33 @@ defmodule GitModule do
     author_date
   end
 
+  @doc """
+  get_commits_with_trailers/1: returns a list of maps with author_email and body
+  for all commits. Used for detecting AI co-author trailers.
+  """
+  @spec get_commits_with_trailers(Git.Repository.t()) :: {:ok, [map()]}
+  def get_commits_with_trailers(repo) do
+    separator = "---LEI_SEPARATOR---"
+
+    raw =
+      Git.log!(repo, ["--pretty=format:%ae\t%B#{separator}"])
+      |> String.split(separator)
+      |> Enum.map(&String.trim/1)
+      |> Enum.filter(&(&1 != ""))
+
+    commits =
+      Enum.map(raw, fn entry ->
+        case String.split(entry, "\t", parts: 2) do
+          [email, body] -> %{author_email: email, body: body}
+          [email] -> %{author_email: email, body: ""}
+          _ -> nil
+        end
+      end)
+      |> Enum.filter(&(not is_nil(&1)))
+
+    {:ok, commits}
+  end
+
   @spec get_repo_size(Git.Repository.t()) :: {:ok, String.t()}
   def get_repo_size(repo) do
     space =

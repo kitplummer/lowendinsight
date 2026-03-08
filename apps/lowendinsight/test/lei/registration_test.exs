@@ -62,7 +62,11 @@ defmodule Lei.RegistrationTest do
   describe "POST /v1/orgs/:slug/keys" do
     test "creates an API key for org", %{admin_key: key, org: org} do
       conn =
-        conn(:post, "/v1/orgs/#{org.slug}/keys", Poison.encode!(%{name: "ci-key", scopes: ["analyze"]}))
+        conn(
+          :post,
+          "/v1/orgs/#{org.slug}/keys",
+          Poison.encode!(%{name: "ci-key", scopes: ["analyze"]})
+        )
         |> put_req_header("content-type", "application/json")
         |> put_req_header("authorization", "Bearer #{key}")
         |> Lei.Web.Router.call(@opts)
