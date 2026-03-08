@@ -11,7 +11,7 @@ defmodule LowendinsightGet.Auth do
     Joken.Signer.create("HS256", secret)
   end
 
-  defp authenticate({conn, "Bearer " <> jwt}) do
+  defp authenticate({conn, "Bearer " <> jwt}) when jwt != "" do
     case Joken.verify(jwt, signer()) do
       {:ok, _} ->
         Logger.debug("Valid Token, proceed")
@@ -20,6 +20,10 @@ defmodule LowendinsightGet.Auth do
       {:error, err} ->
         send_401(conn, %{error: err})
     end
+  end
+
+  defp authenticate({conn, _invalid}) do
+    send_401(conn)
   end
 
   defp authenticate({conn}) do
