@@ -8,7 +8,7 @@ defmodule Lei.Web.Router do
   """
   use Plug.Router
 
-  @templates_dir Path.expand("../../../priv/templates", __DIR__)
+  @otp_app :lowendinsight
 
   plug(Plug.Logger)
 
@@ -22,7 +22,7 @@ defmodule Lei.Web.Router do
 
   plug(Plug.Static,
     at: "/static",
-    from: Path.expand("../../../priv/static", __DIR__)
+    from: {:lowendinsight, "priv/static"}
   )
 
   plug(Plug.Parsers, parsers: [:urlencoded, :json], json_decoder: Poison)
@@ -319,12 +319,13 @@ defmodule Lei.Web.Router do
   end
 
   defp render_page(conn, template, assigns \\ []) do
+    tpl_dir = Path.join(:code.priv_dir(@otp_app) |> to_string(), "templates")
     assigns = Keyword.put(assigns, :conn, conn)
-    inner = EEx.eval_file(Path.join(@templates_dir, template), assigns: Enum.into(assigns, %{}))
+    inner = EEx.eval_file(Path.join(tpl_dir, template), assigns: Enum.into(assigns, %{}))
     layout_assigns = Keyword.put(assigns, :inner_content, inner)
 
     body =
-      EEx.eval_file(Path.join(@templates_dir, "layout.html.eex"),
+      EEx.eval_file(Path.join(tpl_dir, "layout.html.eex"),
         assigns: Enum.into(layout_assigns, %{})
       )
 
