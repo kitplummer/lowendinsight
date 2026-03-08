@@ -13,6 +13,8 @@ defmodule LowendinsightGet.Endpoint do
 
   require Logger
   alias Plug.{Adapters.Cowboy}
+  @auth_paths ~w(/signup /login /dashboard /keys /logout /static)
+
   plug(LowendinsightGet.Auth)
   plug(Plug.Logger, log: :debug)
   plug(Plug.Static, from: "priv/static/images", at: "/images")
@@ -25,6 +27,7 @@ defmodule LowendinsightGet.Endpoint do
     json_decoder: Poison
   )
 
+  plug(:maybe_route_auth)
   plug(:match)
   plug(:dispatch)
 
@@ -417,4 +420,12 @@ defmodule LowendinsightGet.Endpoint do
   end
 
   defp config, do: Application.fetch_env(:lowendinsight_get, __MODULE__)
+
+  defp maybe_route_auth(%Plug.Conn{request_path: path} = conn, _opts) do
+    if Enum.any?(@auth_paths, &String.starts_with?(path, &1)) do
+      Lei.Web.Router.call(conn, Lei.Web.Router.init([]))
+    else
+      conn
+    end
+  end
 end
