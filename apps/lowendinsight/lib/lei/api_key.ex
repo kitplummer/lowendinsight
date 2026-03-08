@@ -3,13 +3,13 @@ defmodule Lei.ApiKey do
   import Ecto.Changeset
 
   schema "api_keys" do
-    field :name, :string
-    field :key_hash, :string
-    field :key_prefix, :string
-    field :scopes, {:array, :string}, default: []
-    field :active, :boolean, default: true
-    field :last_used_at, :utc_datetime_usec
-    belongs_to :org, Lei.Org
+    field(:name, :string)
+    field(:key_hash, :string)
+    field(:key_prefix, :string)
+    field(:scopes, {:array, :string}, default: [])
+    field(:active, :boolean, default: true)
+    field(:last_used_at, :utc_datetime_usec)
+    belongs_to(:org, Lei.Org)
     timestamps()
   end
 

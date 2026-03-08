@@ -1,0 +1,16 @@
+<h1 class="title">Create an Organization</h1>
+<div class="box" style="max-width: 480px;">
+  <form method="post" action="/signup">
+    <div class="field">
+      <label class="label">Organization Name</label>
+      <div class="control">
+        <input class="input" type="text" name="name" placeholder="My Org" required>
+      </div>
+    </div>
+    <div class="field">
+      <div class="control">
+        <button class="button is-primary" type="submit">Create Organization</button>
+      </div>
+    </div>
+  </form>
+</div>

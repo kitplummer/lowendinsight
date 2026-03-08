@@ -3,10 +3,10 @@ defmodule Lei.Org do
   import Ecto.Changeset
 
   schema "orgs" do
-    field :name, :string
-    field :slug, :string
-    field :tier, :string, default: "free"
-    has_many :api_keys, Lei.ApiKey
+    field(:name, :string)
+    field(:slug, :string)
+    field(:tier, :string, default: "free")
+    has_many(:api_keys, Lei.ApiKey)
     timestamps()
   end
 

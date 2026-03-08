@@ -102,7 +102,10 @@ defmodule Lei.Auth do
           conn
           |> put_resp_header("retry-after", to_string(retry_secs))
           |> put_resp_content_type("application/json")
-          |> send_resp(429, Poison.encode!(%{error: "rate limit exceeded", retry_after: retry_secs}))
+          |> send_resp(
+            429,
+            Poison.encode!(%{error: "rate limit exceeded", retry_after: retry_secs})
+          )
           |> halt()
       end
     else

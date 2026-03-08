@@ -38,10 +38,20 @@ defmodule LowendinsightGet.Application do
       end
 
     redix_opts =
-      [name: :redix, sync_connect: false, exit_on_disconnection: false,
-       host: host, port: port, password: password, ssl: ssl?, database: database]
+      [
+        name: :redix,
+        sync_connect: false,
+        exit_on_disconnection: false,
+        host: host,
+        port: port,
+        password: password,
+        ssl: ssl?,
+        database: database
+      ]
 
-    Logger.info("Redix opts (sans password): host=#{host} port=#{port} db=#{database} ssl=#{ssl?}")
+    Logger.info(
+      "Redix opts (sans password): host=#{host} port=#{port} db=#{database} ssl=#{ssl?}"
+    )
 
     kids = [
       {Redix, redix_opts},
