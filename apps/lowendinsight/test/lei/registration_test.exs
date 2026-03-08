@@ -10,7 +10,7 @@ defmodule Lei.RegistrationTest do
     Ecto.Adapters.SQL.Sandbox.mode(Lei.Repo, {:shared, self()})
     Lei.RateLimiter.clear()
 
-    {:ok, org} = Lei.ApiKeys.find_or_create_org("Admin Org")
+    {:ok, org} = Lei.ApiKeys.find_or_create_org("Admin Org", status: "active")
     {:ok, admin_key, _} = Lei.ApiKeys.create_api_key(org, "admin", ["admin"])
     %{admin_key: admin_key, org: org}
   end

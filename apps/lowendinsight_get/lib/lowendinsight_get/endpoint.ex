@@ -13,7 +13,7 @@ defmodule LowendinsightGet.Endpoint do
 
   require Logger
   alias Plug.{Adapters.Cowboy}
-  @auth_paths ~w(/signup /login /dashboard /keys /logout /static)
+  @auth_paths ~w(/signup /login /dashboard /keys /logout /static /recover /webhooks)
 
   plug(LowendinsightGet.Auth)
   plug(Plug.Logger, log: :debug)
@@ -420,6 +420,10 @@ defmodule LowendinsightGet.Endpoint do
   end
 
   defp config, do: Application.fetch_env(:lowendinsight_get, __MODULE__)
+
+  defp maybe_route_auth(%Plug.Conn{request_path: "/acp" <> _rest} = conn, _opts) do
+    Lei.Acp.Router.call(conn, Lei.Acp.Router.init([]))
+  end
 
   defp maybe_route_auth(%Plug.Conn{request_path: path} = conn, _opts) do
     if Enum.any?(@auth_paths, &String.starts_with?(path, &1)) do

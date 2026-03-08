@@ -108,4 +108,13 @@ if config_env() == :prod do
       {"*/5 * * * *", {LowendinsightGet.CacheCleaner, :clean, []}},
       {"0 0 * * *", {LowendinsightGet.GithubTrending, :analyze, []}}
     ]
+
+  # Stripe + ACP
+  config :lowendinsight,
+    stripe_secret_key: System.get_env("STRIPE_SECRET_KEY"),
+    stripe_webhook_secret: System.get_env("STRIPE_WEBHOOK_SECRET"),
+    stripe_pro_price_id: System.get_env("STRIPE_PRO_PRICE_ID"),
+    lei_base_url: System.get_env("LEI_BASE_URL") || "https://lowendinsight.fly.dev",
+    acp_bearer_token: System.get_env("LEI_ACP_BEARER_TOKEN"),
+    acp_signing_secret: System.get_env("LEI_ACP_SIGNING_SECRET")
 end

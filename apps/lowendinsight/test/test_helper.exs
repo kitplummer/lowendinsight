@@ -29,6 +29,7 @@ Code.require_file("support/fixture_helper.ex", __DIR__)
 
 # Configure Mox for behaviour-based mocking
 Mox.defmock(GitModule.Mock, for: GitModule.Behaviour)
+Mox.defmock(Lei.StripeMock, for: Lei.StripeBehaviour)
 
 # Set up application config to use mock in tests when needed
 # Tests can use: Application.put_env(:lowendinsight, :git_module, GitModule.Mock)

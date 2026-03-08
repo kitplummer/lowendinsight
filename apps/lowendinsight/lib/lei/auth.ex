@@ -38,6 +38,9 @@ defmodule Lei.Auth do
         Lei.ApiKeys.touch_last_used(api_key)
         conn |> assign(:current_api_key, api_key) |> assign(:auth_method, :api_key)
 
+      {:error, {:org_not_active, status}} ->
+        send_403(conn, %{error: "organization not active", status: status})
+
       {:error, _} ->
         send_401(conn, %{error: "invalid API key"})
     end

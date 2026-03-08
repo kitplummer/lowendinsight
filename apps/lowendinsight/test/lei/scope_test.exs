@@ -10,7 +10,7 @@ defmodule Lei.ScopeTest do
     Ecto.Adapters.SQL.Sandbox.mode(Lei.Repo, {:shared, self()})
     Lei.RateLimiter.clear()
 
-    {:ok, org} = Lei.ApiKeys.find_or_create_org("Scope Test Org")
+    {:ok, org} = Lei.ApiKeys.find_or_create_org("Scope Test Org", status: "active")
     {:ok, analyze_key, _} = Lei.ApiKeys.create_api_key(org, "analyze-only", ["analyze"])
     {:ok, admin_key, _} = Lei.ApiKeys.create_api_key(org, "admin-key", ["admin"])
     {:ok, no_scope_key, _} = Lei.ApiKeys.create_api_key(org, "no-scope-key", [])
