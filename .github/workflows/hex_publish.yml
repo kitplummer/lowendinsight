@@ -1,13 +1,12 @@
-name: elixir_ci_hex_publish
+name: hex_publish
 
 on:
-  pull_request:
-    types: [closed]
-    branches:
-      - main
+  push:
+    tags:
+      - 'v*'
 
 jobs:
-  build:
+  publish:
     runs-on: ubuntu-latest
 
     steps:
@@ -25,6 +24,5 @@ jobs:
     - name: Publish to Hex
       env:
         HEX_API_KEY: ${{ secrets.HEX_API_KEY }}
-      if: github.event.pull_request.merged == true
       run: |
         cd apps/lowendinsight && mix hex.publish --yes
