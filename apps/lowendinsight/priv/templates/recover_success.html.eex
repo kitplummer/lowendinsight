@@ -1,20 +1,22 @@
-<h1 class="title">Organization Created</h1>
+<h1 class="title">Account Recovered</h1>
 <div class="box">
-  <p class="mb-4">Your organization <strong><%= @org_name %></strong> has been created.</p>
+  <div class="notification is-success">
+    <strong>Recovery successful!</strong> Your old recovery code has been invalidated.
+  </div>
 
   <div class="notification is-warning">
-    <strong>Save your credentials now!</strong> They will not be shown again.
+    <strong>Save your new credentials now!</strong> They will not be shown again.
   </div>
 
   <div class="field">
-    <label class="label">Your Admin API Key</label>
+    <label class="label">Your New Admin API Key</label>
     <div class="control">
       <input class="input is-family-monospace" type="text" value="<%= @raw_key %>" readonly>
     </div>
   </div>
 
   <div class="field mt-4">
-    <label class="label">Your Recovery Code</label>
+    <label class="label">Your New Recovery Code</label>
     <div class="control">
       <input class="input is-family-monospace" type="text" value="<%= @recovery_code %>" readonly>
     </div>
@@ -22,6 +24,6 @@
   </div>
 
   <p class="mt-4">
-    <a href="/login" class="button is-link">Login with your API key</a>
+    <a href="/login" class="button is-link">Login with your new API key</a>
   </p>
 </div>

@@ -98,6 +98,16 @@ config :lowendinsight,
     System.get_env("LEI_SESSION_SECRET") ||
       "lei_dev_session_secret_that_is_at_least_64_bytes_long_for_cookie_store_to_work_properly"
 
+# --- Stripe + ACP ---
+
+config :lowendinsight,
+  stripe_secret_key: System.get_env("STRIPE_SECRET_KEY"),
+  stripe_webhook_secret: System.get_env("STRIPE_WEBHOOK_SECRET"),
+  stripe_pro_price_id: System.get_env("STRIPE_PRO_PRICE_ID"),
+  lei_base_url: System.get_env("LEI_BASE_URL") || "http://localhost:4000",
+  acp_bearer_token: System.get_env("LEI_ACP_BEARER_TOKEN"),
+  acp_signing_secret: System.get_env("LEI_ACP_SIGNING_SECRET")
+
 # JsonXema Schema Loader
 config :xema, loader: SchemaLoader
 

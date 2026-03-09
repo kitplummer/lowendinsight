@@ -48,7 +48,7 @@ defmodule Lei.Web.SessionAuthTest do
   end
 
   test "assigns current_org when session is valid" do
-    {:ok, org} = Lei.ApiKeys.find_or_create_org("Session Test Org")
+    {:ok, org} = Lei.ApiKeys.find_or_create_org("Session Test Org", status: "active")
 
     conn = build_conn_with_session(%{"org_slug" => org.slug})
     conn = Lei.Web.SessionAuth.call(conn, [])

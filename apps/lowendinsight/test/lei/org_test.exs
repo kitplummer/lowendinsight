@@ -40,5 +40,42 @@ defmodule Lei.OrgTest do
       cs = Org.changeset(%Org{}, %{name: "Test", tier: "pro"})
       assert cs.valid?
     end
+
+    test "accepts valid status" do
+      for status <- ~w(pending active suspended) do
+        cs = Org.changeset(%Org{}, %{name: "Test", status: status})
+        assert cs.valid?, "Expected status #{status} to be valid"
+      end
+    end
+
+    test "rejects invalid status" do
+      cs = Org.changeset(%Org{}, %{name: "Test", status: "deleted"})
+      refute cs.valid?
+    end
+  end
+
+  describe "activate_changeset/1" do
+    test "sets status to active" do
+      org = %Org{status: "pending"}
+      cs = Org.activate_changeset(org)
+      assert Ecto.Changeset.get_change(cs, :status) == "active"
+    end
+  end
+
+  describe "stripe_changeset/2" do
+    test "sets stripe fields" do
+      org = %Org{}
+
+      cs =
+        Org.stripe_changeset(org, %{
+          stripe_customer_id: "cus_123",
+          stripe_subscription_id: "sub_456",
+          status: "active"
+        })
+
+      assert cs.valid?
+      assert Ecto.Changeset.get_change(cs, :stripe_customer_id) == "cus_123"
+      assert Ecto.Changeset.get_change(cs, :stripe_subscription_id) == "sub_456"
+    end
   end
 end

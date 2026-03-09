@@ -56,3 +56,10 @@ config :lowendinsight,
   medium_large_commit_level:
     String.to_float(System.get_env("LEI_MEDIUM_LARGE_COMMIT_LEVEL") || "0.20"),
   jobs_per_core_max: String.to_integer(System.get_env("LEI_JOBS_PER_CORE_MAX") || "1")
+
+# --- Stripe + ACP test overrides ---
+# No bearer token or signing secret = auth checks skipped in test
+config :lowendinsight,
+  stripe_module: Lei.StripeMock,
+  acp_bearer_token: nil,
+  acp_signing_secret: nil

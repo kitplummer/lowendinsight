@@ -10,28 +10,28 @@ defmodule Lei.ApiKeysTest do
 
   describe "find_or_create_org/1" do
     test "creates a new org" do
-      {:ok, org} = ApiKeys.find_or_create_org("Test Org")
+      {:ok, org} = ApiKeys.find_or_create_org("Test Org", status: "active")
       assert org.name == "Test Org"
       assert org.slug == "test-org"
       assert org.tier == "free"
     end
 
     test "returns existing org by slug" do
-      {:ok, org1} = ApiKeys.find_or_create_org("Test Org")
-      {:ok, org2} = ApiKeys.find_or_create_org("Test Org")
+      {:ok, org1} = ApiKeys.find_or_create_org("Test Org", status: "active")
+      {:ok, org2} = ApiKeys.find_or_create_org("Test Org", status: "active")
       assert org1.id == org2.id
     end
 
     test "matches slug case-insensitively" do
-      {:ok, org1} = ApiKeys.find_or_create_org("My Org")
-      {:ok, org2} = ApiKeys.find_or_create_org("my org")
+      {:ok, org1} = ApiKeys.find_or_create_org("My Org", status: "active")
+      {:ok, org2} = ApiKeys.find_or_create_org("my org", status: "active")
       assert org1.id == org2.id
     end
   end
 
   describe "create_api_key/3" do
     test "creates key with lei_ prefix" do
-      {:ok, org} = ApiKeys.find_or_create_org("Key Org")
+      {:ok, org} = ApiKeys.find_or_create_org("Key Org", status: "active")
       {:ok, raw_key, api_key} = ApiKeys.create_api_key(org, "test-key", ["analyze"])
 
       assert String.starts_with?(raw_key, "lei_")
@@ -43,7 +43,7 @@ defmodule Lei.ApiKeysTest do
     end
 
     test "stores hash, not raw key" do
-      {:ok, org} = ApiKeys.find_or_create_org("Hash Org")
+      {:ok, org} = ApiKeys.find_or_create_org("Hash Org", status: "active")
       {:ok, raw_key, api_key} = ApiKeys.create_api_key(org, "hash-key")
 
       refute api_key.key_hash == raw_key
@@ -52,7 +52,7 @@ defmodule Lei.ApiKeysTest do
     end
 
     test "defaults scopes to empty list" do
-      {:ok, org} = ApiKeys.find_or_create_org("Scope Org")
+      {:ok, org} = ApiKeys.find_or_create_org("Scope Org", status: "active")
       {:ok, _raw_key, api_key} = ApiKeys.create_api_key(org, "no-scope")
       assert api_key.scopes == []
     end
@@ -60,7 +60,7 @@ defmodule Lei.ApiKeysTest do
 
   describe "authenticate_key/1" do
     test "authenticates valid key" do
-      {:ok, org} = ApiKeys.find_or_create_org("Auth Org")
+      {:ok, org} = ApiKeys.find_or_create_org("Auth Org", status: "active")
       {:ok, raw_key, _api_key} = ApiKeys.create_api_key(org, "auth-key")
 
       assert {:ok, found} = ApiKeys.authenticate_key(raw_key)
@@ -73,7 +73,7 @@ defmodule Lei.ApiKeysTest do
     end
 
     test "rejects revoked key" do
-      {:ok, org} = ApiKeys.find_or_create_org("Revoke Org")
+      {:ok, org} = ApiKeys.find_or_create_org("Revoke Org", status: "active")
       {:ok, raw_key, api_key} = ApiKeys.create_api_key(org, "revoke-key")
       {:ok, _} = ApiKeys.revoke_key(api_key.id)
 
@@ -83,7 +83,7 @@ defmodule Lei.ApiKeysTest do
 
   describe "list_keys/1" do
     test "lists keys for an org" do
-      {:ok, org} = ApiKeys.find_or_create_org("List Org")
+      {:ok, org} = ApiKeys.find_or_create_org("List Org", status: "active")
       {:ok, _, _} = ApiKeys.create_api_key(org, "key-1")
       {:ok, _, _} = ApiKeys.create_api_key(org, "key-2")
 
@@ -92,8 +92,8 @@ defmodule Lei.ApiKeysTest do
     end
 
     test "does not list keys from other orgs" do
-      {:ok, org1} = ApiKeys.find_or_create_org("Org A")
-      {:ok, org2} = ApiKeys.find_or_create_org("Org B")
+      {:ok, org1} = ApiKeys.find_or_create_org("Org A", status: "active")
+      {:ok, org2} = ApiKeys.find_or_create_org("Org B", status: "active")
       {:ok, _, _} = ApiKeys.create_api_key(org1, "a-key")
       {:ok, _, _} = ApiKeys.create_api_key(org2, "b-key")
 
@@ -105,7 +105,7 @@ defmodule Lei.ApiKeysTest do
 
   describe "revoke_key/1" do
     test "sets active to false" do
-      {:ok, org} = ApiKeys.find_or_create_org("Revoke Org 2")
+      {:ok, org} = ApiKeys.find_or_create_org("Revoke Org 2", status: "active")
       {:ok, _, api_key} = ApiKeys.create_api_key(org, "to-revoke")
 
       assert {:ok, revoked} = ApiKeys.revoke_key(api_key.id)
@@ -119,7 +119,7 @@ defmodule Lei.ApiKeysTest do
 
   describe "touch_last_used/1" do
     test "updates last_used_at asynchronously" do
-      {:ok, org} = ApiKeys.find_or_create_org("Touch Org")
+      {:ok, org} = ApiKeys.find_or_create_org("Touch Org", status: "active")
       {:ok, _, api_key} = ApiKeys.create_api_key(org, "touch-key")
       assert api_key.last_used_at == nil
 

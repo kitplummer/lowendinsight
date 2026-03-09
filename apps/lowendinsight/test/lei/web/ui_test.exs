@@ -20,15 +20,16 @@ defmodule Lei.Web.UiTest do
     assert conn.resp_body =~ "<form"
   end
 
-  test "POST /signup creates org and shows API key" do
+  test "POST /signup free tier creates org and shows API key + recovery code" do
     conn =
-      Plug.Test.conn(:post, "/signup", "name=TestUIOrg")
+      Plug.Test.conn(:post, "/signup", "name=TestUIOrg&tier=free")
       |> Plug.Conn.put_req_header("content-type", "application/x-www-form-urlencoded")
       |> call()
 
     assert conn.status == 200
     assert conn.resp_body =~ "lei_"
-    assert conn.resp_body =~ "Save your API key"
+    assert conn.resp_body =~ "lei_recover_"
+    assert conn.resp_body =~ "Save your credentials"
     assert conn.resp_body =~ "TestUIOrg"
   end
 
@@ -50,7 +51,7 @@ defmodule Lei.Web.UiTest do
   end
 
   test "POST /login with valid admin key redirects to /dashboard" do
-    {:ok, org} = Lei.ApiKeys.find_or_create_org("Login Test Org")
+    {:ok, org} = Lei.ApiKeys.find_or_create_org("Login Test Org", status: "active")
     {:ok, raw_key, _api_key} = Lei.ApiKeys.create_api_key(org, "admin", ["admin", "analyze"])
 
     conn =
@@ -73,7 +74,7 @@ defmodule Lei.Web.UiTest do
   end
 
   test "POST /login with non-admin key shows scope error" do
-    {:ok, org} = Lei.ApiKeys.find_or_create_org("NonAdmin Test Org")
+    {:ok, org} = Lei.ApiKeys.find_or_create_org("NonAdmin Test Org", status: "active")
     {:ok, raw_key, _api_key} = Lei.ApiKeys.create_api_key(org, "analyze-only", ["analyze"])
 
     conn =

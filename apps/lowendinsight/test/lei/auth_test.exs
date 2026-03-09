@@ -10,7 +10,7 @@ defmodule Lei.AuthTest do
     Ecto.Adapters.SQL.Sandbox.mode(Lei.Repo, {:shared, self()})
     Lei.RateLimiter.clear()
 
-    {:ok, org} = Lei.ApiKeys.find_or_create_org("Auth Test Org")
+    {:ok, org} = Lei.ApiKeys.find_or_create_org("Auth Test Org", status: "active")
 
     {:ok, raw_key, _api_key} =
       Lei.ApiKeys.create_api_key(org, "auth-test-key", ["analyze", "admin"])
@@ -80,7 +80,7 @@ defmodule Lei.AuthTest do
   end
 
   test "rate limits API key after exceeding limit" do
-    {:ok, org} = Lei.ApiKeys.find_or_create_org("Rate Limit Org")
+    {:ok, org} = Lei.ApiKeys.find_or_create_org("Rate Limit Org", status: "active")
     {:ok, raw_key, _} = Lei.ApiKeys.create_api_key(org, "rate-test", ["analyze", "admin"])
 
     Application.put_env(:lowendinsight, :rate_limits, %{free: 2, pro: 600})
