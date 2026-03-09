@@ -3,6 +3,8 @@ defmodule Lei.StripeBehaviour do
   @callback construct_webhook_event(String.t(), String.t(), String.t()) ::
               {:ok, map()} | {:error, term()}
   @callback create_payment_intent(map()) :: {:ok, map()} | {:error, term()}
+  @callback report_usage(String.t(), integer(), integer()) :: {:ok, map()} | {:error, term()}
+  @callback retrieve_subscription(String.t()) :: {:ok, map()} | {:error, term()}
 end
 
 defmodule Lei.Stripe do
@@ -101,6 +103,58 @@ defmodule Lei.Stripe do
     case HTTPoison.post(
            "https://api.stripe.com/v1/payment_intents",
            body,
+           [
+             {"Authorization", "Bearer #{api_key}"},
+             {"Content-Type", "application/x-www-form-urlencoded"}
+           ]
+         ) do
+      {:ok, %HTTPoison.Response{status_code: 200, body: resp_body}} ->
+        {:ok, Poison.decode!(resp_body)}
+
+      {:ok, %HTTPoison.Response{body: resp_body}} ->
+        {:error, Poison.decode!(resp_body)}
+
+      {:error, reason} ->
+        {:error, reason}
+    end
+  end
+
+  @impl true
+  def report_usage(subscription_item_id, quantity, timestamp) do
+    api_key = Application.get_env(:lowendinsight, :stripe_secret_key)
+
+    body =
+      URI.encode_query(%{
+        "quantity" => to_string(quantity),
+        "timestamp" => to_string(timestamp),
+        "action" => "set"
+      })
+
+    case HTTPoison.post(
+           "https://api.stripe.com/v1/subscription_items/#{subscription_item_id}/usage_records",
+           body,
+           [
+             {"Authorization", "Bearer #{api_key}"},
+             {"Content-Type", "application/x-www-form-urlencoded"}
+           ]
+         ) do
+      {:ok, %HTTPoison.Response{status_code: 200, body: resp_body}} ->
+        {:ok, Poison.decode!(resp_body)}
+
+      {:ok, %HTTPoison.Response{body: resp_body}} ->
+        {:error, Poison.decode!(resp_body)}
+
+      {:error, reason} ->
+        {:error, reason}
+    end
+  end
+
+  @impl true
+  def retrieve_subscription(subscription_id) do
+    api_key = Application.get_env(:lowendinsight, :stripe_secret_key)
+
+    case HTTPoison.get(
+           "https://api.stripe.com/v1/subscriptions/#{subscription_id}",
            [
              {"Authorization", "Bearer #{api_key}"},
              {"Content-Type", "application/x-www-form-urlencoded"}

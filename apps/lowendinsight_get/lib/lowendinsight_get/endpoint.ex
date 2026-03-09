@@ -153,46 +153,62 @@ defmodule LowendinsightGet.Endpoint do
     start_time = DateTime.utc_now()
     uuid = UUID.uuid1()
 
+    # Check free tier quota if API key auth
+    quota_result = check_analyze_quota(conn)
+
     {status, body} =
-      case conn.body_params do
-        %{"urls" => urls} ->
-          cache_mode = Map.get(conn.body_params, "cache_mode", "blocking")
+      case quota_result do
+        {:error, :quota_exceeded, info} ->
+          {402,
+           Poison.encode!(%{
+             error: "free_tier_quota_exceeded",
+             used: info.used,
+             limit: info.limit,
+             upgrade_url: "https://lowendinsight.fly.dev/signup?tier=pro"
+           })}
 
-          cache_timeout =
-            Map.get(
-              conn.body_params,
-              "cache_timeout",
-              Application.get_env(:lowendinsight_get, :default_cache_timeout, 30_000)
-            )
+        {:ok, _} ->
+          case conn.body_params do
+            %{"urls" => urls} ->
+              cache_mode = Map.get(conn.body_params, "cache_mode", "blocking")
 
-          if cache_mode in @valid_cache_modes do
-            opts = %{cache_mode: cache_mode, cache_timeout: cache_timeout}
+              cache_timeout =
+                Map.get(
+                  conn.body_params,
+                  "cache_timeout",
+                  Application.get_env(:lowendinsight_get, :default_cache_timeout, 30_000)
+                )
 
-            case LowendinsightGet.Analysis.process_urls(urls, uuid, start_time, opts) do
-              {:ok, result} ->
-                {200, result}
+              if cache_mode in @valid_cache_modes do
+                opts = %{cache_mode: cache_mode, cache_timeout: cache_timeout}
 
-              {:timeout, timed_out_uuid} ->
-                {202,
+                case LowendinsightGet.Analysis.process_urls(urls, uuid, start_time, opts) do
+                  {:ok, result} ->
+                    track_analyze_usage(conn, result)
+                    {200, enrich_analyze_response(conn, result)}
+
+                  {:timeout, timed_out_uuid} ->
+                    {202,
+                     Poison.encode!(%{
+                       state: "incomplete",
+                       uuid: timed_out_uuid,
+                       error: "analysis did not complete within #{cache_timeout}ms timeout"
+                     })}
+
+                  {:error, error} ->
+                    {422, Poison.encode!(%{:error => error})}
+                end
+              else
+                {422,
                  Poison.encode!(%{
-                   state: "incomplete",
-                   uuid: timed_out_uuid,
-                   error: "analysis did not complete within #{cache_timeout}ms timeout"
+                   error:
+                     "invalid cache_mode: '#{cache_mode}'. Must be one of: #{Enum.join(@valid_cache_modes, ", ")}"
                  })}
+              end
 
-              {:error, error} ->
-                {422, Poison.encode!(%{:error => error})}
-            end
-          else
-            {422,
-             Poison.encode!(%{
-               error:
-                 "invalid cache_mode: '#{cache_mode}'. Must be one of: #{Enum.join(@valid_cache_modes, ", ")}"
-             })}
+            _ ->
+              {422, process()}
           end
-
-        _ ->
-          {422, process()}
       end
 
     conn
@@ -342,6 +358,69 @@ defmodule LowendinsightGet.Endpoint do
     |> put_resp_content_type(@content_type)
     |> send_resp(404, Poison.encode!(%{:error => "UUID not provided or found."}))
   end
+
+  defp check_analyze_quota(conn) do
+    case conn.assigns[:current_api_key] do
+      nil ->
+        {:ok, :no_billing}
+
+      api_key ->
+        case api_key.org.tier do
+          "pro" -> {:ok, :pro}
+          _ -> Lei.UsageTracker.check_free_tier_quota(api_key.org.id)
+        end
+    end
+  end
+
+  defp track_analyze_usage(conn, result) when is_binary(result) do
+    case conn.assigns[:current_api_key] do
+      nil ->
+        :ok
+
+      api_key ->
+        case Poison.decode(result) do
+          {:ok, decoded} ->
+            hits = get_in(decoded, ["metadata", "cache_status", "hits"]) || 0
+            misses = get_in(decoded, ["metadata", "cache_status", "misses"]) || 0
+            Lei.UsageTracker.record_usage_async(api_key.org.id, api_key.id, hits, misses)
+
+          {:error, _} ->
+            :ok
+        end
+    end
+  end
+
+  defp track_analyze_usage(_conn, _result), do: :ok
+
+  defp enrich_analyze_response(conn, result) when is_binary(result) do
+    case conn.assigns[:current_api_key] do
+      nil ->
+        result
+
+      api_key ->
+        case Poison.decode(result) do
+          {:ok, decoded} ->
+            hits = get_in(decoded, ["metadata", "cache_status", "hits"]) || 0
+            misses = get_in(decoded, ["metadata", "cache_status", "misses"]) || 0
+            cost = Lei.UsageTracker.calculate_cost(hits, misses)
+
+            enriched =
+              Map.put(decoded, "billing", %{
+                "cache_hits" => hits,
+                "cache_misses" => misses,
+                "cost_cents" => cost,
+                "tier" => api_key.org.tier
+              })
+
+            Poison.encode!(enriched)
+
+          {:error, _} ->
+            result
+        end
+    end
+  end
+
+  defp enrich_analyze_response(_conn, result), do: result
 
   defp fetch_job(uuid) do
     try do

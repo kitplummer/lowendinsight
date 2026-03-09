@@ -242,16 +242,76 @@ defmodule Lei.Web.Router do
   post "/v1/analyze/batch" do
     case validate_batch_request(conn.body_params) do
       {:ok, dependencies, opts} ->
-        result = Lei.BatchAnalyzer.analyze(dependencies, opts)
+        case maybe_check_quota(conn) do
+          {:ok, _} ->
+            result = Lei.BatchAnalyzer.analyze(dependencies, opts)
+            cached = result.summary.cached
+            pending = result.summary.pending
 
-        conn
-        |> put_resp_content_type("application/json")
-        |> send_resp(200, Poison.encode!(result))
+            # Record usage async if API key auth
+            {org_id, api_key_id, tier} = extract_billing_context(conn)
+
+            if org_id do
+              Lei.UsageTracker.record_usage_async(org_id, api_key_id, cached, pending)
+            end
+
+            enriched =
+              Map.put(result, :billing, %{
+                cache_hits: cached,
+                cache_misses: pending,
+                cost_cents: Lei.UsageTracker.calculate_cost(cached, pending),
+                tier: tier || "unknown"
+              })
+
+            conn
+            |> put_resp_content_type("application/json")
+            |> send_resp(200, Poison.encode!(enriched))
+
+          {:error, :quota_exceeded, info} ->
+            json_resp(conn, 402, %{
+              error: "free_tier_quota_exceeded",
+              used: info.used,
+              limit: info.limit,
+              upgrade_url: "https://lowendinsight.fly.dev/signup?tier=pro"
+            })
+        end
 
       {:error, message} ->
         conn
         |> put_resp_content_type("application/json")
         |> send_resp(400, Poison.encode!(%{error: message}))
+    end
+  end
+
+  get "/v1/usage" do
+    case extract_billing_context(conn) do
+      {nil, _, _} ->
+        json_resp(conn, 401, %{error: "API key required for usage endpoint"})
+
+      {org_id, _, tier} ->
+        usage = Lei.UsageTracker.get_current_usage(org_id)
+        pro_credit = Application.get_env(:lowendinsight, :pro_tier_credit_cents, 1500)
+
+        included_credit =
+          if tier == "pro", do: pro_credit, else: 0
+
+        overage =
+          if tier == "pro" do
+            ov = Decimal.sub(usage.total_cost_cents, Decimal.new("#{included_credit}"))
+            Decimal.max(ov, Decimal.new(0))
+          else
+            Decimal.new(0)
+          end
+
+        json_resp(conn, 200, %{
+          period_start: Date.to_iso8601(usage.period_start),
+          cache_hits: usage.cache_hits,
+          cache_misses: usage.cache_misses,
+          total_cost_cents: usage.total_cost_cents,
+          tier: tier,
+          included_credit_cents: included_credit,
+          overage_cents: overage
+        })
     end
   end
 
@@ -482,6 +542,33 @@ defmodule Lei.Web.Router do
     conn
     |> put_resp_content_type("text/html")
     |> send_resp(200, body)
+  end
+
+  defp extract_billing_context(conn) do
+    case conn.assigns[:current_api_key] do
+      nil ->
+        {nil, nil, nil}
+
+      api_key ->
+        {api_key.org.id, api_key.id, api_key.org.tier}
+    end
+  end
+
+  defp maybe_check_quota(conn) do
+    case extract_billing_context(conn) do
+      {nil, _, _} ->
+        {:ok, :no_billing}
+
+      {_org_id, _, "pro"} ->
+        {:ok, :pro}
+
+      {org_id, _, _tier} when not is_nil(org_id) ->
+        case Lei.UsageTracker.check_free_tier_quota(org_id) do
+          {:ok, _remaining} -> {:ok, :within_quota}
+          {:error, :quota_exceeded, info} -> {:error, :quota_exceeded, info}
+          {:error, _} -> {:ok, :unknown}
+        end
+    end
   end
 
   defp validate_batch_request(params) do
