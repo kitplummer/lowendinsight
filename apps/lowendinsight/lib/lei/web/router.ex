@@ -474,10 +474,12 @@ defmodule Lei.Web.Router do
       {:ok, org} ->
         base_url = Application.get_env(:lowendinsight, :lei_base_url, "http://localhost:4000")
         price_id = Application.get_env(:lowendinsight, :stripe_pro_price_id)
+        metered_price_id = Application.get_env(:lowendinsight, :stripe_metered_price_id)
         stripe = Lei.Stripe.impl()
 
         case stripe.create_checkout_session(%{
                price_id: price_id,
+               metered_price_id: metered_price_id,
                success_url: "#{base_url}/signup/success?session_id={CHECKOUT_SESSION_ID}",
                cancel_url: "#{base_url}/signup",
                org_id: org.id
