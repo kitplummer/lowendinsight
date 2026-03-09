@@ -18,16 +18,27 @@ defmodule Lei.Stripe do
   def create_checkout_session(params) do
     api_key = Application.get_env(:lowendinsight, :stripe_secret_key)
 
-    body =
-      URI.encode_query(%{
-        "mode" => "subscription",
-        "payment_method_types[0]" => "card",
-        "line_items[0][price]" => params.price_id,
-        "line_items[0][quantity]" => "1",
-        "success_url" => params.success_url,
-        "cancel_url" => params.cancel_url,
-        "metadata[org_id]" => to_string(params.org_id)
-      })
+    metered_price_id = params[:metered_price_id]
+
+    base_params = %{
+      "mode" => "subscription",
+      "payment_method_types[0]" => "card",
+      "line_items[0][price]" => params.price_id,
+      "line_items[0][quantity]" => "1",
+      "success_url" => params.success_url,
+      "cancel_url" => params.cancel_url,
+      "metadata[org_id]" => to_string(params.org_id)
+    }
+
+    # Add metered usage price as second line item if configured
+    base_params =
+      if metered_price_id do
+        Map.put(base_params, "line_items[1][price]", metered_price_id)
+      else
+        base_params
+      end
+
+    body = URI.encode_query(base_params)
 
     case HTTPoison.post(
            "https://api.stripe.com/v1/checkout/sessions",
