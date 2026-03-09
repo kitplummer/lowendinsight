@@ -255,11 +255,13 @@ defmodule Lei.Web.Router do
               Lei.UsageTracker.record_usage_async(org_id, api_key_id, cached, pending)
             end
 
+            cost = Lei.UsageTracker.calculate_cost(cached, pending)
+
             enriched =
               Map.put(result, :billing, %{
                 cache_hits: cached,
                 cache_misses: pending,
-                cost_cents: Lei.UsageTracker.calculate_cost(cached, pending),
+                cost_cents: Decimal.to_float(cost),
                 tier: tier || "unknown"
               })
 
@@ -307,10 +309,10 @@ defmodule Lei.Web.Router do
           period_start: Date.to_iso8601(usage.period_start),
           cache_hits: usage.cache_hits,
           cache_misses: usage.cache_misses,
-          total_cost_cents: usage.total_cost_cents,
+          total_cost_cents: Decimal.to_float(usage.total_cost_cents),
           tier: tier,
           included_credit_cents: included_credit,
-          overage_cents: overage
+          overage_cents: Decimal.to_float(overage)
         })
     end
   end

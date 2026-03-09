@@ -408,7 +408,7 @@ defmodule LowendinsightGet.Endpoint do
               Map.put(decoded, "billing", %{
                 "cache_hits" => hits,
                 "cache_misses" => misses,
-                "cost_cents" => cost,
+                "cost_cents" => Decimal.to_float(cost),
                 "tier" => api_key.org.tier
               })
 
