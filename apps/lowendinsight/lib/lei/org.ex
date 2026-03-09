@@ -9,6 +9,10 @@ defmodule Lei.Org do
     field(:status, :string, default: "pending")
     field(:stripe_customer_id, :string)
     field(:stripe_subscription_id, :string)
+    field(:stripe_metered_subscription_item_id, :string)
+    field(:monthly_credit_cents, :decimal, default: Decimal.new(0))
+    field(:free_tier_analyses_used, :integer, default: 0)
+    field(:free_tier_analyses_limit, :integer, default: 200)
     has_many(:api_keys, Lei.ApiKey)
     timestamps()
   end
@@ -32,8 +36,23 @@ defmodule Lei.Org do
 
   def stripe_changeset(org, attrs) do
     org
-    |> cast(attrs, [:stripe_customer_id, :stripe_subscription_id, :status])
+    |> cast(attrs, [
+      :stripe_customer_id,
+      :stripe_subscription_id,
+      :stripe_metered_subscription_item_id,
+      :status
+    ])
     |> validate_inclusion(:status, @valid_statuses)
+  end
+
+  def billing_changeset(org, attrs) do
+    org
+    |> cast(attrs, [
+      :monthly_credit_cents,
+      :free_tier_analyses_used,
+      :free_tier_analyses_limit,
+      :stripe_metered_subscription_item_id
+    ])
   end
 
   defp generate_slug(changeset) do
