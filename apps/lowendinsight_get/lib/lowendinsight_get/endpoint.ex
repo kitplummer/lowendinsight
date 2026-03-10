@@ -17,9 +17,9 @@ defmodule LowendinsightGet.Endpoint do
 
   plug(LowendinsightGet.Auth)
   plug(Plug.Logger, log: :debug)
-  plug(Plug.Static, from: "priv/static/images", at: "/images")
-  plug(Plug.Static, from: "priv/static/js", at: "/js")
-  plug(Plug.Static, from: "priv/static/css", at: "/css")
+  plug(Plug.Static, from: {:lowendinsight_get, "priv/static/images"}, at: "/images")
+  plug(Plug.Static, from: {:lowendinsight_get, "priv/static/js"}, at: "/js")
+  plug(Plug.Static, from: {:lowendinsight_get, "priv/static/css"}, at: "/css")
 
   plug(Plug.Parsers,
     parsers: [:json, :urlencoded],
