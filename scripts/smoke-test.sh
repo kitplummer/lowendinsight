@@ -1,208 +1,142 @@
-#!/bin/bash
-# Smoke test for LEI live environment — auth, account, and API coverage
-#
-# Usage:
-#   ./scripts/smoke-test.sh [base_url]
-#   LEI_JWT_SECRET=<secret> ./scripts/smoke-test.sh [base_url]
-#
-# Set LEI_JWT_SECRET to test authenticated endpoints.
-# Without it, only auth-rejection and public endpoint tests run.
+#!/usr/bin/env bash
+# Unified smoke test for LEI deployments.
+# Used by GLITCHLAB ops-org and keiro Uplink agent.
+# Usage: ./scripts/smoke-test.sh [BASE_URL]
+
+set -euo pipefail
 
 BASE_URL="${1:-https://lowendinsight.fly.dev}"
 PASS=0
 FAIL=0
-SKIP=0
+TOTAL=0
+
+green() { printf "\033[32m%s\033[0m\n" "$1"; }
+red()   { printf "\033[31m%s\033[0m\n" "$1"; }
+bold()  { printf "\033[1m%s\033[0m\n" "$1"; }
 
 check() {
-  local name="$1" expected="$2" actual="$3"
-  if [ "$actual" = "$expected" ]; then
-    echo "  PASS: $name (got $actual)"
+  TOTAL=$((TOTAL + 1))
+  local desc="$1" expected="$2" actual="$3"
+  if [ "$expected" = "$actual" ]; then
+    green "  PASS: $desc"
     PASS=$((PASS + 1))
   else
-    echo "  FAIL: $name (expected $expected, got $actual)"
+    red "  FAIL: $desc (expected: $expected, got: $actual)"
     FAIL=$((FAIL + 1))
   fi
 }
 
-skip() {
-  echo "  SKIP: $1"
-  SKIP=$((SKIP + 1))
+check_contains() {
+  TOTAL=$((TOTAL + 1))
+  local desc="$1" needle="$2" haystack="$3"
+  if echo "$haystack" | grep -q "$needle"; then
+    green "  PASS: $desc"
+    PASS=$((PASS + 1))
+  else
+    red "  FAIL: $desc (expected to contain: $needle)"
+    FAIL=$((FAIL + 1))
+  fi
 }
 
-# Generate a JWT if secret is available
-JWT=""
-if [ -n "${LEI_JWT_SECRET:-}" ]; then
-  # HS256 JWT: header.payload.signature
-  header=$(echo -n '{"alg":"HS256","typ":"JWT"}' | base64 -w0 | tr '+/' '-_' | tr -d '=')
-  # exp = now + 1 hour
-  exp=$(( $(date +%s) + 3600 ))
-  payload=$(echo -n "{\"sub\":\"smoke-test\",\"exp\":$exp}" | base64 -w0 | tr '+/' '-_' | tr -d '=')
-  sig=$(echo -n "$header.$payload" | openssl dgst -sha256 -hmac "$LEI_JWT_SECRET" -binary | base64 -w0 | tr '+/' '-_' | tr -d '=')
-  JWT="$header.$payload.$sig"
-  echo "JWT generated for authenticated tests"
-else
-  echo "No LEI_JWT_SECRET set — authenticated endpoint tests will be skipped"
-fi
-
+bold "=== LEI Smoke Test: $BASE_URL ==="
 echo ""
-echo "=== LEI Smoke Tests against $BASE_URL ==="
 
-# ─── Section 1: Public Endpoints (no auth) ───
+# --- 1. Core health ---
+bold "1. Health check"
+STATUS=$(curl -s -o /dev/null -w '%{http_code}' --max-time 10 "$BASE_URL/")
+check "GET / returns 200" "200" "$STATUS"
 
-echo ""
-echo "--- Public Endpoints ---"
+BODY=$(curl -s --max-time 10 "$BASE_URL/")
+check_contains "Homepage contains LowEndInsight" "LowEndInsight" "$BODY"
 
-echo "[1] Root / UI"
-code=$(curl -s -o /dev/null -w "%{http_code}" --max-time 10 "$BASE_URL/")
-check "GET / returns 200" "200" "$code"
+# --- 2. Static assets ---
+bold "2. Static assets"
+IMG_STATUS=$(curl -s -o /dev/null -w '%{http_code}' --max-time 10 "$BASE_URL/images/lei_bus_128.png")
+check "Bus logo serves" "200" "$IMG_STATUS"
 
-echo "[2] OpenAPI spec"
-code=$(curl -s -o /dev/null -w "%{http_code}" --max-time 10 "$BASE_URL/openapi.json")
-check "GET /openapi.json returns 200" "200" "$code"
+DOC_STATUS=$(curl -s -o /dev/null -w '%{http_code}' --max-time 10 "$BASE_URL/doc")
+check "GET /doc returns 200" "200" "$DOC_STATUS"
 
-echo "[3] API docs page"
-code=$(curl -s -o /dev/null -w "%{http_code}" --max-time 10 "$BASE_URL/doc")
-check "GET /doc returns 200" "200" "$code"
-
-# ─── Section 2: Auth Enforcement (no token) ───
-
-echo ""
-echo "--- Auth Enforcement (no token → 401) ---"
-
-echo "[4] POST /v1/analyze without auth"
-code=$(curl -s -o /dev/null -w "%{http_code}" --max-time 10 -X POST "$BASE_URL/v1/analyze" \
+# --- 3. Auth enforcement ---
+bold "3. Auth enforcement (no token → 401)"
+NO_AUTH=$(curl -s -o /dev/null -w '%{http_code}' --max-time 10 -X POST "$BASE_URL/v1/analyze" \
   -H "Content-Type: application/json" \
   -d '{"urls":["https://github.com/kitplummer/xmpp4rails"]}')
-check "Returns 401" "401" "$code"
+check "POST /v1/analyze without auth returns 401" "401" "$NO_AUTH"
 
-echo "[5] GET /v1/analyze/:uuid without auth"
-code=$(curl -s -o /dev/null -w "%{http_code}" --max-time 10 "$BASE_URL/v1/analyze/00000000-0000-0000-0000-000000000000")
-check "Returns 401" "401" "$code"
-
-echo "[6] GET /v1/cache/stats without auth"
-code=$(curl -s -o /dev/null -w "%{http_code}" --max-time 10 "$BASE_URL/v1/cache/stats")
-check "Returns 401" "401" "$code"
-
-echo "[7] GET /v1/cache/export without auth"
-code=$(curl -s -o /dev/null -w "%{http_code}" --max-time 10 "$BASE_URL/v1/cache/export")
-check "Returns 401" "401" "$code"
-
-echo "[8] POST /v1/cache/import without auth"
-code=$(curl -s -o /dev/null -w "%{http_code}" --max-time 10 -X POST "$BASE_URL/v1/cache/import" \
-  -H "Content-Type: application/json" -d '{}')
-check "Returns 401" "401" "$code"
-
-# ─── Section 3: Bad Token Rejection ───
-
-echo ""
-echo "--- Bad Token Rejection ---"
-
-echo "[9] Invalid JWT"
-code=$(curl -s -o /dev/null -w "%{http_code}" --max-time 10 "$BASE_URL/v1/cache/stats" \
-  -H "Authorization: Bearer invalidtoken123")
-check "Bad JWT returns 401" "401" "$code"
-
-echo "[10] Malformed auth header"
-code=$(curl -s -o /dev/null -w "%{http_code}" --max-time 10 "$BASE_URL/v1/cache/stats" \
-  -H "Authorization: Token abc123")
-check "Non-Bearer auth returns 401" "401" "$code"
-
-echo "[11] Empty Bearer"
-code=$(curl -s -o /dev/null -w "%{http_code}" --max-time 10 "$BASE_URL/v1/cache/stats" \
-  -H "Authorization: Bearer ")
-check "Empty Bearer returns 401" "401" "$code"
-
-echo "[12] Fake API key (lei_ prefix)"
-code=$(curl -s -o /dev/null -w "%{http_code}" --max-time 10 "$BASE_URL/v1/cache/stats" \
+FAKE_KEY=$(curl -s -o /dev/null -w '%{http_code}' --max-time 10 "$BASE_URL/v1/cache/stats" \
   -H "Authorization: Bearer lei_00000000000000000000000000000000")
-check "Fake lei_ key returns 401" "401" "$code"
+check "Fake lei_ key returns 401" "401" "$FAKE_KEY"
 
-# ─── Section 4: Malformed Requests ───
+# --- 4. Signup + API key ---
+bold "4. Signup flow"
+SIGNUP_PAGE=$(curl -s --max-time 10 "$BASE_URL/signup")
+check_contains "Signup page loads" "Create an Organization" "$SIGNUP_PAGE"
 
-echo ""
-echo "--- Malformed Requests ---"
+SIGNUP_RESP=$(curl -s -X POST "$BASE_URL/signup" \
+  -H "Content-Type: application/x-www-form-urlencoded" \
+  -d "name=smoke-test-$(date +%s)&tier=free" \
+  -L --max-time 15)
+check_contains "Signup returns API key" "lei_" "$SIGNUP_RESP"
+check_contains "Signup returns recovery code" "lei_recover_" "$SIGNUP_RESP"
 
-echo "[13] POST /v1/analyze with bad JSON"
-code=$(curl -s -o /dev/null -w "%{http_code}" --max-time 10 -X POST "$BASE_URL/v1/analyze" \
-  -H "Content-Type: application/json" -d 'not json')
-check "Bad JSON returns 400 or 401" "true" \
-  "$([ "$code" = "400" ] || [ "$code" = "401" ] && echo true || echo false)"
-
-echo "[14] Unknown route"
-code=$(curl -s -o /dev/null -w "%{http_code}" --max-time 10 "$BASE_URL/v1/nonexistent")
-check "Unknown /v1 route returns 401 or 404" "true" \
-  "$([ "$code" = "404" ] || [ "$code" = "401" ] && echo true || echo false)"
-
-# ─── Section 5: Lei.Web.Router (org/key API — not started in prod) ───
-
-echo ""
-echo "--- Org/Key API (Lei.Web.Router — expected not running) ---"
-
-echo "[15] GET /healthz (Lei.Web.Router liveness)"
-code=$(curl -s -o /dev/null -w "%{http_code}" --max-time 10 "$BASE_URL/healthz")
-# If Lei.Web.Router isn't running, this will 404 from the main endpoint
-check "GET /healthz returns 200 or 404" "true" \
-  "$([ "$code" = "200" ] || [ "$code" = "404" ] && echo true || echo false)"
-
-echo "[16] POST /v1/orgs (org management)"
-code=$(curl -s -o /dev/null -w "%{http_code}" --max-time 10 -X POST "$BASE_URL/v1/orgs" \
-  -H "Content-Type: application/json" -d '{"name":"smoke-test"}')
-check "POST /v1/orgs returns 401 or 404" "true" \
-  "$([ "$code" = "401" ] || [ "$code" = "404" ] && echo true || echo false)"
-
-# ─── Section 6: Authenticated Endpoints (requires LEI_JWT_SECRET) ───
-
-echo ""
-echo "--- Authenticated Endpoints ---"
-
-if [ -n "$JWT" ]; then
-  echo "[17] GET /v1/cache/stats with valid JWT"
-  resp=$(curl -s -w "\n%{http_code}" --max-time 10 "$BASE_URL/v1/cache/stats" \
-    -H "Authorization: Bearer $JWT")
-  code=$(echo "$resp" | tail -1)
-  body=$(echo "$resp" | head -1)
-  check "Returns 200" "200" "$code"
-
-  echo "[18] POST /v1/analyze with valid JWT"
-  resp=$(curl -s -w "\n%{http_code}" --max-time 30 -X POST "$BASE_URL/v1/analyze" \
-    -H "Authorization: Bearer $JWT" \
-    -H "Content-Type: application/json" \
-    -d '{"urls":["https://github.com/kitplummer/xmpp4rails"]}')
-  code=$(echo "$resp" | tail -1)
-  body=$(echo "$resp" | sed '$d')
-  check "Returns 200 or 202" "true" \
-    "$([ "$code" = "200" ] || [ "$code" = "202" ] && echo true || echo false)"
-  # Check response has expected structure
-  if echo "$body" | grep -q '"uuid"'; then
-    check "Response contains uuid" "true" "true"
-  elif echo "$body" | grep -q '"report"'; then
-    check "Response contains report" "true" "true"
-  else
-    check "Response has expected structure" "true" "false"
-  fi
-
-  echo "[19] GET /v1/cache/export with valid JWT"
-  code=$(curl -s -o /dev/null -w "%{http_code}" --max-time 10 "$BASE_URL/v1/cache/export" \
-    -H "Authorization: Bearer $JWT")
-  check "Returns 200" "200" "$code"
-
-  echo "[20] POST /v1/analyze/sbom with valid JWT (empty SBOM)"
-  code=$(curl -s -o /dev/null -w "%{http_code}" --max-time 10 -X POST "$BASE_URL/v1/analyze/sbom" \
-    -H "Authorization: Bearer $JWT" \
-    -H "Content-Type: application/json" \
-    -d '{"sbom":"{}"}')
-  check "Returns 200 or 400 or 422" "true" \
-    "$([ "$code" = "200" ] || [ "$code" = "400" ] || [ "$code" = "422" ] && echo true || echo false)"
-else
-  skip "[17-20] Authenticated endpoint tests (set LEI_JWT_SECRET to run)"
-fi
-
-echo ""
-echo "========================================="
-echo "  Results: $PASS passed, $FAIL failed, $SKIP skipped"
-echo "========================================="
-if [ "$FAIL" -eq 0 ]; then
-  exit 0
-else
+API_KEY=$(echo "$SIGNUP_RESP" | grep -oP 'lei_[a-f0-9]{32}' | head -1)
+if [ -z "$API_KEY" ]; then
+  red "  FATAL: Could not extract API key — aborting authenticated tests"
+  echo ""
+  bold "=== Results: $PASS passed, $FAIL failed out of $TOTAL ==="
   exit 1
+fi
+echo "  Got API key: ${API_KEY:0:12}..."
+
+# --- 5. Batch analyze with billing ---
+bold "5. Batch analyze with billing"
+BATCH_RESP=$(curl -s -X POST "$BASE_URL/v1/analyze/batch" \
+  -H "Content-Type: application/json" \
+  -H "Authorization: Bearer $API_KEY" \
+  --max-time 30 \
+  -d '{"dependencies": [{"ecosystem": "npm", "package": "express", "version": "4.18.2"}, {"ecosystem": "npm", "package": "lodash", "version": "4.17.21"}]}')
+check_contains "Response has billing block" "billing" "$BATCH_RESP"
+check_contains "Billing has cost_cents" "cost_cents" "$BATCH_RESP"
+check_contains "Billing has tier" '"tier"' "$BATCH_RESP"
+
+# --- 6. Usage endpoint ---
+bold "6. Usage endpoint"
+sleep 1
+USAGE_STATUS=$(curl -s -o /dev/null -w '%{http_code}' --max-time 10 "$BASE_URL/v1/usage" \
+  -H "Authorization: Bearer $API_KEY")
+check "GET /v1/usage returns 200" "200" "$USAGE_STATUS"
+
+USAGE_RESP=$(curl -s --max-time 10 "$BASE_URL/v1/usage" \
+  -H "Authorization: Bearer $API_KEY")
+check_contains "Usage has period_start" "period_start" "$USAGE_RESP"
+check_contains "Usage has total_cost_cents" "total_cost_cents" "$USAGE_RESP"
+check_contains "Usage has cache_hits" "cache_hits" "$USAGE_RESP"
+
+USAGE_NO_AUTH=$(curl -s -o /dev/null -w '%{http_code}' --max-time 10 "$BASE_URL/v1/usage" \
+  -H "Authorization: Bearer eyJhbGciOiJIUzI1NiJ9.e30.invalid")
+check "GET /v1/usage without API key returns 401" "401" "$USAGE_NO_AUTH"
+
+# --- 7. Dashboard ---
+bold "7. Dashboard"
+curl -s -X POST "$BASE_URL/login" \
+  -H "Content-Type: application/x-www-form-urlencoded" \
+  -d "api_key=$API_KEY" \
+  -c /tmp/lei-smoke-cookies \
+  -L --max-time 10 > /dev/null
+DASH_RESP=$(curl -s "$BASE_URL/dashboard" \
+  -b /tmp/lei-smoke-cookies \
+  -L --max-time 10)
+check_contains "Dashboard has Cache Hits" "Cache Hits" "$DASH_RESP"
+check_contains "Dashboard has Total Cost" "Total Cost" "$DASH_RESP"
+rm -f /tmp/lei-smoke-cookies
+
+# --- Summary ---
+echo ""
+bold "=== Results: $PASS passed, $FAIL failed out of $TOTAL ==="
+if [ "$FAIL" -gt 0 ]; then
+  exit 1
+else
+  green "All tests passed!"
+  exit 0
 fi
