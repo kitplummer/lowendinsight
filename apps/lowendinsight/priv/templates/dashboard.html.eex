@@ -1,5 +1,54 @@
 <h1 class="title">Dashboard &mdash; <%= @org.name %></h1>
 
+<% usage = Lei.UsageTracker.get_current_usage(@org.id) %>
+<% pro_credit = Application.get_env(:lowendinsight, :pro_tier_credit_cents, 1500) %>
+
+<h2 class="subtitle">Usage &mdash; <%= Date.to_iso8601(usage.period_start) %></h2>
+
+<div class="columns">
+  <div class="column is-one-third">
+    <div class="box has-text-centered">
+      <p class="heading">Cache Hits</p>
+      <p class="title"><%= usage.cache_hits %></p>
+    </div>
+  </div>
+  <div class="column is-one-third">
+    <div class="box has-text-centered">
+      <p class="heading">Cache Misses</p>
+      <p class="title"><%= usage.cache_misses %></p>
+    </div>
+  </div>
+  <div class="column is-one-third">
+    <div class="box has-text-centered">
+      <p class="heading">Total Cost</p>
+      <p class="title">$<%= Decimal.round(Decimal.div(usage.total_cost_cents, Decimal.new(100)), 2) %></p>
+    </div>
+  </div>
+</div>
+
+<%= if @org.tier == "free" do %>
+  <% total_analyses = usage.cache_hits + usage.cache_misses %>
+  <% limit = @org.free_tier_analyses_limit || 200 %>
+  <% remaining = max(limit - total_analyses, 0) %>
+  <div class="notification is-info is-light">
+    <strong>Free Tier:</strong> <%= total_analyses %>/<%= limit %> analyses used.
+    <%= remaining %> remaining this month.
+    <%= if remaining == 0 do %>
+      <br><a href="/signup?tier=pro" class="button is-primary is-small mt-2">Upgrade to Pro</a>
+    <% end %>
+  </div>
+<% else %>
+  <% overage = Decimal.sub(usage.total_cost_cents, Decimal.new(to_string(pro_credit))) %>
+  <% overage_display = Decimal.max(overage, Decimal.new(0)) %>
+  <div class="notification is-success is-light">
+    <strong>Pro Tier:</strong>
+    $<%= Decimal.round(Decimal.div(Decimal.new(to_string(pro_credit)), Decimal.new(100)), 2) %> credit included.
+    Overage: $<%= Decimal.round(Decimal.div(overage_display, Decimal.new(100)), 2) %>
+  </div>
+<% end %>
+
+<hr>
+
 <h2 class="subtitle">API Keys</h2>
 
 <%= if assigns[:new_key] do %>

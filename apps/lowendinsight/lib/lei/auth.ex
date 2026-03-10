@@ -4,6 +4,8 @@ defmodule Lei.Auth do
 
   @scope_map %{
     {"/v1/analyze", "POST"} => "analyze",
+    {"/v1/analyze/batch", "POST"} => "analyze",
+    {"/v1/usage", "GET"} => "analyze",
     {"/v1/health", "GET"} => nil,
     {"/v1/orgs", "POST"} => "admin",
     {"/v1/orgs", "GET"} => "admin"

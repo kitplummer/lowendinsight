@@ -11,6 +11,26 @@ defmodule LowendinsightGet.Auth do
     Joken.Signer.create("HS256", secret)
   end
 
+  defp authenticate({conn, "Bearer lei_" <> _rest = token}) do
+    # Delegate lei_ API keys to Lei.Auth's key authentication
+    raw_key = String.replace_prefix(token, "Bearer ", "")
+
+    case Lei.ApiKeys.authenticate_key(raw_key) do
+      {:ok, api_key} ->
+        Lei.ApiKeys.touch_last_used(api_key)
+
+        conn
+        |> Plug.Conn.assign(:current_api_key, api_key)
+        |> Plug.Conn.assign(:auth_method, :api_key)
+
+      {:error, {:org_not_active, status}} ->
+        send_401(conn, %{error: "organization not active", status: status})
+
+      {:error, _} ->
+        send_401(conn, %{error: "invalid API key"})
+    end
+  end
+
   defp authenticate({conn, "Bearer " <> jwt}) when jwt != "" do
     case Joken.verify(jwt, signer()) do
       {:ok, _} ->
