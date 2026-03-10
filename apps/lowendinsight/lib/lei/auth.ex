@@ -33,18 +33,23 @@ defmodule Lei.Auth do
   end
 
   defp authenticate({conn, "Bearer lei_" <> _rest = token}) do
-    raw_key = String.replace_prefix(token, "Bearer ", "")
+    # Skip re-auth if upstream plug already authenticated this key
+    if conn.assigns[:current_api_key] do
+      conn
+    else
+      raw_key = String.replace_prefix(token, "Bearer ", "")
 
-    case Lei.ApiKeys.authenticate_key(raw_key) do
-      {:ok, api_key} ->
-        Lei.ApiKeys.touch_last_used(api_key)
-        conn |> assign(:current_api_key, api_key) |> assign(:auth_method, :api_key)
+      case Lei.ApiKeys.authenticate_key(raw_key) do
+        {:ok, api_key} ->
+          Lei.ApiKeys.touch_last_used(api_key)
+          conn |> assign(:current_api_key, api_key) |> assign(:auth_method, :api_key)
 
-      {:error, {:org_not_active, status}} ->
-        send_403(conn, %{error: "organization not active", status: status})
+        {:error, {:org_not_active, status}} ->
+          send_403(conn, %{error: "organization not active", status: status})
 
-      {:error, _} ->
-        send_401(conn, %{error: "invalid API key"})
+        {:error, _} ->
+          send_401(conn, %{error: "invalid API key"})
+      end
     end
   end
 

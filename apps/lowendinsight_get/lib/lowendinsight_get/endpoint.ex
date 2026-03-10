@@ -13,7 +13,7 @@ defmodule LowendinsightGet.Endpoint do
 
   require Logger
   alias Plug.{Adapters.Cowboy}
-  @auth_paths ~w(/signup /login /dashboard /keys /logout /static /recover /webhooks)
+  @auth_paths ~w(/signup /login /dashboard /keys /logout /static /recover /webhooks /v1/analyze/batch /v1/usage)
 
   plug(LowendinsightGet.Auth)
   plug(Plug.Logger, log: :debug)
