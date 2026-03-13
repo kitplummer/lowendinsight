@@ -13,15 +13,22 @@ defmodule Lei.Auth do
 
   def init(opts), do: opts
 
+  @public_v1_paths ["/v1/health"]
+
   def call(%Plug.Conn{request_path: path} = conn, _opts) do
-    if String.starts_with?(path, "/v1") do
-      conn
-      |> get_auth_header()
-      |> authenticate()
-      |> check_scope()
-      |> check_rate_limit()
-    else
-      conn
+    cond do
+      path in @public_v1_paths ->
+        conn
+
+      String.starts_with?(path, "/v1") ->
+        conn
+        |> get_auth_header()
+        |> authenticate()
+        |> check_scope()
+        |> check_rate_limit()
+
+      true ->
+        conn
     end
   end
 

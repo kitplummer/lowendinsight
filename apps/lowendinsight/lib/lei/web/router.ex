@@ -318,11 +318,7 @@ defmodule Lei.Web.Router do
   end
 
   get "/v1/health" do
-    stats = Lei.BatchCache.stats()
-
-    conn
-    |> put_resp_content_type("application/json")
-    |> send_resp(200, Poison.encode!(%{status: "ok", cache: stats}))
+    Lei.Web.Controllers.HealthController.get(conn)
   end
 
   # --- Self-registration endpoints ---
