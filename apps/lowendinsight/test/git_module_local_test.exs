@@ -194,30 +194,21 @@ defmodule GitModuleLocalTest do
       File.write!(Path.join(tmp_dir, "README.md"), "# Test\n")
       System.cmd("git", ["add", "."], cd: tmp_dir)
 
-      System.cmd(
-        "git",
-        ["-c", "user.email=test@test.com", "-c", "user.name=Test", "commit", "-m", "initial"],
-        cd: tmp_dir
-      )
+      git_env = [
+        {"GIT_AUTHOR_NAME", "Test"},
+        {"GIT_AUTHOR_EMAIL", "test@test.com"},
+        {"GIT_COMMITTER_NAME", "Test"},
+        {"GIT_COMMITTER_EMAIL", "test@test.com"}
+      ]
+
+      System.cmd("git", ["commit", "-m", "initial"], cd: tmp_dir, env: git_env)
 
       System.cmd("git", ["tag", "v1.0.0"], cd: tmp_dir)
 
       File.write!(Path.join(tmp_dir, "README.md"), "# Test v2\n")
       System.cmd("git", ["add", "."], cd: tmp_dir)
 
-      System.cmd(
-        "git",
-        [
-          "-c",
-          "user.email=test@test.com",
-          "-c",
-          "user.name=Test",
-          "commit",
-          "-m",
-          "second commit"
-        ],
-        cd: tmp_dir
-      )
+      System.cmd("git", ["commit", "-m", "second commit"], cd: tmp_dir, env: git_env)
 
       System.cmd("git", ["tag", "v2.0.0"], cd: tmp_dir)
 
