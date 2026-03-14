@@ -28,6 +28,9 @@ defmodule Lei.AgenticDetector do
     ~r/^release-please$/i
   ]
 
+  @human_threshold 0.3
+  @agent_threshold 0.7
+
   @ai_coauthor_patterns [
     ~r/Co-Authored-By:.*Claude/i,
     ~r/Co-Authored-By:.*@anthropic\.com/i,
@@ -58,6 +61,23 @@ defmodule Lei.AgenticDetector do
     commit_messages
     |> Enum.flat_map(&extract_ai_coauthors/1)
     |> Enum.uniq()
+  end
+
+  @doc """
+  Classifies an agentic contribution ratio into a human/mixed/agent label.
+
+  Boundaries:
+    - ratio < #{@human_threshold} → "human"
+    - #{@human_threshold} ≤ ratio ≤ #{@agent_threshold} → "mixed"
+    - ratio > #{@agent_threshold} → "agent"
+  """
+  @spec classify_ratio(float()) :: {:ok, String.t()}
+  def classify_ratio(ratio) do
+    cond do
+      ratio > @agent_threshold -> {:ok, "agent"}
+      ratio >= @human_threshold -> {:ok, "mixed"}
+      true -> {:ok, "human"}
+    end
   end
 
   @doc """

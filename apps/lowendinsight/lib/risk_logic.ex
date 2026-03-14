@@ -170,11 +170,11 @@ defmodule RiskLogic do
 
     medium_agentic_level =
       if Application.fetch_env(:lowendinsight, :medium_agentic_level) == :error,
-        do: 0.5,
+        do: 0.3,
         else: Application.fetch_env!(:lowendinsight, :medium_agentic_level)
 
     cond do
-      ratio >= high_agentic_level ->
+      ratio > high_agentic_level ->
         {:ok, "agent"}
 
       ratio >= medium_agentic_level ->
