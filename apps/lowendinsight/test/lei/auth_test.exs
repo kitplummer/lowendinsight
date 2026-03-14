@@ -20,7 +20,7 @@ defmodule Lei.AuthTest do
 
   test "accepts valid API key", %{raw_key: raw_key} do
     conn =
-      conn(:get, "/v1/health")
+      conn(:post, "/v1/analyze")
       |> put_req_header("authorization", "Bearer #{raw_key}")
       |> Auth.call(%{})
 
@@ -31,7 +31,7 @@ defmodule Lei.AuthTest do
 
   test "rejects invalid API key" do
     conn =
-      conn(:get, "/v1/health")
+      conn(:post, "/v1/analyze")
       |> put_req_header("authorization", "Bearer lei_invalid_key_here_padding00")
       |> Auth.call(%{})
 
@@ -45,7 +45,7 @@ defmodule Lei.AuthTest do
     {:ok, jwt, _claims} = Joken.generate_and_sign(%{}, %{}, signer)
 
     conn =
-      conn(:get, "/v1/health")
+      conn(:post, "/v1/analyze")
       |> put_req_header("authorization", "Bearer #{jwt}")
       |> Auth.call(%{})
 
@@ -55,7 +55,7 @@ defmodule Lei.AuthTest do
 
   test "returns 401 with no auth header" do
     conn =
-      conn(:get, "/v1/health")
+      conn(:post, "/v1/analyze")
       |> Auth.call(%{})
 
     assert conn.status == 401
@@ -70,9 +70,18 @@ defmodule Lei.AuthTest do
     refute conn.halted
   end
 
-  test "sets x-ratelimit-remaining header for API key auth", %{raw_key: raw_key} do
+  test "skips auth for /v1/health (public path)" do
     conn =
       conn(:get, "/v1/health")
+      |> Auth.call(%{})
+
+    refute conn.halted
+    assert conn.status != 401
+  end
+
+  test "sets x-ratelimit-remaining header for API key auth", %{raw_key: raw_key} do
+    conn =
+      conn(:post, "/v1/analyze")
       |> put_req_header("authorization", "Bearer #{raw_key}")
       |> Auth.call(%{})
 
@@ -86,21 +95,21 @@ defmodule Lei.AuthTest do
     Application.put_env(:lowendinsight, :rate_limits, %{free: 2, pro: 600})
 
     conn1 =
-      conn(:get, "/v1/health")
+      conn(:post, "/v1/analyze")
       |> put_req_header("authorization", "Bearer #{raw_key}")
       |> Auth.call(%{})
 
     refute conn1.halted
 
     conn2 =
-      conn(:get, "/v1/health")
+      conn(:post, "/v1/analyze")
       |> put_req_header("authorization", "Bearer #{raw_key}")
       |> Auth.call(%{})
 
     refute conn2.halted
 
     conn3 =
-      conn(:get, "/v1/health")
+      conn(:post, "/v1/analyze")
       |> put_req_header("authorization", "Bearer #{raw_key}")
       |> Auth.call(%{})
 
