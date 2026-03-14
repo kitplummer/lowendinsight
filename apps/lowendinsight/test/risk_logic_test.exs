@@ -179,21 +179,19 @@ defmodule RiskLogicTest do
   end
 
   describe "agentic_classification" do
-    test "human when ratio below 0.5" do
+    test "human when ratio below 0.3" do
       assert RiskLogic.agentic_classification(0.0) == {:ok, "human"}
-      assert RiskLogic.agentic_classification(0.3) == {:ok, "human"}
-      assert RiskLogic.agentic_classification(0.49) == {:ok, "human"}
+      assert RiskLogic.agentic_classification(0.29) == {:ok, "human"}
     end
 
-    test "mixed when ratio at or above 0.5" do
+    test "mixed when ratio at or above 0.3 and at or below 0.7" do
+      assert RiskLogic.agentic_classification(0.3) == {:ok, "mixed"}
       assert RiskLogic.agentic_classification(0.5) == {:ok, "mixed"}
-      assert RiskLogic.agentic_classification(0.6) == {:ok, "mixed"}
+      assert RiskLogic.agentic_classification(0.7) == {:ok, "mixed"}
     end
 
-    test "agent when ratio at or above 0.7" do
-      assert RiskLogic.agentic_classification(0.7) == {:ok, "agent"}
-      assert RiskLogic.agentic_classification(0.8) == {:ok, "agent"}
-      assert RiskLogic.agentic_classification(0.9) == {:ok, "agent"}
+    test "agent when ratio above 0.7" do
+      assert RiskLogic.agentic_classification(0.71) == {:ok, "agent"}
       assert RiskLogic.agentic_classification(1.0) == {:ok, "agent"}
     end
   end
@@ -319,11 +317,11 @@ defmodule RiskLogicTest do
       Application.delete_env(:lowendinsight, :high_agentic_level)
       Application.delete_env(:lowendinsight, :medium_agentic_level)
 
-      # Defaults: medium=0.5, high=0.7
-      assert RiskLogic.agentic_classification(0.3) == {:ok, "human"}
-      assert RiskLogic.agentic_classification(0.5) == {:ok, "mixed"}
-      assert RiskLogic.agentic_classification(0.7) == {:ok, "agent"}
-      assert RiskLogic.agentic_classification(0.9) == {:ok, "agent"}
+      # Defaults: medium=0.3, high=0.7
+      assert RiskLogic.agentic_classification(0.29) == {:ok, "human"}
+      assert RiskLogic.agentic_classification(0.3) == {:ok, "mixed"}
+      assert RiskLogic.agentic_classification(0.7) == {:ok, "mixed"}
+      assert RiskLogic.agentic_classification(0.71) == {:ok, "agent"}
 
       if original_high,
         do: Application.put_env(:lowendinsight, :high_agentic_level, original_high)

@@ -102,6 +102,36 @@ defmodule Lei.AgenticDetectorTest do
     end
   end
 
+  describe "classify_ratio/1" do
+    test "classifies 0.0 as human" do
+      assert AgenticDetector.classify_ratio(0.0) == {:ok, "human"}
+    end
+
+    test "classifies 0.29 as human" do
+      assert AgenticDetector.classify_ratio(0.29) == {:ok, "human"}
+    end
+
+    test "classifies 0.3 as mixed" do
+      assert AgenticDetector.classify_ratio(0.3) == {:ok, "mixed"}
+    end
+
+    test "classifies 0.5 as mixed" do
+      assert AgenticDetector.classify_ratio(0.5) == {:ok, "mixed"}
+    end
+
+    test "classifies 0.7 as mixed" do
+      assert AgenticDetector.classify_ratio(0.7) == {:ok, "mixed"}
+    end
+
+    test "classifies 0.71 as agent" do
+      assert AgenticDetector.classify_ratio(0.71) == {:ok, "agent"}
+    end
+
+    test "classifies 1.0 as agent" do
+      assert AgenticDetector.classify_ratio(1.0) == {:ok, "agent"}
+    end
+  end
+
   describe "analyze/2" do
     test "analyzes mixed contributors" do
       contributors_with_messages = [

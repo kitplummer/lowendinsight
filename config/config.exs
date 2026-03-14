@@ -93,7 +93,7 @@ config :lowendinsight,
   high_agentic_level:
     String.to_float(System.get_env("LEI_HIGH_AGENTIC_LEVEL") || "0.7"),
   medium_agentic_level:
-    String.to_float(System.get_env("LEI_MEDIUM_AGENTIC_LEVEL") || "0.5"),
+    String.to_float(System.get_env("LEI_MEDIUM_AGENTIC_LEVEL") || "0.3"),
   session_secret_key_base:
     System.get_env("LEI_SESSION_SECRET") ||
       "lei_dev_session_secret_that_is_at_least_64_bytes_long_for_cookie_store_to_work_properly"
