@@ -16,6 +16,7 @@ defmodule LowendinsightGet.Endpoint do
   @auth_paths ~w(/signup /login /dashboard /keys /logout /static /recover /webhooks /v1/analyze/batch /v1/usage)
 
   plug(LowendinsightGet.Auth)
+  plug(LowendinsightGet.Plugs.RateLimiter)
   plug(Plug.Logger, log: :debug)
   plug(Plug.Static, from: {:lowendinsight_get, "priv/static/images"}, at: "/images")
   plug(Plug.Static, from: {:lowendinsight_get, "priv/static/js"}, at: "/js")

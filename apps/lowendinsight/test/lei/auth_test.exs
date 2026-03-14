@@ -18,6 +18,7 @@ defmodule Lei.AuthTest do
     %{raw_key: raw_key}
   end
 
+  # Auth tests use /v1/orgs (requires auth) since /v1/health is now public
   test "accepts valid API key", %{raw_key: raw_key} do
     conn =
       conn(:post, "/v1/analyze")
