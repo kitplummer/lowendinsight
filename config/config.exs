@@ -4,7 +4,9 @@
 
 import Config
 
-config :logger, :console, format: "lei: $time $metadata[$level] $message\n"
+config :logger, :console,
+  format: "lei: $time $metadata[$level] $message\n",
+  metadata: [:request_id]
 
 config :lowendinsight, ecto_repos: [Lei.Repo]
 

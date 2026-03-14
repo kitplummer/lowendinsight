@@ -124,4 +124,27 @@ defmodule Lei.Web.RouterTest do
 
     assert conn.status == 404
   end
+
+  test "X-Request-ID header is present and is a valid UUID", %{token: token} do
+    conn =
+      conn(:get, "/v1/health")
+      |> put_req_header("authorization", "Bearer #{token}")
+      |> Lei.Web.Router.call(@opts)
+
+    request_id = get_resp_header(conn, "x-request-id") |> List.first()
+    assert request_id != nil
+    assert {:ok, _} = Ecto.UUID.cast(request_id)
+  end
+
+  test "X-Request-ID echoes client-supplied header when valid UUID", %{token: token} do
+    supplied_id = Ecto.UUID.generate()
+
+    conn =
+      conn(:get, "/v1/health")
+      |> put_req_header("authorization", "Bearer #{token}")
+      |> put_req_header("x-request-id", supplied_id)
+      |> Lei.Web.Router.call(@opts)
+
+    assert get_resp_header(conn, "x-request-id") == [supplied_id]
+  end
 end

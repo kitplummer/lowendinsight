@@ -7,9 +7,11 @@ defmodule Lei.Web.Router do
   """
   use Plug.Router
 
+  plug Lei.Web.Plugs.RequestId
   plug Plug.Logger
   plug Plug.Parsers, parsers: [:json], json_decoder: Poison
   plug Lei.Auth
+  plug Lei.Web.Plugs.RateLimiter
   plug :match
   plug :dispatch
 
