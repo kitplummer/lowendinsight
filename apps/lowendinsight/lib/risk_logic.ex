@@ -157,16 +157,12 @@ defmodule RiskLogic do
   end
 
   @doc """
-  agentic_risk/1: returns text enumeration for agentic contribution ratio.
+  agentic_classification/1: returns classification label for agentic contribution ratio.
   Ratio represents the fraction of commits from bots or AI-assisted contributors.
+  Returns "human", "mixed", or "agent".
   """
-  @spec agentic_risk(float) :: {:ok, String.t()}
-  def agentic_risk(ratio) do
-    critical_agentic_level =
-      if Application.fetch_env(:lowendinsight, :critical_agentic_level) == :error,
-        do: 0.9,
-        else: Application.fetch_env!(:lowendinsight, :critical_agentic_level)
-
+  @spec agentic_classification(float) :: {:ok, String.t()}
+  def agentic_classification(ratio) do
     high_agentic_level =
       if Application.fetch_env(:lowendinsight, :high_agentic_level) == :error,
         do: 0.7,
@@ -178,17 +174,14 @@ defmodule RiskLogic do
         else: Application.fetch_env!(:lowendinsight, :medium_agentic_level)
 
     cond do
-      ratio >= critical_agentic_level ->
-        {:ok, "critical"}
-
       ratio >= high_agentic_level ->
-        {:ok, "high"}
+        {:ok, "agent"}
 
       ratio >= medium_agentic_level ->
-        {:ok, "medium"}
+        {:ok, "mixed"}
 
       ratio < medium_agentic_level ->
-        {:ok, "low"}
+        {:ok, "human"}
     end
   end
 end

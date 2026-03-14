@@ -178,26 +178,23 @@ defmodule RiskLogicTest do
     assert RiskLogic.functional_contributors_risk(100) == {:ok, "low"}
   end
 
-  describe "agentic_risk" do
-    test "low when ratio below 0.5" do
-      assert RiskLogic.agentic_risk(0.0) == {:ok, "low"}
-      assert RiskLogic.agentic_risk(0.3) == {:ok, "low"}
-      assert RiskLogic.agentic_risk(0.49) == {:ok, "low"}
+  describe "agentic_classification" do
+    test "human when ratio below 0.5" do
+      assert RiskLogic.agentic_classification(0.0) == {:ok, "human"}
+      assert RiskLogic.agentic_classification(0.3) == {:ok, "human"}
+      assert RiskLogic.agentic_classification(0.49) == {:ok, "human"}
     end
 
-    test "medium when ratio at or above 0.5" do
-      assert RiskLogic.agentic_risk(0.5) == {:ok, "medium"}
-      assert RiskLogic.agentic_risk(0.6) == {:ok, "medium"}
+    test "mixed when ratio at or above 0.5" do
+      assert RiskLogic.agentic_classification(0.5) == {:ok, "mixed"}
+      assert RiskLogic.agentic_classification(0.6) == {:ok, "mixed"}
     end
 
-    test "high when ratio at or above 0.7" do
-      assert RiskLogic.agentic_risk(0.7) == {:ok, "high"}
-      assert RiskLogic.agentic_risk(0.8) == {:ok, "high"}
-    end
-
-    test "critical when ratio at or above 0.9" do
-      assert RiskLogic.agentic_risk(0.9) == {:ok, "critical"}
-      assert RiskLogic.agentic_risk(1.0) == {:ok, "critical"}
+    test "agent when ratio at or above 0.7" do
+      assert RiskLogic.agentic_classification(0.7) == {:ok, "agent"}
+      assert RiskLogic.agentic_classification(0.8) == {:ok, "agent"}
+      assert RiskLogic.agentic_classification(0.9) == {:ok, "agent"}
+      assert RiskLogic.agentic_classification(1.0) == {:ok, "agent"}
     end
   end
 
@@ -315,23 +312,18 @@ defmodule RiskLogicTest do
           )
     end
 
-    test "agentic_risk uses defaults when config is missing" do
-      original_critical = Application.get_env(:lowendinsight, :critical_agentic_level)
+    test "agentic_classification uses defaults when config is missing" do
       original_high = Application.get_env(:lowendinsight, :high_agentic_level)
       original_medium = Application.get_env(:lowendinsight, :medium_agentic_level)
 
-      Application.delete_env(:lowendinsight, :critical_agentic_level)
       Application.delete_env(:lowendinsight, :high_agentic_level)
       Application.delete_env(:lowendinsight, :medium_agentic_level)
 
-      # Defaults: medium=0.5, high=0.7, critical=0.9
-      assert RiskLogic.agentic_risk(0.3) == {:ok, "low"}
-      assert RiskLogic.agentic_risk(0.5) == {:ok, "medium"}
-      assert RiskLogic.agentic_risk(0.7) == {:ok, "high"}
-      assert RiskLogic.agentic_risk(0.9) == {:ok, "critical"}
-
-      if original_critical,
-        do: Application.put_env(:lowendinsight, :critical_agentic_level, original_critical)
+      # Defaults: medium=0.5, high=0.7
+      assert RiskLogic.agentic_classification(0.3) == {:ok, "human"}
+      assert RiskLogic.agentic_classification(0.5) == {:ok, "mixed"}
+      assert RiskLogic.agentic_classification(0.7) == {:ok, "agent"}
+      assert RiskLogic.agentic_classification(0.9) == {:ok, "agent"}
 
       if original_high,
         do: Application.put_env(:lowendinsight, :high_agentic_level, original_high)
