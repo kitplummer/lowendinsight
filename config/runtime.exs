@@ -114,7 +114,19 @@ if config_env() == :prod do
     stripe_secret_key: System.get_env("STRIPE_SECRET_KEY"),
     stripe_webhook_secret: System.get_env("STRIPE_WEBHOOK_SECRET"),
     stripe_pro_price_id: System.get_env("STRIPE_PRO_PRICE_ID"),
+    stripe_metered_price_id: System.get_env("STRIPE_METERED_PRICE_ID"),
     lei_base_url: System.get_env("LEI_BASE_URL") || "https://lowendinsight.fly.dev",
     acp_bearer_token: System.get_env("LEI_ACP_BEARER_TOKEN"),
     acp_signing_secret: System.get_env("LEI_ACP_SIGNING_SECRET")
+
+  # Usage billing rates (ADR-001)
+  config :lowendinsight,
+    cache_hit_cost_cents:
+      String.to_float(System.get_env("LEI_CACHE_HIT_COST_CENTS") || "0.5"),
+    cache_miss_cost_cents:
+      String.to_float(System.get_env("LEI_CACHE_MISS_COST_CENTS") || "5.0"),
+    free_tier_monthly_limit:
+      String.to_integer(System.get_env("LEI_FREE_TIER_MONTHLY_LIMIT") || "200"),
+    pro_tier_credit_cents:
+      String.to_float(System.get_env("LEI_PRO_TIER_CREDIT_CENTS") || "1500.0")
 end

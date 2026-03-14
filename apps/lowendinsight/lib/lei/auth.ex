@@ -4,6 +4,8 @@ defmodule Lei.Auth do
 
   @scope_map %{
     {"/v1/analyze", "POST"} => "analyze",
+    {"/v1/analyze/batch", "POST"} => "analyze",
+    {"/v1/usage", "GET"} => "analyze",
     {"/v1/health", "GET"} => nil,
     {"/v1/orgs", "POST"} => "admin",
     {"/v1/orgs", "GET"} => "admin"
@@ -11,15 +13,22 @@ defmodule Lei.Auth do
 
   def init(opts), do: opts
 
+  @public_v1_paths ["/v1/health"]
+
   def call(%Plug.Conn{request_path: path} = conn, _opts) do
-    if String.starts_with?(path, "/v1") do
-      conn
-      |> get_auth_header()
-      |> authenticate()
-      |> check_scope()
-      |> check_rate_limit()
-    else
-      conn
+    cond do
+      path in @public_v1_paths ->
+        conn
+
+      String.starts_with?(path, "/v1") ->
+        conn
+        |> get_auth_header()
+        |> authenticate()
+        |> check_scope()
+        |> check_rate_limit()
+
+      true ->
+        conn
     end
   end
 
@@ -31,18 +40,23 @@ defmodule Lei.Auth do
   end
 
   defp authenticate({conn, "Bearer lei_" <> _rest = token}) do
-    raw_key = String.replace_prefix(token, "Bearer ", "")
+    # Skip re-auth if upstream plug already authenticated this key
+    if conn.assigns[:current_api_key] do
+      conn
+    else
+      raw_key = String.replace_prefix(token, "Bearer ", "")
 
-    case Lei.ApiKeys.authenticate_key(raw_key) do
-      {:ok, api_key} ->
-        Lei.ApiKeys.touch_last_used(api_key)
-        conn |> assign(:current_api_key, api_key) |> assign(:auth_method, :api_key)
+      case Lei.ApiKeys.authenticate_key(raw_key) do
+        {:ok, api_key} ->
+          Lei.ApiKeys.touch_last_used(api_key)
+          conn |> assign(:current_api_key, api_key) |> assign(:auth_method, :api_key)
 
-      {:error, {:org_not_active, status}} ->
-        send_403(conn, %{error: "organization not active", status: status})
+        {:error, {:org_not_active, status}} ->
+          send_403(conn, %{error: "organization not active", status: status})
 
-      {:error, _} ->
-        send_401(conn, %{error: "invalid API key"})
+        {:error, _} ->
+          send_401(conn, %{error: "invalid API key"})
+      end
     end
   end
 

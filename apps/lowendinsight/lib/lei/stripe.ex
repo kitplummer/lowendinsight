@@ -3,6 +3,8 @@ defmodule Lei.StripeBehaviour do
   @callback construct_webhook_event(String.t(), String.t(), String.t()) ::
               {:ok, map()} | {:error, term()}
   @callback create_payment_intent(map()) :: {:ok, map()} | {:error, term()}
+  @callback report_usage(String.t(), integer(), integer()) :: {:ok, map()} | {:error, term()}
+  @callback retrieve_subscription(String.t()) :: {:ok, map()} | {:error, term()}
 end
 
 defmodule Lei.Stripe do
@@ -16,16 +18,27 @@ defmodule Lei.Stripe do
   def create_checkout_session(params) do
     api_key = Application.get_env(:lowendinsight, :stripe_secret_key)
 
-    body =
-      URI.encode_query(%{
-        "mode" => "subscription",
-        "payment_method_types[0]" => "card",
-        "line_items[0][price]" => params.price_id,
-        "line_items[0][quantity]" => "1",
-        "success_url" => params.success_url,
-        "cancel_url" => params.cancel_url,
-        "metadata[org_id]" => to_string(params.org_id)
-      })
+    metered_price_id = params[:metered_price_id]
+
+    base_params = %{
+      "mode" => "subscription",
+      "payment_method_types[0]" => "card",
+      "line_items[0][price]" => params.price_id,
+      "line_items[0][quantity]" => "1",
+      "success_url" => params.success_url,
+      "cancel_url" => params.cancel_url,
+      "metadata[org_id]" => to_string(params.org_id)
+    }
+
+    # Add metered usage price as second line item if configured
+    base_params =
+      if metered_price_id do
+        Map.put(base_params, "line_items[1][price]", metered_price_id)
+      else
+        base_params
+      end
+
+    body = URI.encode_query(base_params)
 
     case HTTPoison.post(
            "https://api.stripe.com/v1/checkout/sessions",
@@ -101,6 +114,58 @@ defmodule Lei.Stripe do
     case HTTPoison.post(
            "https://api.stripe.com/v1/payment_intents",
            body,
+           [
+             {"Authorization", "Bearer #{api_key}"},
+             {"Content-Type", "application/x-www-form-urlencoded"}
+           ]
+         ) do
+      {:ok, %HTTPoison.Response{status_code: 200, body: resp_body}} ->
+        {:ok, Poison.decode!(resp_body)}
+
+      {:ok, %HTTPoison.Response{body: resp_body}} ->
+        {:error, Poison.decode!(resp_body)}
+
+      {:error, reason} ->
+        {:error, reason}
+    end
+  end
+
+  @impl true
+  def report_usage(subscription_item_id, quantity, timestamp) do
+    api_key = Application.get_env(:lowendinsight, :stripe_secret_key)
+
+    body =
+      URI.encode_query(%{
+        "quantity" => to_string(quantity),
+        "timestamp" => to_string(timestamp),
+        "action" => "set"
+      })
+
+    case HTTPoison.post(
+           "https://api.stripe.com/v1/subscription_items/#{subscription_item_id}/usage_records",
+           body,
+           [
+             {"Authorization", "Bearer #{api_key}"},
+             {"Content-Type", "application/x-www-form-urlencoded"}
+           ]
+         ) do
+      {:ok, %HTTPoison.Response{status_code: 200, body: resp_body}} ->
+        {:ok, Poison.decode!(resp_body)}
+
+      {:ok, %HTTPoison.Response{body: resp_body}} ->
+        {:error, Poison.decode!(resp_body)}
+
+      {:error, reason} ->
+        {:error, reason}
+    end
+  end
+
+  @impl true
+  def retrieve_subscription(subscription_id) do
+    api_key = Application.get_env(:lowendinsight, :stripe_secret_key)
+
+    case HTTPoison.get(
+           "https://api.stripe.com/v1/subscriptions/#{subscription_id}",
            [
              {"Authorization", "Bearer #{api_key}"},
              {"Content-Type", "application/x-www-form-urlencoded"}

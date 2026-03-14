@@ -63,3 +63,10 @@ config :lowendinsight,
   stripe_module: Lei.StripeMock,
   acp_bearer_token: nil,
   acp_signing_secret: nil
+
+# --- Usage billing test defaults ---
+config :lowendinsight,
+  cache_hit_cost_cents: 0.5,
+  cache_miss_cost_cents: 5.0,
+  free_tier_monthly_limit: 200,
+  pro_tier_credit_cents: 1500.0

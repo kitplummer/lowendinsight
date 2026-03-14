@@ -13,6 +13,11 @@ defmodule LowendinsightGet.Application do
         Ecto.Migrator.run(repo, Ecto.Migrator.migrations_path(repo), :up, all: true)
       end)
 
+    {:ok, _, _} =
+      Ecto.Migrator.with_repo(Lei.Repo, fn repo ->
+        Ecto.Migrator.run(repo, Ecto.Migrator.migrations_path(repo), :up, all: true)
+      end)
+
     Supervisor.start_link(children(), opts())
   end
 
