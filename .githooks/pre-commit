@@ -1,0 +1,50 @@
+#!/bin/sh
+#
+# Pre-commit hook for LowEndInsight
+#
+# Runs tests before allowing commit.
+# Enable with: git config core.hooksPath .githooks
+
+set -e
+
+echo "==> pre-commit: running tests..."
+mix test || {
+    echo "ERROR: Tests are failing. Fix them before committing."
+    exit 1
+}
+
+# Beads JSONL flush
+if command -v bd >/dev/null 2>&1; then
+    BEADS_DIR=""
+    if git rev-parse --git-dir >/dev/null 2>&1; then
+        if [ "$(git rev-parse --git-dir)" != "$(git rev-parse --git-common-dir)" ]; then
+            MAIN_REPO_ROOT="$(git rev-parse --git-common-dir)"
+            MAIN_REPO_ROOT="$(dirname "$MAIN_REPO_ROOT")"
+            if [ -d "$MAIN_REPO_ROOT/.beads" ]; then
+                BEADS_DIR="$MAIN_REPO_ROOT/.beads"
+            fi
+        else
+            if [ -d .beads ]; then
+                BEADS_DIR=".beads"
+            fi
+        fi
+    fi
+
+    if [ -n "$BEADS_DIR" ]; then
+        if [ -f "$BEADS_DIR/metadata.json" ]; then
+            if grep -q '"backend"[[:space:]]*:[[:space:]]*"dolt"' "$BEADS_DIR/metadata.json" 2>/dev/null; then
+                exit 0
+            fi
+        fi
+
+        bd sync --flush-only >/dev/null 2>&1 || true
+
+        if [ -f "$BEADS_DIR/issues.jsonl" ]; then
+            if [ "$(git rev-parse --git-dir)" = "$(git rev-parse --git-common-dir)" ]; then
+                git add "$BEADS_DIR/issues.jsonl" 2>/dev/null || true
+            fi
+        fi
+    fi
+fi
+
+exit 0
