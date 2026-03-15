@@ -1,9 +1,0 @@
-/* LEI minimal custom styles — Bulma does the heavy lifting */
-.navbar-brand .navbar-item {
-  font-size: 1.25rem;
-  letter-spacing: 0.05em;
-}
-
-.notification code {
-  word-break: break-all;
-}

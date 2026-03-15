@@ -1,6 +1,0 @@
-{
-    "skip_files": [
-        "lib/schema_loader.ex",
-        "lib/yarnlockfile.ex"
-    ]
-}
