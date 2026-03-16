@@ -48,21 +48,32 @@ defmodule LowendinsightGet.GithubTrending do
   end
 
   def get_current_gh_trending_report(language) do
+    empty_report = fn id ->
+      %{
+        "metadata" => %{"times" => %{}},
+        "report" => %{"uuid" => id, "repos" => []}
+      }
+    end
+
     case Redix.command(:redix, ["GET", "gh_trending_#{language}_uuid"]) do
       {:error, reason} ->
-        {:error, reason}
+        Logger.error("Redis error fetching trending UUID for #{language}: #{inspect(reason)}")
+        empty_report.(UUID.uuid1())
+
+      {:ok, nil} ->
+        empty_report.(UUID.uuid1())
 
       {:ok, uuid} ->
-        case uuid do
-          nil ->
-            %{
-              "metadata" => %{"times" => %{}},
-              "report" => %{"uuid" => UUID.uuid1(), "repos" => []}
-            }
+        case Redix.command(:redix, ["GET", uuid]) do
+          {:ok, nil} ->
+            empty_report.(uuid)
 
-          _ ->
-            {:ok, report_json} = Redix.command(:redix, ["GET", uuid])
+          {:ok, report_json} ->
             Poison.Parser.parse!(report_json, %{})
+
+          {:error, reason} ->
+            Logger.error("Redis error fetching trending report #{uuid}: #{inspect(reason)}")
+            empty_report.(uuid)
         end
     end
   end

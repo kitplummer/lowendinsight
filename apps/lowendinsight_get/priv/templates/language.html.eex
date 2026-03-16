@@ -46,7 +46,7 @@
           </h1>
           <p class="subtitle sub">Analysis of Today's Github Trending Repos</p>
           <div class="box report-info-box">
-          <p><strong>Report ID:</strong> <%= report["uuid"] %></p>
+          <p><strong>Report ID:</strong> <%= report["report"]["uuid"] %></p>
           <p><strong>Report generated:</strong> <%= report["metadata"]["times"]["end_time"] %></p>
           <p>
             <strong>From:</strong>
