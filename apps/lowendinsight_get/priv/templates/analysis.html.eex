@@ -91,6 +91,7 @@
               <th>Commit Currency (weeks)</th>
               <th>Commit Currency Risk</th>
               <th>SBOM Risk</th>
+              <th>Agentic Classification</th>
               <th>Repo Size</th>
               <th>Last Commit</th>
               <th>Total Commits</th>
@@ -114,13 +115,14 @@
                 var commit_currency = report["data"]["results"]["commit_currency_weeks"];
                 var commit_currency_risk = report["data"]["results"]["commit_currency_risk"];
                 var sbom_risk = report["data"]["results"]["sbom_risk"];
+                var agentic_classification = report["data"]["results"]["agentic_classification"];
                 var repo_size = report["data"]["repo_size"];
                 var last_commit = report["data"]["git"] ? report["data"]["git"]["last_commit_date"] : null;
                 var total_commits = report["data"]["git"] ? report["data"]["git"]["total_commits_on_default_branch"] : null;
                 var default_branch = report["data"]["git"] ? report["data"]["git"]["default_branch"] : null;
                 display_row(project, slug, risk, ccount, contributor_risk, fccount, fc_risk,
                             large_commit_risk, recent_commit_pct, commit_currency, commit_currency_risk,
-                            sbom_risk, repo_size, last_commit, total_commits, default_branch, report);
+                            sbom_risk, agentic_classification, repo_size, last_commit, total_commits, default_branch, report);
               </script>
           </tbody>
         </table>

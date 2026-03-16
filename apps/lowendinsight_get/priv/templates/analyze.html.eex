@@ -28,7 +28,7 @@
             </div>
             <div class="column">
               <h1 class="title">LowEndInsight</h1>
-              <p class="subtitle">Open source supply chain risk analysis</p>
+              <p class="subtitle">Open source supply chain risk and agentic analysis</p>
             </div>
             <div class="column is-narrow">
               <a class="button is-success is-outlined" href="/signup">
@@ -136,8 +136,12 @@
                   <li><strong>Large recent commit risk</strong> &mdash; codebase volatility</li>
                   <li><strong>Recent commit size %</strong> &mdash; last commit as % of codebase</li>
                   <li><strong>SBOM risk</strong> &mdash; dependency/supply chain risk</li>
+                  <li><strong>Agentic classification</strong> &mdash; <code>human</code> / <code>mixed</code> / <code>agent</code> based on bot/AI commit ratio</li>
+                  <li><strong>Agentic contribution ratio</strong> &mdash; fraction of commits from bots or AI agents (0.0&ndash;1.0)</li>
+                  <li><strong>Restricted contributors</strong> &mdash; whether any contributors have restricted GitHub profiles (requires GitHub token)</li>
                 </ul>
               </div>
+              <p class="is-size-7 has-text-grey">Agentic thresholds: <code>human</code> &lt; 0.3, <code>mixed</code> 0.3&ndash;0.7, <code>agent</code> &gt; 0.7</p>
             </div>
 
             <div class="box">

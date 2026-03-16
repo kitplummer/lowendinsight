@@ -140,7 +140,7 @@ function format_date(value) {
 
 function display_row(project, slug, risk, ccount, contributor_risk, fccount, fc_risk,
                      large_commit_risk, recent_commit_pct, commit_currency, commit_currency_risk,
-                     sbom_risk, repo_size, last_commit, total_commits, default_branch, json_data) {
+                     sbom_risk, agentic_classification, repo_size, last_commit, total_commits, default_branch, json_data) {
     var table = document.getElementById("repo")
     var row = table.insertRow(-1);
     row.className = "row";
@@ -157,6 +157,7 @@ function display_row(project, slug, risk, ccount, contributor_risk, fccount, fc_
     var ccurreny_cell = row.insertCell(i++);
     var commit_currency_risk_cell = row.insertCell(i++);
     var sbom_risk_cell = row.insertCell(i++);
+    var agentic_classification_cell = row.insertCell(i++);
     var repo_size_cell = row.insertCell(i++);
     var last_commit_cell = row.insertCell(i++);
     var total_commits_cell = row.insertCell(i++);
@@ -174,6 +175,7 @@ function display_row(project, slug, risk, ccount, contributor_risk, fccount, fc_
     ccurreny_cell.className = "table-data is-family-code commit_currency";
     commit_currency_risk_cell.className = "table-data is-family-code commit_currency_risk";
     sbom_risk_cell.className = "table-data is-family-code sbom_risk";
+    agentic_classification_cell.className = "table-data is-family-code agentic_classification";
     repo_size_cell.className = "table-data is-family-code repo_size";
     last_commit_cell.className = "table-data is-family-code last_commit";
     total_commits_cell.className = "table-data is-family-code total_commits";
@@ -200,6 +202,7 @@ function display_row(project, slug, risk, ccount, contributor_risk, fccount, fc_
     ccurreny_cell.innerHTML = commit_currency;
     apply_risk_class(commit_currency_risk_cell, commit_currency_risk);
     apply_risk_class(sbom_risk_cell, sbom_risk);
+    agentic_classification_cell.innerHTML = agentic_classification || "N/A";
     repo_size_cell.innerHTML = repo_size || "N/A";
     last_commit_cell.innerHTML = format_date(last_commit);
     total_commits_cell.innerHTML = total_commits || "N/A";

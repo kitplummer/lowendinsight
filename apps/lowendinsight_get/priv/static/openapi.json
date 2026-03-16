@@ -2,7 +2,7 @@
   "openapi": "3.0.3",
   "info": {
     "title": "LowEndInsight API",
-    "description": "OSS risk (bus-factor) analysis service. Analyzes git repositories for contributor risk, commit currency, and other supply-chain risk indicators.",
+    "description": "OSS risk (bus-factor) analysis service. Analyzes git repositories for contributor risk, commit currency, agentic classification, and other supply-chain risk indicators.",
     "version": "0.9.2",
     "license": {
       "name": "BSD 3-Clause",
@@ -93,7 +93,10 @@
                             "functional_contributors": 1,
                             "functional_contributors_risk": "critical",
                             "large_recent_commit_risk": "medium",
-                            "recent_commit_size_in_percent_of_codebase": 0.08
+                            "recent_commit_size_in_percent_of_codebase": 0.08,
+                            "agentic_classification": "human",
+                            "agentic_contribution_ratio": 0.0,
+                            "restricted_contributors": null
                           },
                           "config": {}
                         },
@@ -824,6 +827,23 @@
             "type": "number",
             "format": "float",
             "description": "Most recent commit size as a fraction of the total codebase"
+          },
+          "agentic_classification": {
+            "type": "string",
+            "enum": ["human", "mixed", "agent"],
+            "description": "Repository-level agentic classification based on the ratio of bot/AI commits. 'human' = ratio < 0.3, 'mixed' = ratio >= 0.3 and <= 0.7, 'agent' = ratio > 0.7"
+          },
+          "agentic_contribution_ratio": {
+            "type": "number",
+            "format": "float",
+            "minimum": 0.0,
+            "maximum": 1.0,
+            "description": "Ratio of agentic (bot/AI) commits to total commits, ranging from 0.0 (fully human) to 1.0 (fully agentic)"
+          },
+          "restricted_contributors": {
+            "type": "boolean",
+            "nullable": true,
+            "description": "Whether any contributors have restricted GitHub profiles. Null when no GitHub token is configured; true/false when the GitHub API is available."
           }
         }
       },

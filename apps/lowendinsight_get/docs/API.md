@@ -93,12 +93,25 @@ Analyze one or more git repository URLs.
         "risk": "low",
         "contributor_count": 25,
         "functional_contributors": 8,
-        "commit_currency_weeks": 2
+        "commit_currency_weeks": 2,
+        "agentic_classification": "mixed",
+        "agentic_contribution_ratio": 0.45,
+        "restricted_contributors": null
       }
     }
   }
 }
 ```
+
+**Agentic Classification Fields:**
+
+Each repo result includes agentic classification fields that describe the degree of bot/AI contribution:
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `agentic_classification` | string | Repository classification: `human` (ratio < 0.3), `mixed` (0.3–0.7), or `agent` (> 0.7) |
+| `agentic_contribution_ratio` | float | Fraction of commits attributed to bots or AI agents (0.0–1.0) |
+| `restricted_contributors` | boolean\|null | Whether any contributors have restricted GitHub profiles. `null` when no GitHub token is configured. |
 
 **Response (202 Accepted):** Analysis in progress or timed out
 ```json
