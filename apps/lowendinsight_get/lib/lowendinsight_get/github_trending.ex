@@ -66,6 +66,7 @@ defmodule LowendinsightGet.GithubTrending do
       {:ok, uuid} ->
         case Redix.command(:redix, ["GET", uuid]) do
           {:ok, nil} ->
+            Logger.warn("gh_trending report #{uuid} not found in Redis (may have expired)")
             empty_report.(uuid)
 
           {:ok, report_json} ->
