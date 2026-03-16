@@ -145,6 +145,20 @@
             </div>
 
             <div class="box">
+              <h2 class="title is-5">Agentic Classification</h2>
+              <div class="content">
+                <p>Each repository is classified based on the ratio of commits attributed to automated or AI contributors:</p>
+                <table class="table is-fullwidth is-narrow">
+                  <tbody>
+                    <tr><td><span class="tag is-success">human</span></td><td>Ratio &lt; 0.3 &mdash; predominantly human-authored</td></tr>
+                    <tr><td><span class="tag is-warning">mixed</span></td><td>Ratio &ge; 0.3 &mdash; mix of human and agentic</td></tr>
+                    <tr><td><span class="tag is-danger">agent</span></td><td>Ratio &ge; 0.7 &mdash; predominantly agentic</td></tr>
+                  </tbody>
+                </table>
+              </div>
+            </div>
+
+            <div class="box">
               <h2 class="title is-5">Risk Levels</h2>
               <table class="table is-fullwidth is-narrow">
                 <tbody>

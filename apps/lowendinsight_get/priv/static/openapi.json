@@ -1129,7 +1129,7 @@
   "tags": [
     {
       "name": "Analysis",
-      "description": "Core analysis endpoints for evaluating OSS repository risk"
+      "description": "Core analysis endpoints for evaluating OSS repository risk and agentic classification"
     },
     {
       "name": "Cache",

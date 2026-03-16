@@ -121,10 +121,20 @@ function apply_risk_class(cell, value) {
             span.className = "mediumrisk"; break;
         case "low":
             span.className = "lowrisk"; break;
+        // agentic_classification values
+        case "agent":
+            span.className = "criticalrisk"; break;
+        case "mixed":
+            span.className = "mediumrisk"; break;
+        case "human":
+            span.className = "lowrisk"; break;
         default: break;
     }
     cell.appendChild(span);
 }
+
+// agentic_classification, agentic_contribution_ratio, and restricted_contributors
+// are rendered automatically by view_json_button's JSON tree viewer.
 
 function format_percent(value) {
     if (value === null || value === undefined || value === "") return "N/A";

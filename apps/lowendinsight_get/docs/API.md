@@ -1,6 +1,6 @@
 # LowEndInsight API Reference
 
-LowEndInsight (LEI) provides supply chain security analysis for git repositories. This document covers the REST API endpoints.
+LowEndInsight (LEI) provides supply chain security analysis for git repositories, including risk analysis and agentic classification. This document covers the REST API endpoints.
 
 ## Base URL
 
@@ -378,6 +378,52 @@ Validate if a URL is a valid git repository URL.
 ```json
 {
   "error": "invalid git url"
+}
+```
+
+---
+
+## Agentic Classification
+
+Each repository analysis includes fields classifying the level of agentic (automated/AI) contributor activity.
+
+### Fields
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `agentic_classification` | string | Overall classification: `human`, `mixed`, or `agent` |
+| `agentic_contribution_ratio` | float | Ratio of agentic commits (0.0 = fully human, 1.0 = fully agentic) |
+| `restricted_contributors` | boolean\|null | Whether contributors are restricted (e.g. org members only). `null` if not determinable. |
+
+### Classification Thresholds
+
+| Classification | Condition |
+|----------------|-----------|
+| `human` | `agentic_contribution_ratio` < 0.3 |
+| `mixed` | `agentic_contribution_ratio` >= 0.3 |
+| `agent` | `agentic_contribution_ratio` >= 0.7 |
+
+### Example (mixed classification)
+
+```json
+{
+  "results": {
+    "agentic_classification": "mixed",
+    "agentic_contribution_ratio": 0.45,
+    "restricted_contributors": true
+  }
+}
+```
+
+### Example (agent classification)
+
+```json
+{
+  "results": {
+    "agentic_classification": "agent",
+    "agentic_contribution_ratio": 0.82,
+    "restricted_contributors": false
+  }
 }
 ```
 
