@@ -1,0 +1,115 @@
+<h1 class="title">Dashboard &mdash; <%= @org.name %></h1>
+
+<% usage = Lei.UsageTracker.get_current_usage(@org.id) %>
+<% pro_credit = Application.get_env(:lowendinsight, :pro_tier_credit_cents, 1500) %>
+
+<h2 class="subtitle">Usage &mdash; <%= Date.to_iso8601(usage.period_start) %></h2>
+
+<div class="columns">
+  <div class="column is-one-third">
+    <div class="box has-text-centered">
+      <p class="heading">Cache Hits</p>
+      <p class="title"><%= usage.cache_hits %></p>
+    </div>
+  </div>
+  <div class="column is-one-third">
+    <div class="box has-text-centered">
+      <p class="heading">Cache Misses</p>
+      <p class="title"><%= usage.cache_misses %></p>
+    </div>
+  </div>
+  <div class="column is-one-third">
+    <div class="box has-text-centered">
+      <p class="heading">Total Cost</p>
+      <p class="title">$<%= Decimal.round(Decimal.div(usage.total_cost_cents, Decimal.new(100)), 2) %></p>
+    </div>
+  </div>
+</div>
+
+<%= if @org.tier == "free" do %>
+  <% total_analyses = usage.cache_hits + usage.cache_misses %>
+  <% limit = @org.free_tier_analyses_limit || 200 %>
+  <% remaining = max(limit - total_analyses, 0) %>
+  <div class="notification is-info is-light">
+    <strong>Free Tier:</strong> <%= total_analyses %>/<%= limit %> analyses used.
+    <%= remaining %> remaining this month.
+    <%= if remaining == 0 do %>
+      <br><a href="/signup?tier=pro" class="button is-primary is-small mt-2">Upgrade to Pro</a>
+    <% end %>
+  </div>
+<% else %>
+  <% overage = Decimal.sub(usage.total_cost_cents, Decimal.new(to_string(pro_credit))) %>
+  <% overage_display = Decimal.max(overage, Decimal.new(0)) %>
+  <div class="notification is-success is-light">
+    <strong>Pro Tier:</strong>
+    $<%= Decimal.round(Decimal.div(Decimal.new(to_string(pro_credit)), Decimal.new(100)), 2) %> credit included.
+    Overage: $<%= Decimal.round(Decimal.div(overage_display, Decimal.new(100)), 2) %>
+  </div>
+<% end %>
+
+<hr>
+
+<h2 class="subtitle">API Keys</h2>
+
+<%= if assigns[:new_key] do %>
+  <div class="notification is-warning">
+    <strong>New key created!</strong> Save it now &mdash; it will not be shown again.
+    <br>
+    <code><%= @new_key %></code>
+  </div>
+<% end %>
+
+<table class="table is-fullwidth is-striped">
+  <thead>
+    <tr>
+      <th>Name</th>
+      <th>Prefix</th>
+      <th>Scopes</th>
+      <th>Active</th>
+      <th>Last Used</th>
+      <th>Actions</th>
+    </tr>
+  </thead>
+  <tbody>
+    <%= for key <- @keys do %>
+      <tr>
+        <td><%= key.name %></td>
+        <td><code><%= key.key_prefix %></code></td>
+        <td><%= Enum.join(key.scopes, ", ") %></td>
+        <td><%= if key.active, do: "Yes", else: "No" %></td>
+        <td><%= key.last_used_at || "Never" %></td>
+        <td>
+          <%= if key.active do %>
+            <form method="post" action="/keys/<%= key.id %>/revoke" style="display:inline">
+              <button class="button is-small is-danger is-outlined" type="submit">Revoke</button>
+            </form>
+          <% end %>
+        </td>
+      </tr>
+    <% end %>
+  </tbody>
+</table>
+
+<h2 class="subtitle mt-5">Create New Key</h2>
+<div class="box" style="max-width: 480px;">
+  <form method="post" action="/keys">
+    <div class="field">
+      <label class="label">Key Name</label>
+      <div class="control">
+        <input class="input" type="text" name="name" placeholder="ci-pipeline" required>
+      </div>
+    </div>
+    <div class="field">
+      <label class="label">Scopes (comma-separated)</label>
+      <div class="control">
+        <input class="input" type="text" name="scopes" placeholder="analyze,admin">
+      </div>
+      <p class="help">Available: analyze, admin</p>
+    </div>
+    <div class="field">
+      <div class="control">
+        <button class="button is-primary" type="submit">Create Key</button>
+      </div>
+    </div>
+  </form>
+</div>

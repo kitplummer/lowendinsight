@@ -1,0 +1,34 @@
+# UDS Configuration for LowEndInsight
+# Used by: uds deploy <bundle> --config uds-config.yaml
+#
+# Override values per environment (dev, staging, prod)
+# See: https://uds.defenseunicorns.com/reference/configuration/
+
+variables:
+  lei:
+    # Container image settings
+    LEI_REGISTRY: "ghcr.io/kitplummer"
+    LEI_IMAGE_TAG: "latest"
+
+    # Application settings
+    LEI_HTTP_PORT: "4000"
+    LEI_AIRGAPPED_MODE: "false"
+    LEI_LOG_LEVEL: "info"
+
+    # Database
+    LEI_DB_HOST: "postgresql"
+    LEI_DB_PORT: "5432"
+    LEI_DB_NAME: "lowendinsight"
+    LEI_DB_USER: "postgres"
+    LEI_DB_PASSWORD: "postgres"
+
+    # Auth
+    LEI_JWT_SECRET: "change-me-in-production"
+
+  postgresql:
+    POSTGRESQL_USERNAME: "postgres"
+    POSTGRESQL_PASSWORD: "postgres"
+    POSTGRESQL_DATABASE: "lowendinsight"
+
+shared:
+  domain: "uds.dev"

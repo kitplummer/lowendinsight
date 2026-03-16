@@ -1,0 +1,507 @@
+{
+	"info": {
+		"_postman_id": "f462dc17-4084-4e4a-a926-59b604d1ccc1",
+		"name": "lei",
+		"schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+	},
+	"auth": {
+		"type": "bearer",
+		"bearer": [
+			{
+				"key": "token",
+				"value": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJhdWQiOiJKb2tlbiIsImV4cCI6MTY3MDQzNTQ1MSwiaWF0IjoxNjcwNDI4MjUxLCJpc3MiOiJKb2tlbiIsImp0aSI6IjJzbjhyOThiczNiZzNwZWwwZzAwMDA3MiIsIm5iZiI6MTY3MDQyODI1MX0.kQgqr-7lmQtlVeq96hmIIYHEniJq638NQ10VW26kT9k",
+				"type": "string"
+			}
+		]
+	},
+	"item": [
+		{
+			"name": "get",
+			"request": {
+				"method": "GET",
+				"header": [],
+				"url": {
+					"raw": "http://localhost:4000",
+					"protocol": "http",
+					"host": [
+						"localhost"
+					],
+					"port": "4000"
+				},
+				"description": "base get"
+			},
+			"response": []
+		},
+		{
+			"name": "post",
+			"event": [
+				{
+					"listen": "test",
+					"script": {
+						"id": "ee64ce38-d1a7-4e18-9fb2-8fd9f7e9594c",
+						"exec": [
+							"// example using pm.response.to.have",
+							"pm.test(\"response is 404\", function () {",
+							"    pm.response.to.have.status(404);",
+							"});"
+						],
+						"type": "text/javascript"
+					}
+				}
+			],
+			"request": {
+				"method": "POST",
+				"header": [
+					{
+						"key": "Content-Type",
+						"value": "application/json",
+						"type": "text"
+					}
+				],
+				"body": {
+					"mode": "raw",
+					"raw": "{\"url\":\"https://github.com/kitplummer/lita-cron\"}"
+				},
+				"url": {
+					"raw": "http://localhost:4000/",
+					"protocol": "http",
+					"host": [
+						"localhost"
+					],
+					"port": "4000",
+					"path": [
+						""
+					]
+				},
+				"description": "basic post\n"
+			},
+			"response": []
+		},
+		{
+			"name": "post repo dot",
+			"event": [
+				{
+					"listen": "test",
+					"script": {
+						"id": "21f459e4-1550-44c3-9565-6d1318bbe463",
+						"exec": [
+							"// example using pm.response.to.have",
+							"pm.test(\"response is 200\", function () {",
+							"    pm.response.to.have.status(200);",
+							"});"
+						],
+						"type": "text/javascript"
+					}
+				}
+			],
+			"request": {
+				"method": "POST",
+				"header": [
+					{
+						"key": "Content-Type",
+						"type": "text",
+						"value": "application/json"
+					}
+				],
+				"body": {
+					"mode": "raw",
+					"raw": "{\"urls\":[\"https%3A%2F%2Fgithub.com%2Fsatori%2Fgo.uuid\"]}"
+				},
+				"url": {
+					"raw": "http://localhost:4000/v1/analyze",
+					"protocol": "http",
+					"host": [
+						"localhost"
+					],
+					"port": "4000",
+					"path": [
+						"v1",
+						"analyze"
+					]
+				},
+				"description": "basic post\n"
+			},
+			"response": []
+		},
+		{
+			"name": "post multi",
+			"request": {
+				"method": "POST",
+				"header": [
+					{
+						"key": "Content-Type",
+						"type": "text",
+						"value": "application/json"
+					}
+				],
+				"body": {
+					"mode": "raw",
+					"raw": "{\"urls\":[\"https://github.com/kitplummer/xmpp4rails\", \"https://github.com/robbyrussell/oh-my-zsh\"]}"
+				},
+				"url": {
+					"raw": "http://localhost:4000/v1/analyze",
+					"protocol": "http",
+					"host": [
+						"localhost"
+					],
+					"port": "4000",
+					"path": [
+						"v1",
+						"analyze"
+					]
+				},
+				"description": "basic post\n"
+			},
+			"response": []
+		},
+		{
+			"name": "post multi 10",
+			"request": {
+				"method": "POST",
+				"header": [
+					{
+						"key": "Content-Type",
+						"type": "text",
+						"value": "application/json"
+					}
+				],
+				"body": {
+					"mode": "raw",
+					"raw": "{\"urls\":\n\t[\n\t\t\"https://github.com/kitplummer/xmpp4rails\", \n\t\t\"https://github.com/kitplummer/lita-cron\",\n\t\t\"https://github.com/kitplummer/libconfuse\", \n\t\t\"https://github.com/kitplummer/kit\",\n\t\t\"https://github.com/kitplummer/nerves_system_rpi\", \n\t\t\"https://github.com/kitplummer/Busted\",\n\t\t\"https://github.com/kitplummer/notreal\", \n\t\t\"https://github.com/kitplummer/pdftohtmlr\",\n\t\t\"https://github.com/kitplummer/puppet-ozone\", \n\t\t\"https://github.com/kitplummer/phidgets4r\"\n\t]\n}"
+				},
+				"url": {
+					"raw": "http://localhost:4000/v1/analyze",
+					"protocol": "http",
+					"host": [
+						"localhost"
+					],
+					"port": "4000",
+					"path": [
+						"v1",
+						"analyze"
+					]
+				},
+				"description": "basic post\n"
+			},
+			"response": []
+		},
+		{
+			"name": "post multi 11",
+			"request": {
+				"method": "POST",
+				"header": [
+					{
+						"key": "Content-Type",
+						"type": "text",
+						"value": "application/json"
+					}
+				],
+				"body": {
+					"mode": "raw",
+					"raw": "{\"urls\":\n\t[\n\t\t\"https://github.com/kitplummer/xmpp4rails\", \n\t\t\"https://github.com/kitplummer/lita-cron\",\n\t\t\"https://github.com/kitplummer/libconfuse\", \n\t\t\"https://github.com/kitplummer/kit\",\n\t\t\"https://github.com/kitplummer/nerves_system_rpi\", \n\t\t\"https://github.com/kitplummer/Busted\",\n\t\t\"https://github.com/kitplummer/notreal\", \n\t\t\"https://github.com/kitplummer/pdftohtmlr\",\n\t\t\"https://github.com/kitplummer/puppet-ozone\", \n\t\t\"https://github.com/kitplummer/worka\", \n\t\t\"https://github.com/kitplummer/phidgets4r\"\n\t]\n}"
+				},
+				"url": {
+					"raw": "http://localhost:4000/v1/analyze",
+					"protocol": "http",
+					"host": [
+						"localhost"
+					],
+					"port": "4000",
+					"path": [
+						"v1",
+						"analyze"
+					]
+				},
+				"description": "basic post\n"
+			},
+			"response": []
+		},
+		{
+			"name": "post multi 1 bad",
+			"request": {
+				"method": "POST",
+				"header": [
+					{
+						"key": "Content-Type",
+						"type": "text",
+						"value": "application/json"
+					}
+				],
+				"body": {
+					"mode": "raw",
+					"raw": "{\"urls\":[\"https://github.com/kitplummer/xmpp4rails\", \"https://github.com/kitplummer/litacron\"]}"
+				},
+				"url": {
+					"raw": "http://localhost:4000/v1/analyze",
+					"protocol": "http",
+					"host": [
+						"localhost"
+					],
+					"port": "4000",
+					"path": [
+						"v1",
+						"analyze"
+					]
+				},
+				"description": "basic post\n"
+			},
+			"response": []
+		},
+		{
+			"name": "post multi all bad",
+			"request": {
+				"method": "POST",
+				"header": [
+					{
+						"key": "Content-Type",
+						"type": "text",
+						"value": "application/json"
+					}
+				],
+				"body": {
+					"mode": "raw",
+					"raw": "{\"urls\":[\"https://github.com/kitplummer/xmp4rails\", \"https://github.com/kitplummer/litacron\"]}"
+				},
+				"url": {
+					"raw": "http://localhost:4000/v1/analyze",
+					"protocol": "http",
+					"host": [
+						"localhost"
+					],
+					"port": "4000",
+					"path": [
+						"v1",
+						"analyze"
+					]
+				},
+				"description": "basic post\n"
+			},
+			"response": []
+		},
+		{
+			"name": "bad",
+			"event": [
+				{
+					"listen": "test",
+					"script": {
+						"id": "cd4fcd56-440b-4094-b98b-852eedd8a6d9",
+						"exec": [
+							"// example using pm.response.to.have",
+							"pm.test(\"response is 422\", function () {",
+							"    pm.response.to.have.status(422);",
+							"});"
+						],
+						"type": "text/javascript"
+					}
+				}
+			],
+			"request": {
+				"method": "POST",
+				"header": [
+					{
+						"key": "content-type",
+						"value": "application/json",
+						"type": "text"
+					}
+				],
+				"body": {
+					"mode": "raw",
+					"raw": "{\"url\":\"https://github.com/kitplummer/blah\"}"
+				},
+				"url": {
+					"raw": "http://localhost:4000/v1/analyze",
+					"protocol": "http",
+					"host": [
+						"localhost"
+					],
+					"port": "4000",
+					"path": [
+						"v1",
+						"analyze"
+					]
+				},
+				"description": "basic bad url request"
+			},
+			"response": []
+		},
+		{
+			"name": "bad Copy",
+			"event": [
+				{
+					"listen": "test",
+					"script": {
+						"id": "cd4fcd56-440b-4094-b98b-852eedd8a6d9",
+						"exec": [
+							"// example using pm.response.to.have",
+							"pm.test(\"response is 422\", function () {",
+							"    pm.response.to.have.status(422);",
+							"});"
+						],
+						"type": "text/javascript"
+					}
+				}
+			],
+			"request": {
+				"method": "POST",
+				"header": [
+					{
+						"key": "content-type",
+						"value": "application/json",
+						"type": "text"
+					}
+				],
+				"body": {
+					"mode": "raw",
+					"raw": "{\"urls\":\"https://github.com/kitplummer/blah\"}"
+				},
+				"url": {
+					"raw": "http://localhost:4000/v1/analyze",
+					"protocol": "http",
+					"host": [
+						"localhost"
+					],
+					"port": "4000",
+					"path": [
+						"v1",
+						"analyze"
+					]
+				},
+				"description": "basic bad url request"
+			},
+			"response": []
+		},
+		{
+			"name": "bad Copy Copy",
+			"event": [
+				{
+					"listen": "test",
+					"script": {
+						"id": "cd4fcd56-440b-4094-b98b-852eedd8a6d9",
+						"exec": [
+							"// example using pm.response.to.have",
+							"pm.test(\"response is 400\", function () {",
+							"    pm.response.to.have.status(400);",
+							"});"
+						],
+						"type": "text/javascript"
+					}
+				}
+			],
+			"request": {
+				"method": "POST",
+				"header": [
+					{
+						"key": "content-type",
+						"value": "application/json",
+						"type": "text"
+					}
+				],
+				"body": {
+					"mode": "raw",
+					"raw": "{\"urls\":{\"https://github.com/kitplummer/blah\"}}"
+				},
+				"url": {
+					"raw": "http://localhost:4000/v1/analyze",
+					"protocol": "http",
+					"host": [
+						"localhost"
+					],
+					"port": "4000",
+					"path": [
+						"v1",
+						"analyze"
+					]
+				},
+				"description": "basic bad url request"
+			},
+			"response": []
+		},
+		{
+			"name": "bad Copy Copy Copy",
+			"event": [
+				{
+					"listen": "test",
+					"script": {
+						"id": "cd4fcd56-440b-4094-b98b-852eedd8a6d9",
+						"exec": [
+							"// example using pm.response.to.have",
+							"pm.test(\"response is 400\", function () {",
+							"    pm.response.to.have.status(400);",
+							"});"
+						],
+						"type": "text/javascript"
+					}
+				}
+			],
+			"request": {
+				"method": "POST",
+				"header": [
+					{
+						"key": "content-type",
+						"value": "application/json",
+						"type": "text"
+					}
+				],
+				"body": {
+					"mode": "raw",
+					"raw": "{\"urls\":[\"https://\"https://github.com/kitplummer/blah\"]}"
+				},
+				"url": {
+					"raw": "http://localhost:4000/v1/analyze",
+					"protocol": "http",
+					"host": [
+						"localhost"
+					],
+					"port": "4000",
+					"path": [
+						"v1",
+						"analyze"
+					]
+				},
+				"description": "basic bad url request"
+			},
+			"response": []
+		},
+		{
+			"name": "empty",
+			"request": {
+				"method": "POST",
+				"header": [],
+				"url": {
+					"raw": "http://localhost:4000/",
+					"protocol": "http",
+					"host": [
+						"localhost"
+					],
+					"port": "4000",
+					"path": [
+						""
+					]
+				},
+				"description": "basic no body request"
+			},
+			"response": []
+		},
+		{
+			"name": "no content-type",
+			"request": {
+				"method": "POST",
+				"header": [],
+				"body": {
+					"mode": "raw",
+					"raw": "{\"url\":\"https://github.com/kitplummer/xmpp4rails\"}"
+				},
+				"url": {
+					"raw": "http://localhost:4000",
+					"protocol": "http",
+					"host": [
+						"localhost"
+					],
+					"port": "4000"
+				}
+			},
+			"response": []
+		}
+	],
+	"protocolProfileBehavior": {}
+}

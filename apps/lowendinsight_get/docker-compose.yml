@@ -1,0 +1,25 @@
+---
+version: '3'
+services:
+  postgres:
+    image: "postgres:16-alpine"
+    environment:
+      - POSTGRES_USER=postgres
+      - POSTGRES_PASSWORD=postgres
+      - POSTGRES_DB=lowendinsight_get_prod
+  redis-master:
+    image: "redis:alpine"
+  lei-get:
+    image: "kitplummer/lowendinsight_get:latest"
+    build:
+      context: ../..
+      dockerfile: apps/lowendinsight_get/Dockerfile
+    ports:
+      - "4444:4444"
+    environment:
+      - REDIS_URL=redis://redis-master:6379/3
+      - DATABASE_URL=ecto://postgres:postgres@postgres/lowendinsight_get_prod
+      - LEI_CHECK_REPO_SIZE=false
+    depends_on:
+      - postgres
+      - redis-master

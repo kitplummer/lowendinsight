@@ -1,0 +1,40 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: lei-config
+  namespace: lei
+  labels:
+    app: lei
+    app.kubernetes.io/name: lowendinsight
+data:
+  # Air-gapped mode: skip network-dependent checks
+  LEI_AIRGAPPED_MODE: "true"
+
+  # Temp directory for git clones
+  LEI_BASE_TEMP_DIR: "/tmp"
+
+  # Risk level when SBOM is not present
+  LEI_SBOM_RISK_LEVEL: "medium"
+
+  # Commit currency thresholds (in weeks)
+  LEI_CRITICAL_CURRENCY_LEVEL: "104"
+  LEI_HIGH_CURRENCY_LEVEL: "52"
+  LEI_MEDIUM_CURRENCY_LEVEL: "26"
+
+  # Contributor thresholds
+  LEI_CRITICAL_CONTRIBUTOR_LEVEL: "2"
+  LEI_HIGH_CONTRIBUTOR_LEVEL: "3"
+  LEI_MEDIUM_CONTRIBUTOR_LEVEL: "5"
+
+  # Functional contributor thresholds
+  LEI_CRITICAL_FUNCTIONAL_CONTRIBUTORS_LEVEL: "2"
+  LEI_HIGH_FUNCTIONAL_CONTRIBUTORS_LEVEL: "3"
+  LEI_MEDIUM_FUNCTIONAL_CONTRIBUTORS_LEVEL: "5"
+
+  # Large commit thresholds (percentage)
+  LEI_CRITICAL_LARGE_COMMIT_LEVEL: "0.40"
+  LEI_HIGH_LARGE_COMMIT_LEVEL: "0.30"
+  LEI_MEDIUM_LARGE_COMMIT_LEVEL: "0.20"
+
+  # Concurrency settings
+  LEI_JOBS_PER_CORE_MAX: "2"
