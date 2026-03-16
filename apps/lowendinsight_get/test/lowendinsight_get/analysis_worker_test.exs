@@ -12,6 +12,7 @@ defmodule LowendinsightGet.AnalysisWorkerTest do
     end)
   end
 
+  @tag :network
   @tag timeout: 180_000
   test "perform/1 processes analysis and writes job result" do
     uuid = UUID.uuid1()

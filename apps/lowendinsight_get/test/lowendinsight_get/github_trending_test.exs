@@ -5,6 +5,7 @@
 defmodule LowendinsightGet.GithubTrendingTest do
   use ExUnit.Case, async: false
 
+  @tag :network
   @tag timeout: 180_000
   test "it performs analysis on the trending repos in github" do
     case LowendinsightGet.GithubTrending.analyze("elixir") do
@@ -18,6 +19,7 @@ defmodule LowendinsightGet.GithubTrendingTest do
     end
   end
 
+  @tag :network
   test "large repo filter" do
     url = "https://github.com/torvalds/linux"
     {repo_size, url} = LowendinsightGet.GithubTrending.get_repo_size(url)

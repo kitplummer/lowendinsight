@@ -3,22 +3,17 @@
 # the BSD 3-Clause license. See the LICENSE file for details.
 
 # Configure ExUnit exclusions based on environment
-# In CI, exclude network and long-running tests by default
+# Network and long-running tests are excluded by default everywhere.
+# Network tests are inherently non-deterministic (DNS, timeouts, rate limits)
+# and should never block local commits or CI.
 #
 # Test modes:
-#   CI (default):     mix test (auto-excludes network and long)
-#   Local (default):  mix test (auto-excludes long only)
+#   Default:          mix test (excludes network and long)
 #   Full suite:       mix test --include long --include network
-#   Network only:     mix test --only network --include long
+#   Network only:     mix test --only network
 #   Long only:        mix test --only long
 #
-exclusions =
-  if System.get_env("CI") do
-    [network: true, long: true]
-  else
-    # Locally, only exclude long tests by default
-    [long: true]
-  end
+exclusions = [network: true, long: true]
 
 ExUnit.start(exclude: exclusions)
 

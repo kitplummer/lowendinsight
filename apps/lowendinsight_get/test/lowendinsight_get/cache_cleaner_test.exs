@@ -16,6 +16,7 @@ defmodule LowendinsightGet.CacheCleanerTest do
     end)
   end
 
+  @tag :network
   @tag timeout: 180_000
   test "deletes key when cache TTL expires" do
     elixir_url = "https://github.com/elixir-lang/elixir"
@@ -33,6 +34,7 @@ defmodule LowendinsightGet.CacheCleanerTest do
     Redix.stop(conn)
   end
 
+  @tag :network
   @tag timeout: 180_000
   test "it cleans" do
     elixir_url = "https://github.com/elixir-lang/elixir"

@@ -77,6 +77,7 @@ defmodule LowendinsightGet.AnalysisTest do
       assert result["metadata"]["cache_status"]["misses"] == 0
     end
 
+    @tag :network
     @tag timeout: 180_000
     test "queues analysis for uncached URLs and returns incomplete report" do
       url = "https://github.com/kitplummer/goa"
@@ -97,6 +98,7 @@ defmodule LowendinsightGet.AnalysisTest do
   end
 
   describe "analyze/3 cache interaction" do
+    @tag :network
     @tag timeout: 180_000
     test "returns :miss on first call then :hit on second call" do
       url = "https://github.com/kitplummer/goa"
@@ -112,6 +114,7 @@ defmodule LowendinsightGet.AnalysisTest do
   end
 
   describe "full async flow via endpoint" do
+    @tag :network
     @tag timeout: 180_000
     test "POST /v1/analyze then poll GET /v1/analyze/:uuid until complete" do
       url = "https://github.com/kitplummer/goa"
@@ -146,6 +149,7 @@ defmodule LowendinsightGet.AnalysisTest do
       assert body["error"] =~ "invalid UUID"
     end
 
+    @tag :network
     @tag timeout: 180_000
     test "cached results include cache_status metadata" do
       url = "https://github.com/kitplummer/goa"
