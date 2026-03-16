@@ -62,6 +62,7 @@ defmodule LowendinsightGet.Application do
       {Redix, redix_opts},
       LowendinsightGet.Repo,
       {Oban, Application.fetch_env!(:lowendinsight_get, Oban)},
+      LowendinsightGet.RequestLogger,
       LowendinsightGet.Endpoint,
       {Task.Supervisor, name: LowendinsightGet.AnalysisSupervisor}
     ]

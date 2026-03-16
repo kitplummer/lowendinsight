@@ -1,0 +1,244 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>LowEndInsight - Admin Dashboard</title>
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bulma@0.9.4/css/bulma.min.css">
+    <script type="text/javascript" defer src="https://use.fontawesome.com/releases/v5.3.1/js/all.js"></script>
+    <style>
+      body { background: #f5f5f5; }
+      .hero-body { padding-bottom: 1rem; }
+      pre { background: #282c34; color: #abb2bf; border-radius: 6px; padding: 1rem; overflow-x: auto; font-size: 0.85rem; }
+      .stat-number { font-size: 2rem; font-weight: bold; }
+      .table td, .table th { vertical-align: middle; }
+      .tag-hit { background: #48c774; color: white; }
+      .tag-miss { background: #f14668; color: white; }
+    </style>
+  </head>
+  <body>
+    <section class="hero is-dark is-small">
+      <div class="hero-body">
+        <div class="container">
+          <div class="columns is-vcentered">
+            <div class="column is-narrow">
+              <img src="/images/lei_bus_128.png" alt="LEI" style="max-height:64px;">
+            </div>
+            <div class="column">
+              <h1 class="title">LowEndInsight</h1>
+              <p class="subtitle">
+                <span class="tag is-warning">Admin Dashboard</span>
+                &nbsp; Cache visibility &amp; usage monitoring
+              </p>
+            </div>
+            <div class="column is-narrow">
+              <a class="button is-light is-outlined" href="/">
+                <span class="icon"><i class="fas fa-home"></i></span>
+                <span>Home</span>
+              </a>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section class="section">
+      <div class="container">
+
+        <!-- Cache Overview -->
+        <h2 class="title is-4">
+          <span class="icon"><i class="fas fa-database"></i></span>
+          Cache Overview
+        </h2>
+
+        <div class="columns">
+          <div class="column is-3">
+            <div class="box has-text-centered">
+              <p class="heading">Total Cached Entries</p>
+              <p class="stat-number has-text-info"><%= cache_stats["total_entries"] %></p>
+            </div>
+          </div>
+          <div class="column is-3">
+            <div class="box has-text-centered">
+              <p class="heading">Expiring Within 24h</p>
+              <p class="stat-number <%= if cache_expiry["expiring_soon_count"] > 0, do: "has-text-warning", else: "has-text-success" %>">
+                <%= cache_expiry["expiring_soon_count"] %>
+              </p>
+            </div>
+          </div>
+          <div class="column is-3">
+            <div class="box has-text-centered">
+              <p class="heading">Cache Hits (tracked)</p>
+              <p class="stat-number has-text-success"><%= hits %></p>
+            </div>
+          </div>
+          <div class="column is-3">
+            <div class="box has-text-centered">
+              <p class="heading">Cache Misses (tracked)</p>
+              <p class="stat-number has-text-danger"><%= misses %></p>
+            </div>
+          </div>
+        </div>
+
+        <!-- By Ecosystem -->
+        <div class="columns">
+          <div class="column is-6">
+            <div class="box">
+              <h3 class="title is-5">Entries by Ecosystem</h3>
+              <%= if map_size(cache_stats["by_ecosystem"]) == 0 do %>
+                <p class="has-text-grey">No cached entries.</p>
+              <% else %>
+                <table class="table is-fullwidth is-striped is-narrow">
+                  <thead>
+                    <tr><th>Ecosystem</th><th>Count</th></tr>
+                  </thead>
+                  <tbody>
+                    <%= for {ecosystem, count} <- cache_stats["by_ecosystem"] do %>
+                      <tr>
+                        <td><span class="tag is-light"><%= ecosystem %></span></td>
+                        <td><strong><%= count %></strong></td>
+                      </tr>
+                    <% end %>
+                  </tbody>
+                </table>
+              <% end %>
+              <p class="has-text-grey is-size-7">Checked at: <%= cache_stats["checked_at"] %></p>
+            </div>
+          </div>
+
+          <!-- Entries Nearing TTL Expiry -->
+          <div class="column is-6">
+            <div class="box">
+              <h3 class="title is-5">Entries Expiring Soon (&lt;24h)</h3>
+              <%= if length(cache_expiry["expiring_soon"]) == 0 do %>
+                <p class="has-text-success"><span class="icon"><i class="fas fa-check-circle"></i></span> No entries expiring within 24 hours.</p>
+              <% else %>
+                <table class="table is-fullwidth is-striped is-narrow">
+                  <thead>
+                    <tr><th>Cache Key</th><th>TTL (seconds)</th></tr>
+                  </thead>
+                  <tbody>
+                    <%= for entry <- Enum.take(cache_expiry["expiring_soon"], 20) do %>
+                      <tr>
+                        <td style="font-family:monospace;font-size:0.8em;"><%= entry["key"] %></td>
+                        <td>
+                          <span class="tag <%= if entry["ttl_remaining"] < 3600, do: "is-danger", else: "is-warning" %>">
+                            <%= entry["ttl_remaining"] %>s
+                          </span>
+                        </td>
+                      </tr>
+                    <% end %>
+                  </tbody>
+                </table>
+                <%= if length(cache_expiry["expiring_soon"]) > 20 do %>
+                  <p class="has-text-grey is-size-7">Showing 20 of <%= length(cache_expiry["expiring_soon"]) %> expiring entries.</p>
+                <% end %>
+              <% end %>
+            </div>
+          </div>
+        </div>
+
+        <hr>
+
+        <!-- Usage Monitoring -->
+        <h2 class="title is-4">
+          <span class="icon"><i class="fas fa-chart-bar"></i></span>
+          Usage Monitoring
+        </h2>
+
+        <!-- Per-org Summary -->
+        <div class="box">
+          <h3 class="title is-5">Per-Org Summary (since last restart)</h3>
+          <%= if length(per_org) == 0 do %>
+            <p class="has-text-grey">No requests logged yet. Submit an API request via <code>POST /v1/analyze</code> to see data here.</p>
+          <% else %>
+            <table class="table is-fullwidth is-striped">
+              <thead>
+                <tr>
+                  <th>Org ID</th>
+                  <th>Total Requests</th>
+                  <th>Cache Hits</th>
+                  <th>Cache Misses</th>
+                  <th>Hit Rate</th>
+                </tr>
+              </thead>
+              <tbody>
+                <%= for org <- per_org do %>
+                  <tr>
+                    <td><%= org.org_id || "<anonymous>" %></td>
+                    <td><%= org.total %></td>
+                    <td><span class="tag tag-hit"><%= org.hits %></span></td>
+                    <td><span class="tag tag-miss"><%= org.misses %></span></td>
+                    <td>
+                      <%= if org.hits + org.misses > 0 do %>
+                        <%= Float.round(org.hits / (org.hits + org.misses) * 100, 1) %>%
+                      <% else %>
+                        —
+                      <% end %>
+                    </td>
+                  </tr>
+                <% end %>
+              </tbody>
+            </table>
+          <% end %>
+          <p class="has-text-grey is-size-7">Total tracked requests: <%= total_tracked %> (ring buffer, last <%= min(total_tracked, 1000) %> requests kept in memory)</p>
+        </div>
+
+        <!-- Recent Requests -->
+        <div class="box">
+          <h3 class="title is-5">Recent API Requests (last 100)</h3>
+          <%= if length(recent_requests) == 0 do %>
+            <p class="has-text-grey">No requests logged yet.</p>
+          <% else %>
+            <div style="overflow-x:auto;">
+              <table class="table is-fullwidth is-striped is-narrow is-hoverable">
+                <thead>
+                  <tr>
+                    <th>#</th>
+                    <th>Timestamp</th>
+                    <th>Endpoint</th>
+                    <th>Org ID</th>
+                    <th>Repos</th>
+                    <th>Cache</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <%= for req <- recent_requests do %>
+                    <tr>
+                      <td><%= req.id %></td>
+                      <td style="white-space:nowrap;font-size:0.8em;"><%= req.timestamp %></td>
+                      <td><code><%= req.endpoint %></code></td>
+                      <td style="font-size:0.8em;"><%= req.org_id || "—" %></td>
+                      <td style="font-size:0.8em;">
+                        <%= if req.repo_urls && length(req.repo_urls) > 0 do %>
+                          <%= Enum.join(req.repo_urls, ", ") %>
+                        <% else %>
+                          —
+                        <% end %>
+                      </td>
+                      <td>
+                        <%= case req.cache_status do %>
+                          <% :hit -> %><span class="tag tag-hit">hit</span>
+                          <% :miss -> %><span class="tag tag-miss">miss</span>
+                          <% _ -> %><span class="tag is-light">—</span>
+                        <% end %>
+                      </td>
+                    </tr>
+                  <% end %>
+                </tbody>
+              </table>
+            </div>
+          <% end %>
+        </div>
+
+      </div>
+    </section>
+
+    <footer class="footer" style="padding: 1.5rem;">
+      <div class="content has-text-centered">
+        <p>LowEndInsight Admin &mdash; BSD 3-Clause License</p>
+        <p style="font-size: 0.75rem; color: #999;">v<%= version %> &mdash; Stats are in-memory only and reset on restart.</p>
+      </div>
+    </footer>
+  </body>
+</html>

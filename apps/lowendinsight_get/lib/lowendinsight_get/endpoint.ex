@@ -186,6 +186,7 @@ defmodule LowendinsightGet.Endpoint do
                 case LowendinsightGet.Analysis.process_urls(urls, uuid, start_time, opts) do
                   {:ok, result} ->
                     track_analyze_usage(conn, result)
+                    log_analyze_request(conn, urls, result)
                     {200, enrich_analyze_response(conn, result)}
 
                   {:timeout, timed_out_uuid} ->
@@ -346,6 +347,55 @@ defmodule LowendinsightGet.Endpoint do
     |> send_resp(200, Poison.encode!(stats))
   end
 
+  @doc """
+  GET /admin - Admin dashboard showing cache stats, usage monitoring, and active jobs.
+  Protected by LEI_ADMIN_TOKEN env var; pass token via ?token= query parameter.
+  Returns 401 if token is missing or invalid.
+  """
+  get "/admin" do
+    conn = fetch_query_params(conn)
+    admin_token = System.get_env("LEI_ADMIN_TOKEN", "")
+    provided_token = conn.query_params["token"] || ""
+
+    if admin_token == "" or provided_token != admin_token do
+      conn
+      |> put_resp_content_type("text/html")
+      |> send_resp(
+        401,
+        "<html><body><h1>401 Unauthorized</h1><p>Valid admin token required via <code>?token=</code> query parameter.</p></body></html>"
+      )
+    else
+      cache_stats = LowendinsightGet.Datastore.cache_stats()
+      cache_expiry = LowendinsightGet.Datastore.cache_expiry_info()
+      recent_requests = LowendinsightGet.RequestLogger.get_recent(100)
+      all_requests = LowendinsightGet.RequestLogger.get_all()
+
+      hits = Enum.count(all_requests, &(&1.cache_status == :hit))
+      misses = Enum.count(all_requests, &(&1.cache_status == :miss))
+      total_tracked = length(all_requests)
+
+      per_org =
+        all_requests
+        |> Enum.group_by(& &1.org_id)
+        |> Enum.map(fn {org_id, reqs} ->
+          org_hits = Enum.count(reqs, &(&1.cache_status == :hit))
+          org_misses = Enum.count(reqs, &(&1.cache_status == :miss))
+          %{org_id: org_id, total: length(reqs), hits: org_hits, misses: org_misses}
+        end)
+        |> Enum.sort_by(& &1.total, :desc)
+
+      render(conn, "admin.html",
+        cache_stats: cache_stats,
+        cache_expiry: cache_expiry,
+        recent_requests: recent_requests,
+        hits: hits,
+        misses: misses,
+        total_tracked: total_tracked,
+        per_org: per_org
+      )
+    end
+  end
+
   post "/v1/gh_trending/process" do
     Task.start_link(fn -> LowendinsightGet.GithubTrending.process_languages() end)
 
@@ -392,6 +442,29 @@ defmodule LowendinsightGet.Endpoint do
   end
 
   defp track_analyze_usage(_conn, _result), do: :ok
+
+  defp log_analyze_request(conn, urls, result) when is_binary(result) do
+    {org_id, key_id} =
+      case conn.assigns[:current_api_key] do
+        nil -> {nil, nil}
+        api_key -> {api_key.org.id, api_key.id}
+      end
+
+    cache_status =
+      case Poison.decode(result) do
+        {:ok, decoded} ->
+          hits = get_in(decoded, ["metadata", "cache_status", "hits"]) || 0
+          misses = get_in(decoded, ["metadata", "cache_status", "misses"]) || 0
+          if hits > 0, do: :hit, else: if(misses > 0, do: :miss, else: nil)
+
+        _ ->
+          nil
+      end
+
+    LowendinsightGet.RequestLogger.log_request("/v1/analyze", org_id, key_id, urls, cache_status)
+  end
+
+  defp log_analyze_request(_conn, _urls, _result), do: :ok
 
   defp enrich_analyze_response(conn, result) when is_binary(result) do
     case conn.assigns[:current_api_key] do

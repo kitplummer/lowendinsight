@@ -282,6 +282,42 @@ defmodule LowendinsightGet.Datastore do
   end
 
   @doc """
+  cache_expiry_info/0: returns lightweight TTL info for all cache keys.
+  Uses a Redis pipeline to avoid N+1 round trips.
+  Returns a map with total count, expiring_soon list (TTL < 1 day), and expiring_soon_count.
+  """
+  def cache_expiry_info do
+    {:ok, keys} = Redix.command(:redix, ["KEYS", "*:*:*"])
+
+    cache_keys =
+      Enum.filter(keys, fn key ->
+        String.contains?(key, ":") and not String.starts_with?(key, "event")
+      end)
+
+    ttl_entries =
+      if length(cache_keys) > 0 do
+        pipeline = Enum.map(cache_keys, fn key -> ["TTL", key] end)
+        {:ok, ttls} = Redix.pipeline(:redix, pipeline)
+
+        Enum.zip(cache_keys, ttls)
+        |> Enum.map(fn {key, ttl} -> %{"key" => key, "ttl_remaining" => ttl} end)
+      else
+        []
+      end
+
+    expiring_soon =
+      ttl_entries
+      |> Enum.filter(fn e -> e["ttl_remaining"] >= 0 and e["ttl_remaining"] < 86_400 end)
+      |> Enum.sort_by(fn e -> e["ttl_remaining"] end)
+
+    %{
+      "total" => length(ttl_entries),
+      "expiring_soon" => expiring_soon,
+      "expiring_soon_count" => length(expiring_soon)
+    }
+  end
+
+  @doc """
   cache_stats/0: returns statistics about the current cache state.
   """
   def cache_stats do
