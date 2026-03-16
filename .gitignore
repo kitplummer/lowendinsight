@@ -37,7 +37,6 @@ dump.rdb
 # Gastown / GLITCHLAB runtime
 .runtime/
 .claude/
-.beads/
 .logs/
 
 # Zarf package artifacts
