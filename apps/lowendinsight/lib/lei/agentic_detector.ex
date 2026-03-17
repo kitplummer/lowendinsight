@@ -4,6 +4,8 @@ defmodule Lei.AgenticDetector do
   based on email/name patterns and commit message trailers.
   """
 
+  require Logger
+
   @bot_email_patterns [
     ~r/\[bot\]@users\.noreply\.github\.com$/i,
     ~r/^dependabot@/i,
@@ -78,11 +80,10 @@ defmodule Lei.AgenticDetector do
     - ratio > agent_threshold → "agent"
 
   Deprecated env vars `LEI_CRITICAL_AGENTIC_LEVEL`, `LEI_HIGH_AGENTIC_LEVEL`, and
-  `LEI_MEDIUM_AGENTIC_LEVEL` are no longer used; a warning is logged if they are set.
+  `LEI_MEDIUM_AGENTIC_LEVEL` are no longer used; a warning is logged at startup if they are set.
   """
   @spec classify_ratio(float()) :: {:ok, String.t()}
   def classify_ratio(ratio) do
-    warn_deprecated_env_vars()
     mixed_threshold = get_threshold("LEI_AGENTIC_MIXED_THRESHOLD", @default_mixed_threshold)
     agent_threshold = get_threshold("LEI_AGENTIC_AGENT_THRESHOLD", @default_agent_threshold)
 
@@ -91,6 +92,22 @@ defmodule Lei.AgenticDetector do
       ratio >= mixed_threshold -> {:ok, "mixed"}
       true -> {:ok, "human"}
     end
+  end
+
+  @doc """
+  Logs a deprecation warning for each legacy agentic env var that is still set.
+  Called once at application startup via `Lei.Application`.
+  """
+  @spec warn_deprecated_env_vars() :: :ok
+  def warn_deprecated_env_vars do
+    Enum.each(@deprecated_env_vars, fn var ->
+      if System.get_env(var) do
+        Logger.warning(
+          "[DEPRECATED] Environment variable #{var} is no longer used by Lei.AgenticDetector. " <>
+            "Use LEI_AGENTIC_MIXED_THRESHOLD and LEI_AGENTIC_AGENT_THRESHOLD instead."
+        )
+      end
+    end)
   end
 
   @doc """
@@ -166,19 +183,6 @@ defmodule Lei.AgenticDetector do
           :error -> default
         end
     end
-  end
-
-  defp warn_deprecated_env_vars do
-    Enum.each(@deprecated_env_vars, fn var ->
-      if System.get_env(var) do
-        require Logger
-
-        Logger.warning(
-          "[DEPRECATED] Environment variable #{var} is no longer used by Lei.AgenticDetector. " <>
-            "Use LEI_AGENTIC_MIXED_THRESHOLD and LEI_AGENTIC_AGENT_THRESHOLD instead."
-        )
-      end
-    end)
   end
 
   defp bot_by_email?(email) do
