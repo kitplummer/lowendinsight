@@ -146,7 +146,8 @@ defmodule LowendinsightGet.GithubTrending do
     end
   end
 
-  defp fetch_from_ossinsight(language) do
+  @doc false
+  def fetch_from_ossinsight(language) do
     display_lang = capitalize_language(language)
 
     url =
@@ -186,7 +187,8 @@ defmodule LowendinsightGet.GithubTrending do
     end
   end
 
-  defp fetch_from_github_search(language) do
+  @doc false
+  def fetch_from_github_search(language) do
     token = get_token()
     week_ago = Date.utc_today() |> Date.add(-7) |> Date.to_iso8601()
 
@@ -237,7 +239,8 @@ defmodule LowendinsightGet.GithubTrending do
     end
   end
 
-  defp capitalize_language(lang) do
+  @doc false
+  def capitalize_language(lang) do
     case String.downcase(lang) do
       "c++" -> "C++"
       "c#" -> "C#"
