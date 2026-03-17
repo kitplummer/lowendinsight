@@ -121,7 +121,7 @@ config :redix,
 config :lowendinsight_get, LowendinsightGet.Scheduler,
   jobs: [
     {"*/5 * * * *", {LowendinsightGet.CacheCleaner, :clean, []}},
-    {"0 0 * * *", {LowendinsightGet.GithubTrending, :analyze, []}}
+    {"0 0 * * *", {LowendinsightGet.GithubTrending, :process_languages, []}}
   ]
 
 import_config "#{Mix.env()}.exs"
