@@ -106,7 +106,7 @@ if config_env() == :prod do
   config :lowendinsight_get, LowendinsightGet.Scheduler,
     jobs: [
       {"*/5 * * * *", {LowendinsightGet.CacheCleaner, :clean, []}},
-      {"0 0 * * *", {LowendinsightGet.GithubTrending, :analyze, []}}
+      {"0 0 * * *", {LowendinsightGet.GithubTrending, :process_languages, []}}
     ]
 
   # Stripe + ACP
