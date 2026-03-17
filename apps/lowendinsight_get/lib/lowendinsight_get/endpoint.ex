@@ -565,7 +565,9 @@ defmodule LowendinsightGet.Endpoint do
       |> String.replace_suffix(".html", ".html.eex")
       |> EEx.eval_file(assigns)
 
-    send_resp(conn, status || 200, body)
+    conn
+    |> put_resp_content_type("text/html")
+    |> send_resp(status || 200, body)
   end
 
   def handle_errors(conn, _) do
