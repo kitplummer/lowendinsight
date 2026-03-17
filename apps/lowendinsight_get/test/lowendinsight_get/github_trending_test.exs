@@ -39,4 +39,21 @@ defmodule LowendinsightGet.GithubTrendingTest do
     wait_time = Application.fetch_env!(:lowendinsight_get, :wait_time)
     assert wait_time == LowendinsightGet.GithubTrending.get_wait_time()
   end
+
+  test "parses github trending html into repo url list" do
+    html = """
+    <h2 class="h3 lh-condensed">
+      <a href="/elixir-lang/elixir">elixir-lang / elixir</a>
+    </h2>
+    <h2 class="h3 lh-condensed">
+      <a href="/phoenixframework/phoenix">phoenixframework / phoenix</a>
+    </h2>
+    """
+
+    repos = LowendinsightGet.GithubTrending.parse_trending_html(html)
+
+    assert length(repos) == 2
+    assert Enum.member?(repos, %{"url" => "https://github.com/elixir-lang/elixir"})
+    assert Enum.member?(repos, %{"url" => "https://github.com/phoenixframework/phoenix"})
+  end
 end

@@ -128,16 +128,17 @@ defmodule LowendinsightGet.GithubTrending do
   end
 
   defp fetch_trending_list(language) do
-    url =
-      "https://github-trending-api.fly.dev/repositories?since=daily&language=" <>
-        URI.encode_www_form(language)
+    url = "https://github.com/trending/#{URI.encode_www_form(language)}?since=daily"
 
     Logger.info("fetching trend list for: #{url}")
 
-    case HTTPoison.get(url)
+    headers = [{"User-Agent", "Mozilla/5.0 (compatible; lowendinsight-bot/1.0)"}]
+
+    case HTTPoison.get(url, headers)
          |> HTTPoison.Retry.autoretry(max_attempts: 5, wait: 15000, retry_unknown_errors: true) do
       {:ok, %HTTPoison.Response{status_code: 200, body: body}} ->
-        {:ok, Poison.Parser.parse!(body, %{})}
+        repos = parse_trending_html(body)
+        {:ok, repos}
 
       {:ok, %HTTPoison.Response{status_code: 404}} ->
         {:error, "Not found :("}
@@ -146,5 +147,13 @@ defmodule LowendinsightGet.GithubTrending do
         Logger.error(reason)
         {:error, reason}
     end
+  end
+
+  def parse_trending_html(html) do
+    # GitHub trending page: repos are listed in <h2 class="h3 lh-condensed"><a href="/owner/repo">
+    regex = ~r/<h2[^>]*class="h3 lh-condensed"[^>]*>\s*<a\s+href="\/([a-zA-Z0-9][a-zA-Z0-9_.-]*\/[a-zA-Z0-9][a-zA-Z0-9_.-]*)"/
+
+    Regex.scan(regex, html, capture: :all_but_first)
+    |> Enum.map(fn [slug] -> %{"url" => "https://github.com/#{String.trim(slug)}"} end)
   end
 end
