@@ -8,6 +8,8 @@ defmodule Lei.Application do
 
   @impl true
   def start(_type, _args) do
+    Lei.AgenticDetector.warn_deprecated_env_vars()
+
     port = Application.get_env(:lowendinsight, :http_port, 4000)
 
     base = [Lei.Repo, Lei.BatchCache, Lei.RateLimiter]

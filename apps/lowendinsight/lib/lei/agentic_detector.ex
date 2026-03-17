@@ -4,6 +4,8 @@ defmodule Lei.AgenticDetector do
   based on email/name patterns and commit message trailers.
   """
 
+  require Logger
+
   @bot_email_patterns [
     ~r/\[bot\]@users\.noreply\.github\.com$/i,
     ~r/^dependabot@/i,
@@ -28,8 +30,10 @@ defmodule Lei.AgenticDetector do
     ~r/^release-please$/i
   ]
 
-  @human_threshold 0.3
-  @agent_threshold 0.7
+  @default_mixed_threshold 0.3
+  @default_agent_threshold 0.7
+
+  @deprecated_env_vars ~w[LEI_CRITICAL_AGENTIC_LEVEL LEI_HIGH_AGENTIC_LEVEL LEI_MEDIUM_AGENTIC_LEVEL]
 
   @ai_coauthor_patterns [
     ~r/Co-Authored-By:.*Claude/i,
@@ -66,18 +70,44 @@ defmodule Lei.AgenticDetector do
   @doc """
   Classifies an agentic contribution ratio into a human/mixed/agent label.
 
+  Thresholds are controlled by env vars:
+    - `LEI_AGENTIC_MIXED_THRESHOLD` (default #{@default_mixed_threshold}): lower boundary for "mixed"
+    - `LEI_AGENTIC_AGENT_THRESHOLD` (default #{@default_agent_threshold}): lower boundary for "agent"
+
   Boundaries:
-    - ratio < #{@human_threshold} → "human"
-    - #{@human_threshold} ≤ ratio ≤ #{@agent_threshold} → "mixed"
-    - ratio > #{@agent_threshold} → "agent"
+    - ratio < mixed_threshold → "human"
+    - mixed_threshold ≤ ratio ≤ agent_threshold → "mixed"
+    - ratio > agent_threshold → "agent"
+
+  Deprecated env vars `LEI_CRITICAL_AGENTIC_LEVEL`, `LEI_HIGH_AGENTIC_LEVEL`, and
+  `LEI_MEDIUM_AGENTIC_LEVEL` are no longer used; a warning is logged at startup if they are set.
   """
   @spec classify_ratio(float()) :: {:ok, String.t()}
   def classify_ratio(ratio) do
+    mixed_threshold = get_threshold("LEI_AGENTIC_MIXED_THRESHOLD", @default_mixed_threshold)
+    agent_threshold = get_threshold("LEI_AGENTIC_AGENT_THRESHOLD", @default_agent_threshold)
+
     cond do
-      ratio > @agent_threshold -> {:ok, "agent"}
-      ratio >= @human_threshold -> {:ok, "mixed"}
+      ratio > agent_threshold -> {:ok, "agent"}
+      ratio >= mixed_threshold -> {:ok, "mixed"}
       true -> {:ok, "human"}
     end
+  end
+
+  @doc """
+  Logs a deprecation warning for each legacy agentic env var that is still set.
+  Called once at application startup via `Lei.Application`.
+  """
+  @spec warn_deprecated_env_vars() :: :ok
+  def warn_deprecated_env_vars do
+    Enum.each(@deprecated_env_vars, fn var ->
+      if System.get_env(var) do
+        Logger.warning(
+          "[DEPRECATED] Environment variable #{var} is no longer used by Lei.AgenticDetector. " <>
+            "Use LEI_AGENTIC_MIXED_THRESHOLD and LEI_AGENTIC_AGENT_THRESHOLD instead."
+        )
+      end
+    end)
   end
 
   @doc """
@@ -140,6 +170,19 @@ defmodule Lei.AgenticDetector do
       bot_contributors: Enum.map(bot_contributors, & &1.name),
       agent_contributors: Enum.map(agent_contributors, & &1.name)
     }
+  end
+
+  defp get_threshold(env_var, default) do
+    case System.get_env(env_var) do
+      nil ->
+        default
+
+      val ->
+        case Float.parse(val) do
+          {f, _} -> f
+          :error -> default
+        end
+    end
   end
 
   defp bot_by_email?(email) do
