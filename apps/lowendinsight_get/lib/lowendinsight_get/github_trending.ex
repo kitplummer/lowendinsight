@@ -8,6 +8,9 @@ defmodule LowendinsightGet.GithubTrending do
 
   @type language() :: String.t()
 
+  @ossinsight_base "https://api.ossinsight.io/v1/trends/repos/"
+  @github_search_base "https://api.github.com/search/repositories"
+
   def process_languages() do
     Application.get_env(:lowendinsight_get, :languages)
     |> Enum.each(fn language -> LowendinsightGet.GithubTrending.analyze(language) end)
@@ -66,7 +69,7 @@ defmodule LowendinsightGet.GithubTrending do
       {:ok, uuid} ->
         case Redix.command(:redix, ["GET", uuid]) do
           {:ok, nil} ->
-            Logger.warn("gh_trending report #{uuid} not found in Redis (may have expired)")
+            Logger.warning("gh_trending report #{uuid} not found in Redis (may have expired)")
             empty_report.(uuid)
 
           {:ok, report_json} ->
@@ -127,24 +130,121 @@ defmodule LowendinsightGet.GithubTrending do
     for repo <- list, do: repo["url"]
   end
 
-  defp fetch_trending_list(language) do
+  @doc false
+  def fetch_trending_list(language) do
+    case fetch_from_ossinsight(language) do
+      {:ok, list} ->
+        Logger.info("Fetched #{length(list)} trending repos from OSS Insight for #{language}")
+        {:ok, list}
+
+      {:error, reason} ->
+        Logger.warning(
+          "OSS Insight failed for #{language}: #{inspect(reason)}, falling back to GitHub Search"
+        )
+
+        fetch_from_github_search(language)
+    end
+  end
+
+  defp fetch_from_ossinsight(language) do
+    display_lang = capitalize_language(language)
+
     url =
-      "https://github-trending-api.fly.dev/repositories?since=daily&language=" <>
-        URI.encode_www_form(language)
+      @ossinsight_base <>
+        "?" <>
+        URI.encode_query(%{"language" => display_lang, "period" => "past_week"})
 
-    Logger.info("fetching trend list for: #{url}")
+    Logger.info("Fetching trending from OSS Insight: #{url}")
 
-    case HTTPoison.get(url)
-         |> HTTPoison.Retry.autoretry(max_attempts: 5, wait: 15000, retry_unknown_errors: true) do
+    case HTTPoison.get(url, [], recv_timeout: 30_000) do
       {:ok, %HTTPoison.Response{status_code: 200, body: body}} ->
-        {:ok, Poison.Parser.parse!(body, %{})}
+        case Poison.decode(body) do
+          {:ok, %{"data" => %{"rows" => rows}}} when is_list(rows) ->
+            repos =
+              rows
+              |> Enum.filter(fn row -> is_binary(row["repo_name"]) end)
+              |> Enum.map(fn row ->
+                %{"url" => "https://github.com/" <> row["repo_name"]}
+              end)
 
-      {:ok, %HTTPoison.Response{status_code: 404}} ->
-        {:error, "Not found :("}
+            if repos == [],
+              do: {:error, "no repos returned"},
+              else: {:ok, repos}
+
+          {:ok, _other} ->
+            {:error, "unexpected OSS Insight response structure"}
+
+          {:error, err} ->
+            {:error, "JSON parse error: #{inspect(err)}"}
+        end
+
+      {:ok, %HTTPoison.Response{status_code: status}} ->
+        {:error, "OSS Insight HTTP #{status}"}
 
       {:error, %HTTPoison.Error{reason: reason}} ->
-        Logger.error(reason)
         {:error, reason}
+    end
+  end
+
+  defp fetch_from_github_search(language) do
+    token = get_token()
+    week_ago = Date.utc_today() |> Date.add(-7) |> Date.to_iso8601()
+
+    query = "language:#{language} pushed:>#{week_ago} stars:>10"
+
+    url =
+      @github_search_base <>
+        "?" <>
+        URI.encode_query(%{
+          "q" => query,
+          "sort" => "stars",
+          "order" => "desc",
+          "per_page" => "30"
+        })
+
+    headers =
+      if token != "" do
+        [Authorization: "Bearer #{token}", Accept: "application/vnd.github+json"]
+      else
+        [Accept: "application/vnd.github+json"]
+      end
+
+    Logger.info("Fetching trending from GitHub Search: #{url}")
+
+    case HTTPoison.get(url, headers, recv_timeout: 30_000) do
+      {:ok, %HTTPoison.Response{status_code: 200, body: body}} ->
+        case Poison.decode(body) do
+          {:ok, %{"items" => items}} when is_list(items) ->
+            repos =
+              items
+              |> Enum.filter(fn item -> is_binary(item["html_url"]) end)
+              |> Enum.map(fn item -> %{"url" => item["html_url"]} end)
+
+            {:ok, repos}
+
+          {:ok, _other} ->
+            {:error, "unexpected GitHub Search response structure"}
+
+          {:error, err} ->
+            {:error, "JSON parse error: #{inspect(err)}"}
+        end
+
+      {:ok, %HTTPoison.Response{status_code: status, body: body}} ->
+        {:error, "GitHub Search HTTP #{status}: #{String.slice(body, 0, 200)}"}
+
+      {:error, %HTTPoison.Error{reason: reason}} ->
+        {:error, reason}
+    end
+  end
+
+  defp capitalize_language(lang) do
+    case String.downcase(lang) do
+      "c++" -> "C++"
+      "c#" -> "C#"
+      "objective-c" -> "Objective-C"
+      "javascript" -> "JavaScript"
+      "typescript" -> "TypeScript"
+      other -> String.capitalize(other)
     end
   end
 end

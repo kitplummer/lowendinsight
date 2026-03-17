@@ -5,17 +5,34 @@
 defmodule LowendinsightGet.GithubTrendingTest do
   use ExUnit.Case, async: false
 
-  @tag :network
-  @tag timeout: 180_000
-  test "it performs analysis on the trending repos in github" do
-    case LowendinsightGet.GithubTrending.analyze("elixir") do
-      {:ok, msg} ->
-        assert true == String.contains?(msg, "successfully")
-        report = LowendinsightGet.GithubTrending.get_current_gh_trending_report("elixir")
-        assert report["state"] == "complete" || "incomplete"
+  describe "fetch_trending_list/1" do
+    @tag :network
+    @tag timeout: 60_000
+    test "returns a list of repos with url keys" do
+      {:ok, list} = LowendinsightGet.GithubTrending.fetch_trending_list("elixir")
+      assert is_list(list)
+      assert length(list) > 0
+      assert Enum.all?(list, fn repo -> is_binary(repo["url"]) end)
 
-      {:error, msg} ->
-        IO.inspect(msg, label: "msg")
+      assert Enum.all?(list, fn repo ->
+               String.starts_with?(repo["url"], "https://github.com/")
+             end)
+    end
+  end
+
+  describe "analyze/1" do
+    @tag :network
+    @tag timeout: 180_000
+    test "it performs analysis on the trending repos in github" do
+      case LowendinsightGet.GithubTrending.analyze("elixir") do
+        {:ok, msg} ->
+          assert String.contains?(msg, "successfully")
+          report = LowendinsightGet.GithubTrending.get_current_gh_trending_report("elixir")
+          assert report["report"]["repos"] != nil
+
+        {:error, msg} ->
+          IO.inspect(msg, label: "msg")
+      end
     end
   end
 
