@@ -4,7 +4,7 @@
 
 set -euo pipefail
 
-BASE_URL="${1:-https://lowendinsight.fly.dev}"
+BASE_URL="${1:-https://lowendinsight.dev}"
 PASS=0
 FAIL=0
 TOTAL=0

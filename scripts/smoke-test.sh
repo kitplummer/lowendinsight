@@ -5,7 +5,7 @@
 
 set -euo pipefail
 
-BASE_URL="${1:-https://lowendinsight.fly.dev}"
+BASE_URL="${1:-https://lowendinsight.dev}"
 PASS=0
 FAIL=0
 TOTAL=0
@@ -130,6 +130,35 @@ DASH_RESP=$(curl -s "$BASE_URL/dashboard" \
 check_contains "Dashboard has Cache Hits" "Cache Hits" "$DASH_RESP"
 check_contains "Dashboard has Total Cost" "Total Cost" "$DASH_RESP"
 rm -f /tmp/lei-smoke-cookies
+
+# --- 8. Ops endpoints (regression guard: these all 404'd or 401'd in prod) ---
+bold "8. Ops endpoints"
+
+# Unauthenticated platform probes. Fly http_checks and Kubernetes liveness /
+# readiness probes depend on these answering without credentials.
+HEALTHZ=$(curl -s -o /dev/null -w '%{http_code}' --max-time 10 "$BASE_URL/healthz")
+check "GET /healthz returns 200" "200" "$HEALTHZ"
+
+READYZ=$(curl -s -o /dev/null -w '%{http_code}' --max-time 10 "$BASE_URL/readyz")
+check "GET /readyz returns 200" "200" "$READYZ"
+
+METRICS_STATUS=$(curl -s -o /dev/null -w '%{http_code}' --max-time 10 "$BASE_URL/metrics")
+check "GET /metrics returns 200" "200" "$METRICS_STATUS"
+
+METRICS_BODY=$(curl -s --max-time 10 "$BASE_URL/metrics")
+check_contains "Metrics are Prometheus format" "beam_memory_bytes" "$METRICS_BODY"
+check_contains "Metrics include cache gauge" "lei_cache_entries_total" "$METRICS_BODY"
+
+# /v1/health sits under the /v1 prefix but must answer unauthenticated.
+V1_HEALTH=$(curl -s -o /dev/null -w '%{http_code}' --max-time 10 "$BASE_URL/v1/health")
+check "GET /v1/health returns 200 without auth" "200" "$V1_HEALTH"
+
+# /v1/orgs routing. An unknown slug must produce the router's own "org not
+# found", not the endpoint catch-all — that is what distinguishes a routed
+# request from an unreachable one, since both return 404.
+ORGS_BODY=$(curl -s --max-time 10 "$BASE_URL/v1/orgs/definitely-not-a-real-org/keys" \
+  -H "Authorization: Bearer $API_KEY")
+check_contains "GET /v1/orgs/:slug/keys reaches the router" "org not found" "$ORGS_BODY"
 
 # --- Summary ---
 echo ""

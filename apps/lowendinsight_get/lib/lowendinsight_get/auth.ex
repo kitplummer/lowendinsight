@@ -67,15 +67,23 @@ defmodule LowendinsightGet.Auth do
     end
   end
 
+  # Health endpoints live under /v1 but must answer unauthenticated so that
+  # platform probes (Fly http_checks, Kubernetes liveness/readiness) can reach
+  # them. Lei.Auth keeps the same allowlist for the inner router.
+  @public_v1_paths ["/v1/health"]
+
   def call(%Plug.Conn{request_path: path} = conn, _opts) do
     ## Only do auth on API bits
-    case String.contains?(path, "/v1") do
-      true ->
+    cond do
+      path in @public_v1_paths ->
+        conn
+
+      String.contains?(path, "/v1") ->
         conn
         |> get_auth_header
         |> authenticate
 
-      _ ->
+      true ->
         conn
     end
   end
