@@ -22,10 +22,16 @@ defmodule LowendinsightGet.Endpoint do
   plug(Plug.Static, from: {:lowendinsight_get, "priv/static/js"}, at: "/js")
   plug(Plug.Static, from: {:lowendinsight_get, "priv/static/css"}, at: "/css")
 
+  # RawBodyReader stashes the unparsed body in conn.private[:raw_body]. This is
+  # the first Plug.Parsers in the pipeline, so it has to be the one to capture
+  # it -- the ACP HMAC check and the Stripe webhook signature check both read
+  # that key, and the parsers declared on the sub-routers are a no-op once the
+  # body has already been fetched here.
   plug(Plug.Parsers,
     parsers: [:json, :urlencoded],
     pass: ["application/json", "text/*"],
-    json_decoder: Poison
+    json_decoder: Poison,
+    body_reader: {Lei.Acp.RawBodyReader, :read_body, []}
   )
 
   plug(:maybe_route_auth)
@@ -576,13 +582,23 @@ defmodule LowendinsightGet.Endpoint do
 
   defp config, do: Application.fetch_env(:lowendinsight_get, __MODULE__)
 
-  defp maybe_route_auth(%Plug.Conn{request_path: "/acp" <> _rest} = conn, _opts) do
-    Lei.Acp.Router.call(conn, Lei.Acp.Router.init([]))
+  # Lei.Acp.Router matches on "/checkout", not "/acp/checkout", so the "/acp"
+  # prefix has to be stripped before dispatching. Plug.forward/4 moves it from
+  # path_info to script_name; calling the router directly leaves the prefix in
+  # place and every request falls through to its catch-all 404.
+  defp maybe_route_auth(%Plug.Conn{path_info: ["acp" | rest]} = conn, _opts) do
+    conn
+    |> Plug.forward(rest, Lei.Acp.Router, Lei.Acp.Router.init([]))
+    |> halt()
   end
 
+  # Lei.Web.Router declares its routes with the full path, so nothing is
+  # stripped here.
   defp maybe_route_auth(%Plug.Conn{request_path: path} = conn, _opts) do
     if Enum.any?(@auth_paths, &String.starts_with?(path, &1)) do
-      Lei.Web.Router.call(conn, Lei.Web.Router.init([]))
+      conn
+      |> Lei.Web.Router.call(Lei.Web.Router.init([]))
+      |> halt()
     else
       conn
     end
