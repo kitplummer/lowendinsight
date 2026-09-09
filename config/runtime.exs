@@ -102,6 +102,12 @@ if config_env() == :prod do
   config :redix,
     redis_url: System.get_env("REDIS_URL")
 
+  # Fly's private network (6PN) is IPv6-only, and Redix defaults to IPv4.
+  # Override with LEI_REDIS_IPV6=false when running against an IPv4 Redis.
+  config :lowendinsight_get,
+    redis_socket_opts:
+      if(System.get_env("LEI_REDIS_IPV6", "true") == "true", do: [:inet6], else: [])
+
   # Scheduler
   config :lowendinsight_get, LowendinsightGet.Scheduler,
     jobs: [

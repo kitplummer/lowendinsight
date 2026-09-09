@@ -23,7 +23,6 @@ defmodule LowendinsightGet.Application do
 
   defp children do
     redis_url = Application.get_env(:redix, :redis_url)
-    Logger.info("REDIS_URL: #{redis_url}")
 
     uri = URI.parse(redis_url)
     ssl? = uri.scheme == "rediss"
@@ -42,6 +41,14 @@ defmodule LowendinsightGet.Application do
         _ -> 0
       end
 
+    # Redix defaults to socket_opts: [:inet] (IPv4). Fly's private network is
+    # IPv6-only, so without :inet6 the connection never establishes and every
+    # command returns %Redix.ConnectionError{reason: :closed} -- which reads as
+    # a server-side close but actually means "never connected". The Postgres
+    # config alongside this has always set socket_options: [:inet6]; Redis was
+    # simply missing the equivalent.
+    socket_opts = Application.get_env(:lowendinsight_get, :redis_socket_opts, [])
+
     redix_opts =
       [
         name: :redix,
@@ -51,11 +58,13 @@ defmodule LowendinsightGet.Application do
         port: port,
         password: password,
         ssl: ssl?,
-        database: database
+        database: database,
+        socket_opts: socket_opts
       ]
 
     Logger.info(
-      "Redix opts (sans password): host=#{host} port=#{port} db=#{database} ssl=#{ssl?}"
+      "Redix opts (sans password): host=#{host} port=#{port} db=#{database} " <>
+        "ssl=#{ssl?} socket_opts=#{inspect(socket_opts)}"
     )
 
     kids = [
