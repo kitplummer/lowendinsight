@@ -54,25 +54,33 @@ defmodule LowendinsightGet.Datastore do
   {:error, reason} if there is an error writing to Redis.
   """
   def write_event(report) do
-    case Redix.command(:redix, ["INCR", "event:id"]) do
+    case Redix.command(conn(), ["INCR", "event:id"]) do
       {:ok, id} ->
-        Redix.command(:redix, ["SET", "event-#{id}", Poison.encode!(report)])
+        Redix.command(conn(), ["SET", "event-#{id}", Poison.encode!(report)])
         Logger.debug("wrote event to redis -> #{Poison.encode!(report)}")
         {:ok, id}
+
+      {:error, reason} ->
+        Logger.warning("Redis unavailable writing event: #{inspect(reason)}")
+        {:error, reason}
     end
   end
 
   def write_job(uuid, report) do
-    case Redix.command(:redix, ["SET", uuid, Poison.encode!(report)]) do
+    case Redix.command(conn(), ["SET", uuid, Poison.encode!(report)]) do
       {:ok, res} ->
         {:ok, res}
+
+      {:error, reason} ->
+        Logger.warning("Redis unavailable writing job #{uuid}: #{inspect(reason)}")
+        {:error, reason}
     end
   end
 
   def get_job(uuid) do
     ## NOTE: redix will return :ok even if key is not found, with
     ## the returned value as 'nil'
-    case Redix.command(:redix, ["GET", uuid]) do
+    case Redix.command(conn(), ["GET", uuid]) do
       {:ok, res} ->
         Logger.debug("get job #{uuid} -> #{res}")
 
@@ -80,6 +88,10 @@ defmodule LowendinsightGet.Datastore do
           nil -> {:error, "job not found"}
           _ -> {:ok, res}
         end
+
+      {:error, reason} ->
+        Logger.warning("Redis unavailable reading job #{uuid}: #{inspect(reason)}")
+        {:error, "job lookup failed"}
     end
   end
 
@@ -93,10 +105,14 @@ defmodule LowendinsightGet.Datastore do
     ttl = cache_ttl_seconds()
     json = Poison.encode!(report)
 
-    case Redix.command(:redix, ["SETEX", key, ttl, json]) do
+    case Redix.command(conn(), ["SETEX", key, ttl, json]) do
       {:ok, res} ->
         Logger.debug("wrote report #{key} (url: #{url}, ttl: #{ttl}s)")
         {:ok, res}
+
+      {:error, reason} ->
+        Logger.warning("Redis unavailable caching #{key}: #{inspect(reason)}")
+        {:error, reason}
     end
   end
 
@@ -110,7 +126,7 @@ defmodule LowendinsightGet.Datastore do
     key = cache_key(url)
     ## NOTE: redix will return :ok even if key is not found, with
     ## the returned value as 'nil'
-    case Redix.command(:redix, ["GET", key]) do
+    case Redix.command(conn(), ["GET", key]) do
       {:ok, res} ->
         Logger.debug("get report #{key} (url: #{url})")
 
@@ -126,6 +142,12 @@ defmodule LowendinsightGet.Datastore do
               false -> {:ok, res, :hit}
             end
         end
+
+      # Redis unreachable. Degrade to a cache miss so analysis still proceeds;
+      # returning a 2-tuple here raises CaseClauseError in callers.
+      {:error, reason} ->
+        Logger.warning("Redis unavailable reading #{key}: #{inspect(reason)}")
+        {:error, "cache unavailable", :miss}
     end
   end
 
@@ -137,7 +159,7 @@ defmodule LowendinsightGet.Datastore do
   def get_from_cache_any_age(url) do
     key = cache_key(url)
 
-    case Redix.command(:redix, ["GET", key]) do
+    case Redix.command(conn(), ["GET", key]) do
       {:ok, res} ->
         case res do
           nil ->
@@ -146,6 +168,10 @@ defmodule LowendinsightGet.Datastore do
           _ ->
             {:ok, res, :stale}
         end
+
+      {:error, reason} ->
+        Logger.warning("Redis unavailable reading #{key}: #{inspect(reason)}")
+        {:error, "cache unavailable", :miss}
     end
   end
 
@@ -156,9 +182,17 @@ defmodule LowendinsightGet.Datastore do
   def in_cache?(url) do
     key = cache_key(url)
 
-    case Redix.command(:redix, ["EXISTS", key]) do
-      {:ok, 1} -> true
-      {:ok, 0} -> false
+    case Redix.command(conn(), ["EXISTS", key]) do
+      {:ok, 1} ->
+        true
+
+      {:ok, 0} ->
+        false
+
+      # Unknown means "not cached": analysis proceeds rather than crashing.
+      {:error, reason} ->
+        Logger.warning("Redis unavailable checking #{key}: #{inspect(reason)}")
+        false
     end
   end
 
@@ -184,7 +218,7 @@ defmodule LowendinsightGet.Datastore do
   """
   def export_cache do
     # Get all cache keys matching our pattern (ecosystem:package:version)
-    {:ok, keys} = Redix.command(:redix, ["KEYS", "*:*:*"])
+    {:ok, keys} = Redix.command(conn(), ["KEYS", "*:*:*"])
 
     # Filter to only include analysis cache keys (exclude jobs, events, etc.)
     cache_keys =
@@ -194,8 +228,8 @@ defmodule LowendinsightGet.Datastore do
 
     entries =
       Enum.map(cache_keys, fn key ->
-        {:ok, value} = Redix.command(:redix, ["GET", key])
-        {:ok, ttl} = Redix.command(:redix, ["TTL", key])
+        {:ok, value} = Redix.command(conn(), ["GET", key])
+        {:ok, ttl} = Redix.command(conn(), ["TTL", key])
 
         case value do
           nil ->
@@ -242,7 +276,7 @@ defmodule LowendinsightGet.Datastore do
 
         # Check if key exists
         exists =
-          case Redix.command(:redix, ["EXISTS", key]) do
+          case Redix.command(conn(), ["EXISTS", key]) do
             {:ok, 1} -> true
             {:ok, 0} -> false
           end
@@ -254,7 +288,7 @@ defmodule LowendinsightGet.Datastore do
           true ->
             json = Poison.encode!(data)
 
-            case Redix.command(:redix, ["SETEX", key, ttl, json]) do
+            case Redix.command(conn(), ["SETEX", key, ttl, json]) do
               {:ok, _} -> {:imported, key}
               {:error, reason} -> {:error, key, reason}
             end
@@ -287,7 +321,7 @@ defmodule LowendinsightGet.Datastore do
   Returns a map with total count, expiring_soon list (TTL < 1 day), and expiring_soon_count.
   """
   def cache_expiry_info do
-    {:ok, keys} = Redix.command(:redix, ["KEYS", "*:*:*"])
+    {:ok, keys} = Redix.command(conn(), ["KEYS", "*:*:*"])
 
     cache_keys =
       Enum.filter(keys, fn key ->
@@ -321,7 +355,7 @@ defmodule LowendinsightGet.Datastore do
   cache_stats/0: returns statistics about the current cache state.
   """
   def cache_stats do
-    {:ok, keys} = Redix.command(:redix, ["KEYS", "*:*:*"])
+    {:ok, keys} = Redix.command(conn(), ["KEYS", "*:*:*"])
 
     cache_keys =
       Enum.filter(keys, fn key ->
@@ -346,4 +380,8 @@ defmodule LowendinsightGet.Datastore do
       "checked_at" => DateTime.to_iso8601(DateTime.utc_now())
     }
   end
+
+  # Connection name is configurable so tests can point at a deliberately dead
+  # Redis and exercise the error paths above.
+  defp conn, do: Application.get_env(:lowendinsight_get, :redix_name, :redix)
 end

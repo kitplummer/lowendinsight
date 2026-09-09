@@ -418,7 +418,9 @@ defmodule Lei.Web.Router do
 
   get "/readyz" do
     data = Lei.Health.readiness()
-    status = if data.status == "ok", do: 200, else: 503
+    # "degraded" still serves traffic -- only a required dependency failing
+    # ("error") should pull this instance out of rotation.
+    status = if data.status == "error", do: 503, else: 200
 
     conn
     |> put_resp_content_type("application/json")
