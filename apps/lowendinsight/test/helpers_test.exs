@@ -11,6 +11,40 @@ defmodule Lowendinsight.HelpersTest do
     |> Poison.encode!()
   end
 
+  # Reports embed the whole application env as data.config, so a single config
+  # value that JSON cannot represent raises Poison.EncodeError and breaks every
+  # analysis. The original guard was a denylist of three known-bad keys, which
+  # failed open for any key added later.
+  test "drops config values that JSON cannot represent" do
+    config = [
+      plain_string: "keep",
+      number: 42,
+      list: ["a", "b"],
+      mfa_tuple: {SomeModule, :some_function, []},
+      keyword_of_tuples: [redis: {SomeModule, :check, []}]
+    ]
+
+    result = Helpers.convert_config_to_list(config)
+
+    assert result[:plain_string] == "keep"
+    assert result[:number] == 42
+    assert result[:list] == ["a", "b"]
+    refute Map.has_key?(result, :mfa_tuple)
+    refute Map.has_key?(result, :keyword_of_tuples)
+
+    # The whole point: the result must survive encoding.
+    assert {:ok, _} = Poison.encode(result)
+  end
+
+  test "still drops the historically denylisted keys" do
+    config = [jobs_per_core_max: 2, ecto_repos: [Lei.Repo], keep_me: "yes"]
+    result = Helpers.convert_config_to_list(config)
+
+    refute Map.has_key?(result, :jobs_per_core_max)
+    refute Map.has_key?(result, :ecto_repos)
+    assert result[:keep_me] == "yes"
+  end
+
   test "validate path url" do
     {:ok, cwd} = File.cwd()
     assert :ok == Helpers.validate_url("file://#{cwd}")

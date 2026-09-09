@@ -124,4 +124,11 @@ config :lowendinsight_get, LowendinsightGet.Scheduler,
     {"0 0 * * *", {LowendinsightGet.GithubTrending, :process_languages, []}}
   ]
 
+# Optional dependency health checks surfaced by Lei.Health on /readyz.
+# Registered here rather than in the library so :lowendinsight keeps no Redis
+# dependency. A failing optional check reports "degraded" (still 200) rather
+# than pulling the instance out of rotation.
+config :lowendinsight,
+  optional_health_checks: [redis: {LowendinsightGet.Health, :check_redis, []}]
+
 import_config "#{Mix.env()}.exs"
