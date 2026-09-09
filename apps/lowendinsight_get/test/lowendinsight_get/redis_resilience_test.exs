@@ -19,6 +19,13 @@ defmodule LowendinsightGet.RedisResilienceTest do
   @dead_conn :dead_redix_for_tests
 
   setup do
+    # Readiness queries Lei.Repo, so this test needs its own sandbox
+    # connection. Without it check_database/0 fails on ownership and readiness
+    # reports "error" rather than "degraded" -- which passes or fails depending
+    # on whether another test happened to leave the sandbox in shared mode.
+    :ok = Ecto.Adapters.SQL.Sandbox.checkout(Lei.Repo)
+    Ecto.Adapters.SQL.Sandbox.mode(Lei.Repo, {:shared, self()})
+
     # Port 1 is reserved and nothing listens on it, so every command fails
     # with a connection error rather than a timeout.
     {:ok, _pid} =
