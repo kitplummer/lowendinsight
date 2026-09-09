@@ -194,7 +194,21 @@ defmodule Helpers do
     |> Enum.reject(fn {k, _v} ->
       k in [:jobs_per_core_max, :ecto_repos] or (is_atom(k) and k == Lei.Repo)
     end)
+    |> Enum.filter(fn {_k, v} -> json_encodable?(v) end)
     |> Enum.into(%{})
+  end
+
+  # The key denylist above fails open: any config value that JSON cannot
+  # represent -- a tuple, pid, function or reference -- raises Poison.EncodeError
+  # and takes down every analysis report with it, because reports embed the whole
+  # application env. Rather than extend the denylist each time a new key is added,
+  # drop anything that does not survive encoding.
+  defp json_encodable?(value) do
+    match?({:ok, _}, Poison.encode(value))
+  rescue
+    _ -> false
+  catch
+    _, _ -> false
   end
 
   @doc """
