@@ -1,0 +1,84 @@
+name: deploy
+
+# Deploys main to Fly, then gates on the smoke suite running against the live
+# host. A green build is not the gate -- answering correctly in production is.
+#
+# Requires the FLY_API_TOKEN repository secret (`fly tokens create deploy`).
+# Without it the job fails fast at the auth check rather than half-deploying.
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+# Never let two deploys interleave. Cancelling mid-deploy could leave the app
+# on a half-released version, so queue instead.
+concurrency:
+  group: deploy-production
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    name: Deploy and verify
+    runs-on: ubuntu-latest
+    environment: production
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: superfly/flyctl-actions/setup-flyctl@master
+
+      - name: Check FLY_API_TOKEN is configured
+        env:
+          FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
+        run: |
+          if [ -z "$FLY_API_TOKEN" ]; then
+            echo "::error::FLY_API_TOKEN is not set. Create one with 'fly tokens create deploy' and add it as a repository secret."
+            exit 1
+          fi
+          flyctl auth whoami
+
+      # Recorded before deploying so a failed smoke test has something to go
+      # back to. .Machines[0].config.image is the running image ref.
+      - name: Record currently deployed image
+        id: current
+        env:
+          FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
+        run: |
+          IMAGE=$(flyctl status -a lowendinsight --json | jq -r '.Machines[0].config.image // empty')
+          if [ -z "$IMAGE" ]; then
+            echo "::warning::Could not determine current image; automatic rollback will be unavailable."
+          else
+            echo "Current image: $IMAGE"
+          fi
+          echo "image=$IMAGE" >> "$GITHUB_OUTPUT"
+
+      - name: Deploy
+        env:
+          FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
+        run: flyctl deploy --remote-only
+
+      # Fly's own health checks gate promotion, but they only prove the app
+      # answers /healthz. The smoke suite is what proves the deployed code
+      # actually works -- it is the reason three features previously shipped
+      # broken with green CI.
+      - name: Smoke test against production
+        id: smoke
+        run: ./scripts/smoke-test.sh https://lowendinsight.dev
+
+      - name: Roll back to previous image
+        if: failure() && steps.smoke.outcome == 'failure' && steps.current.outputs.image != ''
+        env:
+          FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
+        run: |
+          echo "::error::Smoke test failed against production. Rolling back to ${{ steps.current.outputs.image }}"
+          flyctl deploy --image "${{ steps.current.outputs.image }}" --strategy immediate -a lowendinsight
+          echo "Rolled back. Verifying the previous version is serving:"
+          ./scripts/smoke-test.sh https://lowendinsight.dev
+
+      - name: Report deployed version
+        if: success()
+        env:
+          FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
+        run: |
+          flyctl status -a lowendinsight | head -12
+          echo "readyz: $(curl -s --max-time 15 https://lowendinsight.dev/readyz)"

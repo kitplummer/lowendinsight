@@ -8,6 +8,12 @@ processes = []
 [build]
   dockerfile = "apps/lowendinsight_get/Dockerfile"
 
+# Runs in a temporary machine before the new version takes traffic. If it fails,
+# the release is aborted and the current version keeps serving. Migrations had
+# previously only ever been applied by hand.
+[deploy]
+  release_command = "/opt/app/bin/lowendinsight_get eval 'LowendinsightGet.Release.migrate()'"
+
 [env]
   ERL_AFLAGS = "-proto_dist inet6_tcp"
   PORT = "8080"
