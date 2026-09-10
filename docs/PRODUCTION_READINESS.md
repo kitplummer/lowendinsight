@@ -1,9 +1,23 @@
 # Production Readiness Plan
 
-**Status:** Proposed
+**Status:** Accepted, in progress
 **Date:** 2026-09-08
+**Last updated:** 2026-09-10
 **Production target:** Fly.io (`lowendinsight.dev`)
 **Long-term target:** uds-core / uds-data (tracked separately in #19, #6)
+
+| Stage | State |
+|---|---|
+| Stage 0 — Restore the signal | **Done**, deployed v120-v124 (#69) |
+| Stage 1 — A deploy you can trust | Open (#65) |
+| Stage 2 — Turn on the revenue path | Open (#66) |
+| Stage 3 — Durability | Partly done (#67) |
+| Stage 4 — Reassess automation | Not started |
+
+> **Reading note.** The "Current state" findings below are a snapshot taken on
+> 2026-09-08 and most have since been fixed. They are kept as the record of what
+> was actually wrong, because the *pattern* they document is the point of this
+> plan. Each is annotated with its resolution.
 
 ## The governing rule
 
@@ -15,11 +29,27 @@ suite. This is the single change that matters most.
 Three separate features were merged with passing tests and green CI, and none of
 them have ever worked in production:
 
-| Feature | Merged as | Live behaviour |
+| Feature | Merged as | Live behaviour (2026-09-08) | Resolved |
+|---|---|---|---|
+| ACP checkout | closed, PR #39 | 404 on every route | #62, deployed v120 |
+| `/v1/health` | bead `lowendinsight-1mn`, closed | 401, not routed | #69, deployed v120 |
+| `/healthz`, `/readyz`, `/metrics` | commit `93686bf` | 404, not routed | #69, deployed v120 |
+
+Two more instances of the same pattern surfaced on 2026-09-09, after this plan
+was written:
+
+| Feature | Live behaviour | Resolved |
 |---|---|---|
-| ACP checkout | closed, PR #39 | 404 on every route |
-| `/v1/health` | bead `lowendinsight-1mn`, closed | 401, not routed |
-| `/healthz`, `/readyz`, `/metrics` | commit `93686bf` | 404, not routed |
+| GitHub trending | 200 with a plausible report ID and **zero repos** | #70, #72, closed #61 |
+| `/readyz` | reported `ok` while Redis was entirely unreachable | #70, deployed v122 |
+
+The second is the sharpest example, because the readiness probe added by this
+very plan was blind to the service's most important dependency. A sixth
+instance appeared in the test suite: a flaky test in #70 manufactured a green
+merge signal (#71).
+
+**Six instances, one shape: something reports success while broken.** That is
+the whole argument for Stage 1's deploy gate (#65) and guard verification (#68).
 
 In all three cases the code was correct. The definition of done was "tests green
 and PR merged" rather than "responds correctly on the live host," and nothing in
@@ -29,9 +59,12 @@ the loop noticed the difference.
 
 ### Eight routes in `Lei.Web.Router` are unreachable in production
 
-`LowendinsightGet.Endpoint` only forwards to `Lei.Web.Router` for paths matching
+**Resolved in #69, deployed v120.** All eight routes now answer correctly in
+production; `scripts/smoke-test.sh` asserts every one of them.
+
+`LowendinsightGet.Endpoint` only forwarded to `Lei.Web.Router` for paths matching
 `@auth_paths` (`apps/lowendinsight_get/lib/lowendinsight_get/endpoint.ex:16`).
-Everything else falls through to the endpoint's own catch-all 404.
+Everything else fell through to the endpoint's own catch-all 404.
 
 | Route | Live | Cause |
 |---|---|---|
@@ -50,10 +83,15 @@ which is a direct constraint on the business-to-agent story in ADR-001.
 
 ### No HTTP health checking
 
-`fly.toml` sets `http_checks = []` and relies solely on `tcp_checks`. Fly knows
-only whether the port accepts TCP; a wedged application with an open socket looks
-healthy. This is the likely cause of the recurring "lowendinsight unhealthy
-(3 consecutive failures)" alerts.
+**Resolved in #69.** `fly.toml` now runs HTTP checks against `/healthz`
+(`restart_limit = 3`) and `/readyz` (`restart_limit = 0`). Both have reported
+passing continuously since v120, and the 10s `/healthz` grace period -- flagged
+at the time as an estimate rather than a measurement -- held across four deploys
+with no restart loop.
+
+Previously `fly.toml` set `http_checks = []` and relied solely on `tcp_checks`.
+Fly knew only whether the port accepted TCP; a wedged application with an open
+socket looked healthy.
 
 Neither `apps/lowendinsight_get/k8s/deployment.yaml` nor
 `apps/lowendinsight/manifests/deployment.yaml` defines a `livenessProbe` or
@@ -82,21 +120,49 @@ the stalled deploy beads (`lowendinsight-c1n`, `lowendinsight-av8`).
 
 ### Not verified
 
-`flyctl` was not available in the session that produced this document. The
-following are unknown and are the first checks in Stage 3, not assumptions:
+`flyctl` was not available in the session that produced this document. Answered
+since:
 
-- region and instance count
-- Fly Postgres backup schedule, and whether a restore has ever been tested
-- whether Redis is durable or ephemeral
+| Question | Answer |
+|---|---|
+| Region and instance count | **Single machine in `iad`.** No redundancy; every deploy is downtime, not a rolling update. |
+| Redis durable or ephemeral | **Wrong question.** Redis was not a persistence problem -- the app could not reach it at all. See below. |
+| Postgres backup schedule | **Still unknown.** No restore has been tested. Remains the first task in Stage 3 (#67). |
 
-The last point matters: ADR-001 identifies the shared cache as the moat. If Redis
-is ephemeral, the moat resets on restart.
+### The Redis outage (2026-09-09)
+
+Redis was unreachable for the entire period this plan was being executed, and
+nothing surfaced it. The cause was not configuration drift or credentials:
+
+> Redix defaults to `socket_opts: [:inet]` (IPv4). Fly's private network is
+> IPv6-only. The Postgres config alongside it had always set
+> `socket_options: [:inet6]`; Redis was simply missing the equivalent.
+
+Fixed in #72, deployed v124, confirmed by `/readyz` reporting
+`{"redis":"ok","database":"ok"}`.
+
+Two lessons worth keeping:
+
+- `%Redix.ConnectionError{reason: :closed}` does **not** mean the server closed
+  the connection. With `sync_connect: false` it is what Redix returns whenever
+  the background connect never succeeded. It means "not connected" and says
+  nothing about why. Two wrong diagnoses (`LEI_GH_TOKEN`, then TLS) followed
+  from reading it as a server-side close.
+- The answer was visible in a config asymmetry between two adjacent
+  dependencies. Reading production logs before reasoning from source would have
+  found it faster.
+
+**Consequence while it was down:** every analysis billed as a cache miss --
+`$0.05` instead of `$0.005` under ADR-001, a 10x overcharge -- and the "moat"
+the pricing model rests on was not operating at all.
 
 ---
 
-## Stage 0 — Restore the signal
+## Stage 0 — Restore the signal — **DONE**
 
-**Effort:** half a day to a day. **Blocks every later stage.**
+Delivered in #69, deployed v120 on 2026-09-08. Verified by
+`./scripts/smoke-test.sh https://lowendinsight.dev` passing 26/26 against the
+live host.
 
 | # | Task | Location |
 |---|---|---|
@@ -142,9 +208,12 @@ production today, because the endpoint's `Plug.Parsers` consumes the body before
 the sub-routers' `RawBodyReader` can capture it. Both signature checks pass
 currently only because the secrets are unset and verification is skipped.
 
-## Stage 3 — Durability
+## Stage 3 — Durability — **PARTLY DONE** (#67)
 
-**Effort:** 1-2 days. Starts by checking the unknowns listed above.
+Redis availability resolved (#72). Remaining: Postgres backup verification,
+Redis persistence config, `DATABASE_URL` fail-fast, listener documentation, and
+one new item -- **rotate the Redis credential**, which was written to Fly's log
+stream on every boot until #72 removed the line.
 
 | # | Task |
 |---|---|
@@ -180,7 +249,25 @@ deploy from a broken one.
 **Gate for reconsidering automation:** a bead may only close when the smoke gate
 passes against production.
 
+### What execution actually demonstrated (2026-09-08 to 09-10)
+
+Six PRs merged. Two of them fixed defects introduced by earlier PRs in the same
+sequence -- the `/readyz` blind spot came from Stage 0 itself (#70), and a flaky
+test from #70 turned `main` red after merging on a green that was luck rather
+than evidence (#71).
+
+Both were caught by CI or by the operator, not by the author. That is an
+argument for **#65** and **#68** ahead of the rest of this plan, including ahead
+of the revenue work in #66:
+
+- A fix sat merged and green for a day while production stayed broken, purely
+  because deploying is a separate step a human has to remember. A rebuild was
+  also indistinguishable from a fresh deploy without inspecting release history
+  and boot logs. Stage 1 removes both.
+- Running a test once and seeing green does not establish that the test means
+  anything. #68 makes that mechanical.
+
 ## Relationship to existing issues
 
-- **#61** (GitHub Trending not running in production) is a symptom of the missing verification loop. Absorbed by Stage 0, not replaced.
+- **#61** (GitHub Trending not running in production) — **closed 2026-09-10.** It was a symptom, though not of the routing gap as predicted here: the trending job was a victim of the Redis outage, crashing on `CaseClauseError` in `Datastore` and having nowhere to persist results.
 - **#19** (Epic: UDS Integration) and **#6** (Helm chart) remain a separate long-term track. This plan does not replace them. Stages 0 and 1.2 advance both targets.
