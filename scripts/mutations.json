@@ -54,6 +54,15 @@
       "replace": "case Lei.ApiKeys.find_or_create_org(name, tier: \"free\", status: \"active\") do",
       "guarded_by": "test/lei/org_takeover_test.exs",
       "app": "apps/lowendinsight"
+    },
+    {
+      "id": "acp-rate-limit",
+      "bug": "ACP endpoints had no rate limiting; an unauthenticated caller could create unbounded sessions, orgs and API keys",
+      "file": "apps/lowendinsight/lib/lei/acp/router.ex",
+      "find": "  plug(Lei.Acp.RateLimit)\n\n",
+      "replace": "",
+      "guarded_by": "test/lei/acp/rate_limit_test.exs",
+      "app": "apps/lowendinsight"
     }
   ]
 }
