@@ -16,13 +16,27 @@ defmodule LowendinsightGet.Plugs.RateLimiter do
   @default_limit 10
   @window_ms 60_000
 
-  def init(opts) do
+  @doc """
+  Creates the backing ETS table. Called from the application supervisor.
+
+  This deliberately does **not** happen in `init/1`. Plug.Builder resolves
+  `init/1` at compile time, so a table created there is owned by the compiler
+  process and is gone before the release ever boots -- every authenticated
+  request then raised `ArgumentError: the table identifier does not refer to an
+  existing ETS table`.
+
+  Tests did not catch it because Plug uses runtime init in that environment, so
+  the table exists there.
+  """
+  def init_table do
     if :ets.whereis(@table) == :undefined do
       :ets.new(@table, [:named_table, :public, :set])
     end
 
-    opts
+    :ok
   end
+
+  def init(opts), do: opts
 
   def call(%Plug.Conn{request_path: "/v1/analyze", method: "POST"} = conn, _opts) do
     case conn.assigns[:current_api_key] do
@@ -48,6 +62,9 @@ defmodule LowendinsightGet.Plugs.RateLimiter do
     limit = Application.get_env(:lowendinsight_get, :analyze_rate_limit, @default_limit)
     now = System.monotonic_time(:millisecond)
     cutoff = now - @window_ms
+
+    # Belt and braces: rate limiting must never be the reason an analysis fails.
+    init_table()
 
     timestamps =
       case :ets.lookup(@table, key) do
