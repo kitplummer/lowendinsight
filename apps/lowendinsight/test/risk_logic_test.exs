@@ -197,12 +197,42 @@ defmodule RiskLogicTest do
   end
 
   describe "config fallback branches" do
-    test "contributor_risk uses defaults when config is missing" do
-      # Save and remove the config
-      original_critical = Application.get_env(:lowendinsight, :critical_contributor_level)
-      original_high = Application.get_env(:lowendinsight, :high_contributor_level)
-      original_medium = Application.get_env(:lowendinsight, :medium_contributor_level)
+    # These tests delete config to exercise the default branches. They used to
+    # put it back at the end of each test body, which meant a failed assertion
+    # left the keys deleted for everything that ran afterwards -- the same
+    # defect that made the rate-limit tests seed-dependent. Snapshot once and
+    # restore on exit, so the cleanup survives a failure.
+    setup do
+      keys = ~w(
+        critical_contributor_level
+        critical_currency_level
+        critical_functional_contributors_level
+        critical_large_commit_level
+        high_agentic_level
+        high_contributor_level
+        high_currency_level
+        high_functional_contributors_level
+        high_large_commit_level
+        medium_agentic_level
+        medium_contributor_level
+        medium_currency_level
+        medium_functional_contributors_level
+        medium_large_commit_level
+      )a
 
+      original = Map.new(keys, &{&1, Application.get_env(:lowendinsight, &1)})
+
+      on_exit(fn ->
+        Enum.each(original, fn
+          {key, nil} -> Application.delete_env(:lowendinsight, key)
+          {key, value} -> Application.put_env(:lowendinsight, key, value)
+        end)
+      end)
+
+      :ok
+    end
+
+    test "contributor_risk uses defaults when config is missing" do
       Application.delete_env(:lowendinsight, :critical_contributor_level)
       Application.delete_env(:lowendinsight, :high_contributor_level)
       Application.delete_env(:lowendinsight, :medium_contributor_level)
@@ -212,23 +242,9 @@ defmodule RiskLogicTest do
       assert RiskLogic.contributor_risk(2) == {:ok, "high"}
       assert RiskLogic.contributor_risk(4) == {:ok, "medium"}
       assert RiskLogic.contributor_risk(5) == {:ok, "low"}
-
-      # Restore config
-      if original_critical,
-        do: Application.put_env(:lowendinsight, :critical_contributor_level, original_critical)
-
-      if original_high,
-        do: Application.put_env(:lowendinsight, :high_contributor_level, original_high)
-
-      if original_medium,
-        do: Application.put_env(:lowendinsight, :medium_contributor_level, original_medium)
     end
 
     test "commit_currency_risk uses defaults when config is missing" do
-      original_medium = Application.get_env(:lowendinsight, :medium_currency_level)
-      original_high = Application.get_env(:lowendinsight, :high_currency_level)
-      original_critical = Application.get_env(:lowendinsight, :critical_currency_level)
-
       Application.delete_env(:lowendinsight, :medium_currency_level)
       Application.delete_env(:lowendinsight, :high_currency_level)
       Application.delete_env(:lowendinsight, :critical_currency_level)
@@ -237,22 +253,9 @@ defmodule RiskLogicTest do
       assert RiskLogic.commit_currency_risk(25) == {:ok, "low"}
       assert RiskLogic.commit_currency_risk(26) == {:ok, "medium"}
       assert RiskLogic.commit_currency_risk(52) == {:ok, "critical"}
-
-      if original_medium,
-        do: Application.put_env(:lowendinsight, :medium_currency_level, original_medium)
-
-      if original_high,
-        do: Application.put_env(:lowendinsight, :high_currency_level, original_high)
-
-      if original_critical,
-        do: Application.put_env(:lowendinsight, :critical_currency_level, original_critical)
     end
 
     test "commit_change_size_risk uses defaults when config is missing" do
-      original_medium = Application.get_env(:lowendinsight, :medium_large_commit_level)
-      original_high = Application.get_env(:lowendinsight, :high_large_commit_level)
-      original_critical = Application.get_env(:lowendinsight, :critical_large_commit_level)
-
       Application.delete_env(:lowendinsight, :medium_large_commit_level)
       Application.delete_env(:lowendinsight, :high_large_commit_level)
       Application.delete_env(:lowendinsight, :critical_large_commit_level)
@@ -262,24 +265,9 @@ defmodule RiskLogicTest do
       assert RiskLogic.commit_change_size_risk(0.25) == {:ok, "medium"}
       assert RiskLogic.commit_change_size_risk(0.35) == {:ok, "high"}
       assert RiskLogic.commit_change_size_risk(0.6) == {:ok, "critical"}
-
-      if original_medium,
-        do: Application.put_env(:lowendinsight, :medium_large_commit_level, original_medium)
-
-      if original_high,
-        do: Application.put_env(:lowendinsight, :high_large_commit_level, original_high)
-
-      if original_critical,
-        do: Application.put_env(:lowendinsight, :critical_large_commit_level, original_critical)
     end
 
     test "functional_contributors_risk uses defaults when config is missing" do
-      original_medium = Application.get_env(:lowendinsight, :medium_functional_contributors_level)
-      original_high = Application.get_env(:lowendinsight, :high_functional_contributors_level)
-
-      original_critical =
-        Application.get_env(:lowendinsight, :critical_functional_contributors_level)
-
       Application.delete_env(:lowendinsight, :medium_functional_contributors_level)
       Application.delete_env(:lowendinsight, :high_functional_contributors_level)
       Application.delete_env(:lowendinsight, :critical_functional_contributors_level)
@@ -288,32 +276,9 @@ defmodule RiskLogicTest do
       assert RiskLogic.functional_contributors_risk(5) == {:ok, "low"}
       assert RiskLogic.functional_contributors_risk(2) == {:ok, "high"}
       assert RiskLogic.functional_contributors_risk(1) == {:ok, "critical"}
-
-      if original_medium,
-        do:
-          Application.put_env(
-            :lowendinsight,
-            :medium_functional_contributors_level,
-            original_medium
-          )
-
-      if original_high,
-        do:
-          Application.put_env(:lowendinsight, :high_functional_contributors_level, original_high)
-
-      if original_critical,
-        do:
-          Application.put_env(
-            :lowendinsight,
-            :critical_functional_contributors_level,
-            original_critical
-          )
     end
 
     test "agentic_classification uses defaults when config is missing" do
-      original_high = Application.get_env(:lowendinsight, :high_agentic_level)
-      original_medium = Application.get_env(:lowendinsight, :medium_agentic_level)
-
       Application.delete_env(:lowendinsight, :high_agentic_level)
       Application.delete_env(:lowendinsight, :medium_agentic_level)
 
@@ -322,12 +287,6 @@ defmodule RiskLogicTest do
       assert RiskLogic.agentic_classification(0.3) == {:ok, "mixed"}
       assert RiskLogic.agentic_classification(0.7) == {:ok, "mixed"}
       assert RiskLogic.agentic_classification(0.71) == {:ok, "agent"}
-
-      if original_high,
-        do: Application.put_env(:lowendinsight, :high_agentic_level, original_high)
-
-      if original_medium,
-        do: Application.put_env(:lowendinsight, :medium_agentic_level, original_medium)
     end
   end
 end
