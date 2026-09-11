@@ -15,7 +15,9 @@ then a credential swap plus a re-verification, not a leap of faith.
 | Free tier | **Working and verified** — `billing-smoke-test.sh` passes 19/19 against production |
 | Pricing calculation | **Correct** — observed `2 cache hits × $0.005 = 1.0 cents` on live traffic |
 | Usage recording | **Working** — `/v1/usage` and the dashboard both report it |
-| Stripe keys | Test mode |
+| Stripe keys | Test mode (sandbox) |
+| Webhook endpoint | Registered and Active, but targets the `fly.dev` hostname |
+| Webhook deliveries | None yet — nothing to reconcile |
 | Stripe Checkout | Not yet configured |
 | Pro tier | Untested end to end |
 | ACP self-provisioning | Reachable, but unauthenticated (see below) |
@@ -86,11 +88,23 @@ these three events, which are the ones `Lei.StripeWebhookHandler` implements:
 `STRIPE_WEBHOOK_SECRET` must be **that endpoint's** signing secret. Each endpoint
 has its own; a secret from a different endpoint fails every signature check.
 
-> **Check the delivery log for failures before 2026-09-08T18:10Z.** Signature
-> verification was broken until #62 deployed — `conn.private[:raw_body]` was
-> always nil, so every event returned 400. Stripe's retry window is finite, so
-> events that exhausted retries will not redeliver. Any org affected needs
-> reconciling by hand.
+> **Checked 2026-09-11: no reconciliation needed.** Signature verification was
+> broken until #62 deployed on 2026-09-08T18:10Z — `conn.private[:raw_body]` was
+> always nil, so every event would have returned 400. The Stripe delivery log
+> shows **no event deliveries at all**, so no checkout ever completed and no org
+> was charged and left `pending`. The bug had no victims.
+
+### Point the endpoint at the canonical domain
+
+The registered endpoint currently targets `https://lowendinsight.fly.dev/webhooks/stripe`
+even though the destination is named `lowendinsight.dev`. Both hostnames serve
+the same app, so this works — but it makes the fly.dev hostname load-bearing for
+billing, and it is the same inconsistency `lei_base_url` had on the redirect
+side. Update it to:
+
+```
+https://lowendinsight.dev/webhooks/stripe
+```
 
 ## 4. Environment
 
