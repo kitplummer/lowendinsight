@@ -92,7 +92,22 @@ jobs:
             | sudo tee /etc/apt/sources.list.d/pgdg.list > /dev/null
           sudo apt-get update -qq
           sudo apt-get install -y -qq postgresql-client-17
-          pg_dump --version
+
+          # Installing the package is not enough: /usr/bin/pg_dump still
+          # resolves to the runner's preinstalled 16.x, so the dump fails with
+          # "server version mismatch" three steps later. Put 17 ahead of it.
+          echo "/usr/lib/postgresql/17/bin" >> "$GITHUB_PATH"
+          export PATH="/usr/lib/postgresql/17/bin:$PATH"
+
+          # Assert rather than print. The previous version of this step logged
+          # "pg_dump (PostgreSQL) 16.15" and passed anyway -- printing a value
+          # is not checking it.
+          VERSION=$(pg_dump --version | grep -oE '[0-9]+' | head -1)
+          echo "pg_dump major version: ${VERSION}"
+          if [ "$VERSION" -lt 17 ]; then
+            echo "::error::pg_dump is version ${VERSION}, but the server is 17. pg_dump refuses to dump from a newer server than itself."
+            exit 1
+          fi
 
       - name: Open proxy to the database
         env:
