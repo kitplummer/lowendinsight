@@ -42,7 +42,20 @@ if config_env() == :prod do
     ]
 
   config :lowendinsight,
-    start_http: true,
+    # Two HTTP listeners run in production, deliberately:
+    #
+    #   8080  LowendinsightGet.Endpoint -- the Fly entry point (fly.toml
+    #         internal_port). Lei.Web.Router is mounted inside it for the paths
+    #         listed in @auth_paths.
+    #   4000  Lei.Web.Router standalone, started by start_http below. This is
+    #         the Kubernetes and Zarf entry point: apps/lowendinsight/manifests/
+    #         service.yaml targets port 4000.
+    #
+    # On Fly the 4000 listener receives no traffic, since only 8080 is routed.
+    # It is NOT dead code -- removing it as Fly cleanup would break the UDS
+    # deployment path (#19). Set LEI_START_HTTP=false to disable it where only
+    # the Fly entry point is needed.
+    start_http: System.get_env("LEI_START_HTTP", "true") == "true",
     http_port: String.to_integer(System.get_env("LEI_HTTP_PORT") || "4000"),
     critical_contributor_level:
       String.to_integer(System.get_env("LEI_CRITICAL_CONTRIBUTOR_LEVEL") || "2"),
@@ -77,9 +90,14 @@ if config_env() == :prod do
     base_temp_dir: System.get_env("LEI_BASE_TEMP_DIR") || "/tmp"
 
   # Database
+  # Fail fast rather than falling back to localhost. A production boot that
+  # silently points at a database that is not there produces confusing
+  # downstream errors -- connection refused from Ecto, /readyz reporting the
+  # database check as failing -- none of which name the actual cause. Matches
+  # how LEI_JWT_SECRET is handled above.
   database_url =
     System.get_env("DATABASE_URL") ||
-      "ecto://postgres:postgres@localhost/lowendinsight_get_prod"
+      raise "DATABASE_URL env var is required in production"
 
   config :lowendinsight_get, LowendinsightGet.Repo,
     url: database_url,
