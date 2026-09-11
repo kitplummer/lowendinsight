@@ -308,9 +308,12 @@ defmodule Lei.Web.BillingIntegrationTest do
       {:ok, _raw_key, api_key} = ApiKeys.create_api_key(org, "test", ["analyze"])
 
       # 10 hits (0.5c each) + 2 misses (5c each) = 15 cents = 150 tenth-cent units
-      Mox.expect(Lei.StripeMock, :report_meter_event, fn "cus_meter_test", value, timestamp ->
+      Mox.expect(Lei.StripeMock, :report_meter_event, fn "cus_meter_test", value, timestamp, identifier ->
         assert value == 150
         assert is_integer(timestamp)
+
+        # Stripe deduplicates on this; without it a retry double-charges.
+        assert is_binary(identifier) and identifier != ""
         {:ok, %{"identifier" => "mev_1"}}
       end)
 
@@ -318,12 +321,32 @@ defmodule Lei.Web.BillingIntegrationTest do
 
       # A second batch must report only its own cost. Meter events are summed by
       # Stripe, so sending a cumulative figure here would compound the bill.
-      Mox.expect(Lei.StripeMock, :report_meter_event, fn "cus_meter_test", value, _ts ->
+      Mox.expect(Lei.StripeMock, :report_meter_event, fn "cus_meter_test", value, _ts, _id ->
         assert value == 50, "expected only this batch's cost, got a running total"
         {:ok, %{"identifier" => "mev_2"}}
       end)
 
       {:ok, _} = UsageTracker.record_usage(org.id, api_key.id, 0, 1)
+    end
+
+    # Ordering matters: the local row is the source of truth, and Stripe is
+    # derived from it. Reporting first meant a failed insert could leave the
+    # customer billed for usage this database had no record of.
+    test "reports nothing to Stripe when the local write fails" do
+      {:ok, org} = ApiKeys.find_or_create_org("Order Org", tier: "pro", status: "active")
+
+      org =
+        org
+        |> Org.stripe_changeset(%{stripe_customer_id: "cus_order_test"})
+        |> Repo.update!()
+
+      # nil api_key_id with a nil org_id forces the changeset to fail
+      # validate_required, so no row is committed.
+      # No Mox expectation: report_meter_event must NOT be called.
+      assert {:error, _changeset} = UsageTracker.record_usage(nil, nil, 5, 1)
+
+      # And the org itself is untouched.
+      assert UsageTracker.get_current_usage(org.id).total_cost_cents == Decimal.new(0)
     end
 
     test "skips orgs with no Stripe customer" do
@@ -344,7 +367,7 @@ defmodule Lei.Web.BillingIntegrationTest do
 
       {:ok, _raw_key, api_key} = ApiKeys.create_api_key(org, "test", ["analyze"])
 
-      Mox.expect(Lei.StripeMock, :report_meter_event, fn _, _, _ ->
+      Mox.expect(Lei.StripeMock, :report_meter_event, fn _, _, _, _ ->
         {:error, %{"error" => "meter unavailable"}}
       end)
 
