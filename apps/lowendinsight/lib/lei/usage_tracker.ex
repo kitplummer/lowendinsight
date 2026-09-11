@@ -8,6 +8,7 @@ defmodule Lei.UsageTracker do
   """
 
   import Ecto.Query
+  require Logger
   alias Lei.{Repo, Org, AnalysisUsage}
 
   @default_hit_cost_cents 0.5
@@ -21,6 +22,7 @@ defmodule Lei.UsageTracker do
   def record_usage(org_id, api_key_id, cache_hits, cache_misses) do
     period_start = current_period_start()
     cost = calculate_cost(cache_hits, cache_misses)
+    report_meter_event(org_id, cost)
 
     case Repo.one(
            from(u in AnalysisUsage,
@@ -144,5 +146,54 @@ defmodule Lei.UsageTracker do
 
   defp free_tier_limit do
     Application.get_env(:lowendinsight, :free_tier_monthly_limit, @default_free_tier_limit)
+  end
+
+  # Reports this usage to Stripe as a billing meter event.
+  #
+  # Meter events are additive, so this sends the cost of *this* usage only --
+  # never a running total. The included Pro credit is expressed as a graduated
+  # tier on the Stripe price (first N units at zero), not computed here: making
+  # Stripe the single place the credit is applied removes the double-counting
+  # that cumulative reporting invites.
+  #
+  # Free-tier orgs have no Stripe customer and are skipped. Failures are logged
+  # and swallowed: a metering outage must not fail an analysis the user has
+  # already been served.
+  defp report_meter_event(org_id, cost_cents) do
+    case Repo.get(Org, org_id) do
+      %Org{tier: "pro", stripe_customer_id: customer_id} when is_binary(customer_id) ->
+        units = to_meter_units(cost_cents)
+
+        if units > 0 do
+          stripe = Lei.Stripe.impl()
+
+          case stripe.report_meter_event(customer_id, units, System.system_time(:second)) do
+            {:ok, _} ->
+              :ok
+
+            {:error, reason} ->
+              Logger.warning("Stripe meter event failed for org #{org_id}: #{inspect(reason)}")
+              :error
+          end
+        else
+          :ok
+        end
+
+      _ ->
+        :ok
+    end
+  rescue
+    error ->
+      Logger.warning("Stripe meter event raised for org #{org_id}: #{inspect(error)}")
+      :error
+  end
+
+  # The meter's unit is a tenth of a cent, so every ADR-001 rate is an integer:
+  # a cache hit ($0.005) is 5 units, a miss ($0.05) is 50.
+  defp to_meter_units(cost_cents) do
+    cost_cents
+    |> Decimal.mult(10)
+    |> Decimal.round(0, :up)
+    |> Decimal.to_integer()
   end
 end

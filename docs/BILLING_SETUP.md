@@ -19,37 +19,55 @@ then a credential swap plus a re-verification, not a leap of faith.
 | Webhook endpoint | Registered and Active, but targets the `fly.dev` hostname |
 | Webhook deliveries | None yet — nothing to reconcile |
 | Stripe Checkout | Not yet configured |
+| Billing meter | `analysis_cost` — create per section 1 |
 | Pro tier | Untested end to end |
 | ACP self-provisioning | Reachable, but unauthenticated (see below) |
 
 ---
 
-## 1. Products and prices
+## 1. Products, prices and the meter
 
-Two prices, both on the same product or on separate products, attached to the
-same subscription.
+Your account defaults to API version **`2026-02-25.clover`**, on which Stripe's
+legacy metered-billing endpoint (`/v1/subscription_items/{id}/usage_records`) no
+longer exists. Usage is reported through **Billing Meters** instead, and
+`Lei.Stripe` pins `Stripe-Version` so the account default cannot change this
+integration's behaviour without a deploy.
 
-| Env var | What it must be | Why |
-|---|---|---|
-| `STRIPE_PRO_PRICE_ID` | Recurring price, **$29/month** | `line_items[0][price]` in `Lei.Stripe.create_checkout_session/1` |
-| `STRIPE_METERED_PRICE_ID` | **Metered** usage price, unit = 1 cent | `line_items[1][price]`, and the target of `report_usage/3` |
+### The meter
 
-The metered price **must be metered**, not licensed. `Lei.BillingReporter`
-reports overage through `/v1/subscription_items/{id}/usage_records`, which only
-exists for metered prices. A licensed price silently accepts the subscription
-and then fails every usage report.
+| Field | Value |
+|---|---|
+| Event name | `analysis_cost` |
+| Customer mapping | payload key `stripe_customer_id`, type `by_id` |
+| Value key | `value` |
+| Aggregation | `sum` |
 
-**Unit matters.** `BillingReporter.report_for_org/1` reports overage in **integer
-cents**, rounded up:
+**The unit is a tenth of a cent ($0.001),** chosen so every ADR-001 rate is an
+integer: a cache hit ($0.005) is 5 units, a cache miss ($0.05) is 50. Measuring
+in whole cents would make a hit 0.5 units and invite rounding drift.
 
-```elixir
-overage = Decimal.sub(usage.total_cost_cents, pro_credit)
-overage_int = overage |> Decimal.round(0, :up) |> Decimal.to_integer()
-stripe.report_usage(org.stripe_metered_subscription_item_id, overage_int, timestamp)
-```
+### Prices
 
-So one reported unit = one cent. Price the metered item at $0.01 per unit, or
-the bill will be wrong by whatever factor the unit disagrees by.
+| Env var | What it must be |
+|---|---|
+| `STRIPE_PRO_PRICE_ID` | Recurring price, **$29/month** |
+| `STRIPE_METERED_PRICE_ID` | Usage-based price on the `analysis_cost` meter, **graduated**: first **15,000 units at $0**, then **$0.001 per unit** |
+
+The first tier *is* the $15 included credit — 15,000 × $0.001. **Stripe applies
+the credit, not the application.** That is deliberate: the previous design
+computed overage locally and reported a cumulative figure, which is safe only
+with the old replace-semantics endpoint. Meter events are additive, so a
+cumulative report would compound — 100, then 250, then 400, billed as 750.
+Putting the credit in the price makes that class of error impossible rather
+than merely avoided.
+
+### Why there is no daily billing job
+
+`Lei.BillingReporter` was removed. Every analysis emits its own meter event from
+`Lei.UsageTracker.record_usage/4`, and Stripe aggregates. No local credit
+arithmetic, no cumulative state, no scheduled job to fail silently.
+
+For the record, it never ran: it was not in any supervision tree.
 
 ## 2. Checkout session
 
