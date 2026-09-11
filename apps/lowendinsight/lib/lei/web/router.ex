@@ -326,7 +326,7 @@ defmodule Lei.Web.Router do
   post "/v1/orgs" do
     case conn.body_params do
       %{"name" => name} when is_binary(name) and name != "" ->
-        case Lei.ApiKeys.find_or_create_org(name) do
+        case Lei.ApiKeys.create_org(name) do
           {:ok, org} ->
             json_resp(conn, 201, %{
               id: org.id,
@@ -334,6 +334,9 @@ defmodule Lei.Web.Router do
               slug: org.slug,
               tier: org.tier
             })
+
+          {:error, :name_taken} ->
+            json_resp(conn, 409, %{error: "organization name already taken"})
 
           {:error, changeset} ->
             json_resp(conn, 422, %{error: format_errors(changeset)})
@@ -444,7 +447,12 @@ defmodule Lei.Web.Router do
   # --- Private helpers ---
 
   defp signup_free(conn, name) do
-    case Lei.ApiKeys.find_or_create_org(name, tier: "free", status: "active") do
+    case Lei.ApiKeys.create_org(name, tier: "free", status: "active") do
+      {:error, :name_taken} ->
+        render_page(conn, "signup.html.eex",
+          flash_error: "That organization name is already taken. Please choose another."
+        )
+
       {:ok, org} ->
         case Lei.ApiKeys.create_api_key(org, "admin", ["admin", "analyze"]) do
           {:ok, raw_key, _api_key} ->
@@ -470,7 +478,12 @@ defmodule Lei.Web.Router do
   end
 
   defp signup_pro(conn, name) do
-    case Lei.ApiKeys.find_or_create_org(name, tier: "pro", status: "pending") do
+    case Lei.ApiKeys.create_org(name, tier: "pro", status: "pending") do
+      {:error, :name_taken} ->
+        render_page(conn, "signup.html.eex",
+          flash_error: "That organization name is already taken. Please choose another."
+        )
+
       {:ok, org} ->
         base_url = Application.get_env(:lowendinsight, :lei_base_url, "http://localhost:4000")
         price_id = Application.get_env(:lowendinsight, :stripe_pro_price_id)

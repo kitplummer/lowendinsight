@@ -6,15 +6,42 @@ defmodule Lei.ApiKeys do
     Repo.get_by(Org, slug: slug)
   end
 
+  @doc """
+  Creates an org, refusing to reuse an existing one.
+
+  Signup paths must use this rather than `find_or_create_org/2`. Those paths are
+  unauthenticated and mint an admin-scoped key for whatever org they are handed,
+  so find-or-create semantics let anyone who knows an existing organisation's
+  name obtain admin access to it.
+  """
+  def create_org(name, opts \\ []) do
+    tier = Keyword.get(opts, :tier, "free")
+    status = Keyword.get(opts, :status, "pending")
+    slug = slugify(name)
+
+    case Repo.get_by(Org, slug: slug) do
+      nil ->
+        %Org{}
+        |> Org.changeset(%{name: name, tier: tier, status: status})
+        |> Repo.insert()
+
+      _existing ->
+        {:error, :name_taken}
+    end
+  end
+
+  @doc """
+  Finds an existing org by slug or creates it.
+
+  Only safe where the caller already has authority over the org, or where
+  reusing one is intended. **Never** call this from an unauthenticated path that
+  goes on to issue credentials -- use `create_org/2`.
+  """
   def find_or_create_org(name, opts \\ []) do
     tier = Keyword.get(opts, :tier, "free")
     status = Keyword.get(opts, :status, "pending")
 
-    slug =
-      name
-      |> String.downcase()
-      |> String.replace(~r/[^a-z0-9]+/, "-")
-      |> String.trim("-")
+    slug = slugify(name)
 
     case Repo.get_by(Org, slug: slug) do
       nil ->
@@ -25,6 +52,13 @@ defmodule Lei.ApiKeys do
       org ->
         {:ok, org}
     end
+  end
+
+  defp slugify(name) do
+    name
+    |> String.downcase()
+    |> String.replace(~r/[^a-z0-9]+/, "-")
+    |> String.trim("-")
   end
 
   def activate_org(%Org{} = org) do

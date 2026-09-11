@@ -91,6 +91,11 @@ defmodule Lei.Acp.Router do
 
       {:error, {:payment_failed, reason}} ->
         json_resp(conn, 402, %{error: "payment failed", details: inspect(reason)})
+
+      # Without this clause the case below raises, so a name collision would
+      # surface as a 500 on a completed payment.
+      {:error, :name_taken} ->
+        json_resp(conn, 409, %{error: "organization name already taken"})
     end
   end
 

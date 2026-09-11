@@ -78,9 +78,9 @@ defmodule Lei.Acp do
   end
 
   defp complete_free_session(session) do
-    customer_name = session.customer_name || "ACP Agent"
+    customer_name = session.customer_name || default_org_name(session)
 
-    with {:ok, org} <- ApiKeys.find_or_create_org(customer_name, tier: "free", status: "active"),
+    with {:ok, org} <- ApiKeys.create_org(customer_name, tier: "free", status: "active"),
          {:ok, raw_key, _api_key} <-
            ApiKeys.create_api_key(org, "acp-key", ["admin", "analyze"]),
          {:ok, recovery_code} <- ApiKeys.generate_recovery_code(org) do
@@ -123,10 +123,10 @@ defmodule Lei.Acp do
   end
 
   defp finalize_paid_session(session, payment_intent_id) do
-    customer_name = session.customer_name || "ACP Agent"
+    customer_name = session.customer_name || default_org_name(session)
 
     with {:ok, org} <-
-           ApiKeys.find_or_create_org(customer_name, tier: "pro", status: "active"),
+           ApiKeys.create_org(customer_name, tier: "pro", status: "active"),
          {:ok, raw_key, _api_key} <-
            ApiKeys.create_api_key(org, "acp-key", ["admin", "analyze"]),
          {:ok, recovery_code} <- ApiKeys.generate_recovery_code(org) do
@@ -146,5 +146,14 @@ defmodule Lei.Acp do
          tier: "pro"
        }}
     end
+  end
+
+  # A fixed default ("ACP Agent") would slug-collide for every anonymous
+  # completion, so each one would land on the same org. Under the old
+  # find-or-create behaviour that silently issued admin keys for a shared org;
+  # under create_org/2 it would fail every caller after the first. Derive the
+  # name from the session id so anonymous agents each get their own org.
+  defp default_org_name(session) do
+    "ACP Agent " <> String.slice(session.id, -12, 12)
   end
 end
