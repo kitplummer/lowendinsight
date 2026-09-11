@@ -3,6 +3,20 @@ defmodule Lei.RateLimiterTest do
 
   setup do
     Lei.RateLimiter.clear()
+
+    # These tests override :rate_limits. They previously deleted it afterwards
+    # rather than restoring it, so any test running later saw the limiter fall
+    # back to its hardcoded free-tier default -- which made Lei.Acp.RateLimitTest
+    # pass or fail depending on the ExUnit seed. Restore on every exit path.
+    original = Application.get_env(:lowendinsight, :rate_limits)
+
+    on_exit(fn ->
+      case original do
+        nil -> Application.delete_env(:lowendinsight, :rate_limits)
+        value -> Application.put_env(:lowendinsight, :rate_limits, value)
+      end
+    end)
+
     :ok
   end
 
@@ -24,7 +38,6 @@ defmodule Lei.RateLimiterTest do
     assert {:ok, 0} = Lei.RateLimiter.check("limited-key", "free")
     assert {:error, :rate_limited, _retry} = Lei.RateLimiter.check("limited-key", "free")
 
-    Application.delete_env(:lowendinsight, :rate_limits)
   end
 
   test "pro tier gets higher limit" do
@@ -38,7 +51,6 @@ defmodule Lei.RateLimiterTest do
     Lei.RateLimiter.check("pro-key", "pro")
     assert {:ok, _} = Lei.RateLimiter.check("pro-key", "pro")
 
-    Application.delete_env(:lowendinsight, :rate_limits)
   end
 
   test "different keys are independent" do
@@ -48,7 +60,6 @@ defmodule Lei.RateLimiterTest do
     assert {:error, :rate_limited, _} = Lei.RateLimiter.check("key-a", "free")
     assert {:ok, 0} = Lei.RateLimiter.check("key-b", "free")
 
-    Application.delete_env(:lowendinsight, :rate_limits)
   end
 
   test "reset clears state for a key" do
@@ -59,7 +70,6 @@ defmodule Lei.RateLimiterTest do
     Lei.RateLimiter.reset("reset-key")
     assert {:ok, 0} = Lei.RateLimiter.check("reset-key", "free")
 
-    Application.delete_env(:lowendinsight, :rate_limits)
   end
 
   test "returns retry_after when rate limited" do
@@ -70,6 +80,5 @@ defmodule Lei.RateLimiterTest do
     assert is_integer(retry_after)
     assert retry_after >= 0
 
-    Application.delete_env(:lowendinsight, :rate_limits)
   end
 end
