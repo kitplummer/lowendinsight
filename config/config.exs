@@ -131,4 +131,11 @@ config :lowendinsight_get, LowendinsightGet.Scheduler,
 config :lowendinsight,
   optional_health_checks: [redis: {LowendinsightGet.Health, :check_redis, []}]
 
+# Rate limit buckets, per minute. free/pro key on the API key; the acp buckets
+# key on client IP, because ACP is unauthenticated by design (ADR-001).
+# acp_complete is far tighter than acp because completion creates an org and an
+# API key, where the other endpoints only write a session row.
+config :lowendinsight,
+  rate_limits: %{free: 60, pro: 600, acp: 20, acp_complete: 5}
+
 import_config "#{Mix.env()}.exs"

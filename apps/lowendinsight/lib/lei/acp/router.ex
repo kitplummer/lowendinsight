@@ -5,6 +5,11 @@ defmodule Lei.Acp.Router do
   """
   use Plug.Router
 
+  # Before Plug.Parsers: an abusive request should be rejected without reading
+  # its body. ACP is unauthenticated by design, so this is the only thing
+  # bounding session and org creation.
+  plug(Lei.Acp.RateLimit)
+
   plug(Plug.Parsers,
     parsers: [:json],
     pass: ["application/json"],
