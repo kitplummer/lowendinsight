@@ -365,17 +365,8 @@ defmodule LowendinsightGet.Endpoint do
   """
   get "/admin" do
     conn = fetch_query_params(conn)
-    admin_token = System.get_env("LEI_ADMIN_TOKEN", "")
-    provided_token = conn.query_params["token"] || ""
 
-    if admin_token == "" or provided_token != admin_token do
-      conn
-      |> put_resp_content_type("text/html")
-      |> send_resp(
-        401,
-        "<html><body><h1>401 Unauthorized</h1><p>Valid admin token required via <code>?token=</code> query parameter.</p></body></html>"
-      )
-    else
+    if admin_authorized?(conn) do
       cache_stats = LowendinsightGet.Datastore.cache_stats()
       cache_expiry = LowendinsightGet.Datastore.cache_expiry_info()
       recent_requests = LowendinsightGet.RequestLogger.get_recent(100)
@@ -404,6 +395,39 @@ defmodule LowendinsightGet.Endpoint do
         total_tracked: total_tracked,
         per_org: per_org
       )
+    else
+      conn
+      |> put_resp_content_type("text/html")
+      |> send_resp(
+        401,
+        "<html><body><h1>401 Unauthorized</h1><p>Supply the admin token via an <code>Authorization: Bearer</code> header, or <code>?token=</code>.</p></body></html>"
+      )
+    end
+  end
+
+  # Fails closed: an unset LEI_ADMIN_TOKEN denies everyone rather than opening
+  # the dashboard, which is the right default. But it also made /admin silently
+  # unreachable for as long as the secret went unset, so log that case
+  # distinctly -- "never configured" and "wrong token" should not look the same
+  # to an operator, even though they must look the same to a caller.
+  defp admin_authorized?(conn) do
+    case System.get_env("LEI_ADMIN_TOKEN", "") do
+      "" ->
+        Logger.warning("/admin requested but LEI_ADMIN_TOKEN is not set; denying")
+        false
+
+      expected ->
+        Plug.Crypto.secure_compare(admin_token_from_request(conn), expected)
+    end
+  end
+
+  # Header first: a token in the query string lands in access logs, browser
+  # history and Referer headers. The query parameter stays supported because it
+  # is what makes the dashboard usable from a browser.
+  defp admin_token_from_request(conn) do
+    case get_req_header(conn, "authorization") do
+      ["Bearer " <> token] -> token
+      _ -> conn.query_params["token"] || ""
     end
   end
 
