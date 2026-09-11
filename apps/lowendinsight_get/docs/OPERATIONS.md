@@ -409,8 +409,16 @@ pg_restore --list lei.dump                 # inspect without restoring
 An untested backup is a hypothesis. Both mechanisms should be exercised
 periodically, not only when they are needed:
 
-- **After changing `BACKUP_PASSPHRASE`**, download one artifact and decrypt it.
-  A rotated key that was never tested is the same failure as no backup.
+- **After changing `BACKUP_PASSPHRASE`**, download one artifact and decrypt it
+  **using the copy from your password manager**, not the GitHub secret.
+
+  The backup workflow already round-trips every artifact -- encrypting, then
+  decrypting and comparing -- so gpg failures and corruption are caught on each
+  run. That check cannot detect the failure that actually matters here: it
+  decrypts with the same secret it encrypted with, so a stored copy that has
+  drifted from the GitHub secret still passes. Only decrypting with the copy you
+  keep proves the two agree, and that is the copy you would reach for when the
+  hosting account is gone.
 - **Quarterly**, run the volume restore procedure above and confirm row counts
   against production.
 
