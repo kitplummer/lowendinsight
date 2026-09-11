@@ -19,8 +19,10 @@ exercised against production with a real Stripe Checkout, not simulated.
 | Pro checkout | **Verified** — org created `tier: "pro"`, activated by webhook |
 | Stripe webhook | **Verified** — `POST /webhooks/stripe` returned 200; signature matches |
 | Success redirect | **Verified** — lands on `lowendinsight.dev` |
-| Usage recording | **Verified** — 2 cache misses recorded as `total_cost_cents: 10.0` |
-| Meter events | **Verified** — `aggregated_value: 100` in Stripe |
+| Usage recording | **Verified** — 4 cache misses recorded as `total_cost_cents: 20.0` |
+| Meter events | **Verified against Stripe** — `aggregated_value: 200.0` |
+| Subscription | **Verified** — `active`, both line items attached |
+| ACP rate limiting | **Verified in production** — 20 x 201 then 429, `retry-after: 58` |
 | Included credit | **Verified** — 15,000-unit tier absorbs it; amount due stays $29 |
 | `POST /v1/analyze` | **Verified** authenticated (was raising until #91/#92) |
 | Stripe keys | Test mode (sandbox) — live mode still to do |
@@ -28,13 +30,32 @@ exercised against production with a real Stripe Checkout, not simulated.
 
 ### The verified chain
 
+Confirmed from both ends -- the application's own records, and Stripe's.
+
 ```
-2 cache misses x $0.05          = $0.10
-  -> UsageTracker.calculate_cost  = 10.0 cents
-  -> to_meter_units (x10)         = 100 units
+4 cache misses x $0.05          = $0.20
+  -> UsageTracker.calculate_cost  = 20.0 cents      <- /v1/usage
+  -> to_meter_units (x10)         = 200 units
   -> meter event, keyed by customer
-  -> Stripe aggregates            = 100        <- observed
+  -> Stripe aggregates            = 200.0           <- observed
 ```
+
+That total accumulated across **two separate batches**, which is the part worth
+noting: it went 100 -> 200 with distinct idempotency identifiers. Deduplication
+is discriminating correctly rather than suppressing legitimate usage, which is
+the failure mode adding an idempotency key introduces.
+
+### Subscription structure
+
+```
+sub_1UEWPV36n3SNNombezdApuys | active
+  licensed  price_1UEVQx...  unit_amount=2900   <- $29/month base
+  metered   price_1UEVRK...  unit_amount=None   <- pricing lives in the tiers
+```
+
+`unit_amount=None` on the metered price is correct for a graduated price: the
+amount comes from the tiers, not a flat rate. A number there would mean the
+tiers were not applied.
 
 That the numbers land exactly on ADR-001's figures is the evidence the
 tenth-of-a-cent unit was the right choice: 15,000 units is $15.00, which is
@@ -48,6 +69,13 @@ tenth-of-a-cent unit was the right choice: 15,000 units is $15.00, which is
 | Product | `prod_VEzHnMVO4j6RDi` |
 | Pro price ($29/mo) | `price_1UEVQx36n3SNNomb9bwoiS5M` |
 | Metered price (graduated) | `price_1UEVRK36n3SNNombFIKvyqje` |
+| Test customer | `cus_VF0Q3ox3rjYHmr` |
+| Test subscription | `sub_1UEWPV36n3SNNombezdApuys` |
+
+These live in sandbox account `acct_1T8rhd36n3SNNomb`. **Note the account id
+fragment `36n3SNNomb` appears inside every object id** -- useful for spotting
+when a query has been pointed at the wrong Stripe context, which returns a
+valid, empty result rather than an error.
 
 These are **test-mode objects and do not exist in live mode.** Section 6.
 
@@ -208,6 +236,29 @@ flyctl ssh console -a lowendinsight \
 
 Step 5 is the one most likely to be skipped and most likely to be wrong: it is
 where a licensed-instead-of-metered price, or a unit mismatch, finally shows up.
+
+### Querying it directly
+
+The Stripe CLI is installed locally. Point it at the right account -- a query
+against the wrong one returns an empty list, not an error, which looks exactly
+like the meter never received anything.
+
+```bash
+stripe config --list          # confirm account_id = acct_1T8rhd36n3SNNomb
+
+stripe get /v1/billing/meters/<METER_ID>/event_summaries \
+  -d customer=<CUSTOMER_ID> \
+  -d start_time=<hour-aligned unix> \
+  -d end_time=<hour-aligned unix>
+
+stripe get /v1/subscriptions -d customer=<CUSTOMER_ID> -d limit=1
+```
+
+`start_time` and `end_time` must be hour-aligned or the API rejects them.
+
+Use a **restricted, read-only** key rather than a full `stripe login` for
+routine querying. Read access to meters, customers, subscriptions, invoices and
+events covers everything above, and cannot refund, modify or delete anything.
 
 ## 6. Going live
 
