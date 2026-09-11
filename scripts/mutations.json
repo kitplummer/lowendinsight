@@ -1,0 +1,59 @@
+{
+  "_comment": [
+    "Each entry pairs a bug that reached production with the test that must catch it.",
+    "verify-guards.sh applies the mutation, runs only the named test file, and",
+    "requires it to FAIL. A guard that still passes under mutation is not a guard.",
+    "",
+    "'find' must match exactly once. If it stops matching, the guarded code has",
+    "changed and the job fails as STALE -- distinctly from a guard failure, because",
+    "the two need different responses: stale means re-verify the guard still covers",
+    "the bug; failure means the guard has stopped working."
+  ],
+  "mutations": [
+    {
+      "id": "acp-mount-prefix",
+      "bug": "ACP checkout returned 404 on every route; the /acp prefix was not stripped before dispatch (#62)",
+      "file": "apps/lowendinsight_get/lib/lowendinsight_get/endpoint.ex",
+      "find": "|> Plug.forward(rest, Lei.Acp.Router, Lei.Acp.Router.init([]))",
+      "replace": "|> Lei.Acp.Router.call(Lei.Acp.Router.init([]))",
+      "guarded_by": "test/lowendinsight_get/acp_routing_test.exs",
+      "app": "apps/lowendinsight_get"
+    },
+    {
+      "id": "auth-paths-omission",
+      "bug": "Eight routes unreachable in production, including all health/metrics and the /v1/orgs family (#69)",
+      "file": "apps/lowendinsight_get/lib/lowendinsight_get/endpoint.ex",
+      "find": "/v1/analyze/batch /v1/usage /v1/health /v1/orgs\n                 /healthz /readyz /metrics)",
+      "replace": "/v1/analyze/batch /v1/usage)",
+      "guarded_by": "test/lowendinsight_get/ops_routing_test.exs",
+      "app": "apps/lowendinsight_get"
+    },
+    {
+      "id": "rate-limiter-table",
+      "bug": "POST /v1/analyze raised for every authenticated caller; the ETS table was created in Plug init/1, which runs at compile time (#91)",
+      "file": "apps/lowendinsight_get/lib/lowendinsight_get/plugs/rate_limiter.ex",
+      "find": "    # Belt and braces: rate limiting must never be the reason an analysis fails.\n    init_table()\n\n",
+      "replace": "",
+      "guarded_by": "test/lowendinsight_get/rate_limiter_table_test.exs",
+      "app": "apps/lowendinsight_get"
+    },
+    {
+      "id": "signup-success-session",
+      "bug": "Every completed Pro checkout ended on a 500; get_session/2 was called without fetching the session (#90)",
+      "file": "apps/lowendinsight/lib/lei/web/router.ex",
+      "find": "    conn = fetch_session(conn)\n\n    _session_id = conn.params[\"session_id\"]",
+      "replace": "    _session_id = conn.params[\"session_id\"]",
+      "guarded_by": "test/lei/web/signup_success_test.exs",
+      "app": "apps/lowendinsight"
+    },
+    {
+      "id": "signup-org-takeover",
+      "bug": "Unauthenticated signup issued an admin-scoped key for an existing org when the name matched (#89)",
+      "file": "apps/lowendinsight/lib/lei/web/router.ex",
+      "find": "case Lei.ApiKeys.create_org(name, tier: \"free\", status: \"active\") do",
+      "replace": "case Lei.ApiKeys.find_or_create_org(name, tier: \"free\", status: \"active\") do",
+      "guarded_by": "test/lei/org_takeover_test.exs",
+      "app": "apps/lowendinsight"
+    }
+  ]
+}

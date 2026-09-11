@@ -11,8 +11,12 @@ defmodule Lei.OrgTakeoverTest do
   These pin the create-only behaviour that replaced it.
   """
   use ExUnit.Case, async: false
+  import Plug.Test
+  import Plug.Conn
 
   alias Lei.{ApiKeys, Repo}
+
+  @opts Lei.Web.Router.init([])
 
   setup do
     :ok = Ecto.Adapters.SQL.Sandbox.checkout(Repo)
@@ -44,6 +48,36 @@ defmodule Lei.OrgTakeoverTest do
     # The tier bug: find_or_create_org returns the existing org unchanged, so a
     # Pro signup reusing a free org's name produced a paid checkout against an
     # org that stayed on the free tier.
+    # Guard verification caught this gap: every test above exercises
+    # ApiKeys.create_org/2 directly, so swapping the *router* back to
+    # find_or_create_org left them all passing. Testing the function is not
+    # testing the path that issues credentials -- which is the same mistake
+    # that produced the bug in the first place.
+    test "POST /signup issues no key when the org name already exists" do
+      {:ok, _} = ApiKeys.create_org("Existing Co", tier: "free", status: "active")
+
+      conn =
+        conn(:post, "/signup", "name=Existing+Co&tier=free")
+        |> put_req_header("content-type", "application/x-www-form-urlencoded")
+        |> Lei.Web.Router.call(@opts)
+
+      assert conn.status == 200
+      assert conn.resp_body =~ "already taken"
+
+      refute conn.resp_body =~ ~r/lei_[a-f0-9]{32}/,
+             "signup handed out an API key for an org the caller does not own"
+    end
+
+    test "POST /signup still issues a key for a genuinely new org" do
+      conn =
+        conn(:post, "/signup", "name=Brand+New+Co&tier=free")
+        |> put_req_header("content-type", "application/x-www-form-urlencoded")
+        |> Lei.Web.Router.call(@opts)
+
+      assert conn.status == 200
+      assert conn.resp_body =~ ~r/lei_[a-f0-9]{32}/
+    end
+
     test "find_or_create_org ignores the requested tier for an existing org" do
       {:ok, free_org} = ApiKeys.create_org("Tier Test", tier: "free", status: "active")
 
