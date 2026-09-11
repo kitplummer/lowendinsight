@@ -326,7 +326,10 @@ defmodule Lei.Web.Router do
   post "/v1/orgs" do
     case conn.body_params do
       %{"name" => name} when is_binary(name) and name != "" ->
-        case Lei.ApiKeys.create_org(name) do
+        # find_or_create_org/2 is correct here, unlike on the signup paths: this
+        # route requires the "admin" scope and returns only org metadata, never
+        # a key. Idempotent creation is intended -- see the registration test.
+        case Lei.ApiKeys.find_or_create_org(name) do
           {:ok, org} ->
             json_resp(conn, 201, %{
               id: org.id,
@@ -334,9 +337,6 @@ defmodule Lei.Web.Router do
               slug: org.slug,
               tier: org.tier
             })
-
-          {:error, :name_taken} ->
-            json_resp(conn, 409, %{error: "organization name already taken"})
 
           {:error, changeset} ->
             json_resp(conn, 422, %{error: format_errors(changeset)})

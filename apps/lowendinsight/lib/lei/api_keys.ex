@@ -9,10 +9,14 @@ defmodule Lei.ApiKeys do
   @doc """
   Creates an org, refusing to reuse an existing one.
 
-  Signup paths must use this rather than `find_or_create_org/2`. Those paths are
-  unauthenticated and mint an admin-scoped key for whatever org they are handed,
-  so find-or-create semantics let anyone who knows an existing organisation's
-  name obtain admin access to it.
+  Any path that **issues credentials without already authenticating the caller**
+  must use this rather than `find_or_create_org/2`: signup and ACP completion
+  both mint an admin-scoped key for whatever org they are handed, so
+  find-or-create semantics let anyone who knows an existing organisation's name
+  obtain admin access to it.
+
+  `POST /v1/orgs` is deliberately *not* in that set -- it requires the "admin"
+  scope and returns only org metadata, so idempotent creation there is intended.
   """
   def create_org(name, opts \\ []) do
     tier = Keyword.get(opts, :tier, "free")
