@@ -63,6 +63,15 @@
       "replace": "",
       "guarded_by": "test/lei/acp/rate_limit_test.exs",
       "app": "apps/lowendinsight"
+    },
+    {
+      "id": "credit-ledger-idempotency",
+      "bug": "Anticipated, not yet shipped: a replayed Stripe webhook or resubmitted x402 payment proof double-credits an org. The defence is the unique index on external_ref, surfaced through the changeset constraint -- without it a duplicate raises Ecto.ConstraintError instead of returning {:error, :duplicate}, which callers will not be expecting.",
+      "file": "apps/lowendinsight/lib/lei/credit_entry.ex",
+      "find": "    |> unique_constraint(:external_ref)\n",
+      "replace": "",
+      "guarded_by": "test/lei/credits_test.exs",
+      "app": "apps/lowendinsight"
     }
   ]
 }
