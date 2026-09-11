@@ -57,6 +57,12 @@ defmodule Lei.Web.Router do
   end
 
   get "/signup/success" do
+    # Plug.Session only configures the store; the session must be fetched before
+    # get_session/2, or it raises ArgumentError. Stripe sends the customer here
+    # immediately after payment, so the raise surfaced as a 500 on the one page
+    # a paying customer is guaranteed to see.
+    conn = fetch_session(conn)
+
     _session_id = conn.params["session_id"]
     org_id = get_session(conn, "pending_org_id")
 
