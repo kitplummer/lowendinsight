@@ -21,9 +21,22 @@ name: backup
 #   BACKUP_PASSPHRASE  symmetric key for the artifact
 #   FLY_API_TOKEN      already present for deploys
 #
+# KEY MANAGEMENT -- GitHub Actions secrets are write-only. Once BACKUP_PASSPHRASE
+# is set it cannot be read back through the UI or API. A passphrase that exists
+# only as a GitHub secret makes every artifact it encrypts permanently
+# unreadable. Record it in a password manager BEFORE setting it here, and keep
+# that copy somewhere that is neither the hosting account nor this CI provider.
+#
+# After rotating the passphrase, download one artifact and decrypt it. A rotated
+# key that was never tested is the same failure as having no backup.
+#
 # Restore:
 #   gpg --batch --yes --passphrase "$BACKUP_PASSPHRASE" -d lei-backup.dump.gpg > lei.dump
-#   pg_restore -d <target> lei.dump
+#   pg_restore -d <target> lei.dump            # whole database
+#   pg_restore -d <target> -t orgs lei.dump    # single table
+#
+# Full procedure, including volume-snapshot restore and its two gotchas:
+#   apps/lowendinsight_get/docs/OPERATIONS.md -- "Backup & Recovery"
 
 on:
   schedule:
