@@ -97,8 +97,22 @@ jobs:
             sleep 5
           done
 
+          # Deliberately not the full smoke suite. You roll back *because* the
+          # new version failed a check -- and when that check covers a bug the
+          # old version still has, re-running everything guarantees a failure
+          # and reports a successful rollback as a failed one.
+          #
+          # What matters here is that the previous version is serving again.
           echo "Verifying the previous version is serving:"
-          LEI_SMOKE_API_KEY="${{ secrets.LEI_SMOKE_API_KEY }}" ./scripts/smoke-test.sh https://lowendinsight.dev
+          for endpoint in /healthz /readyz /; do
+            CODE=$(curl -s -o /dev/null -w '%{http_code}' --max-time 15 "https://lowendinsight.dev${endpoint}")
+            if [ "$CODE" != "200" ]; then
+              echo "::error::Rolled-back version returned ${CODE} for ${endpoint}"
+              exit 1
+            fi
+            echo "  ${endpoint} -> ${CODE}"
+          done
+          echo "Previous version is serving. The deploy that triggered this rollback still needs fixing."
 
       - name: Report deployed version
         if: success()
