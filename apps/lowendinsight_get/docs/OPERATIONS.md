@@ -395,11 +395,7 @@ curl -H "Authorization: Bearer $TOKEN" \
 
 ### Common Issues
 
-**Redis connection refused**
-```
-Check REDIS_URL environment variable
-Verify Redis is running and accessible
-```
+**Redis connection errors** — see the [Redis runbook](#redis-runbook) below.
 
 **Oban job failures**
 ```
@@ -413,6 +409,101 @@ Increase LEI_JOBS_PER_CORE_MAX for more concurrency
 Check git clone performance (network, disk)
 Verify LEI_GH_TOKEN is set for GitHub rate limits
 ```
+
+### Redis runbook
+
+Start here: **`curl -s https://lowendinsight.dev/readyz`**
+
+```json
+{"checks":{"redis":"ok","database":"ok"},"status":"ok"}
+```
+
+`"redis":"error"` means the app cannot reach Redis. The service keeps serving --
+Redis is an optional dependency, so the instance stays in rotation -- but every
+analysis is a cache miss, which is slower and, under the ADR-001 pricing model,
+bills at ten times the cache-hit rate.
+
+#### Do not reach for a restart first
+
+`%Redix.ConnectionError{reason: :closed}` reads like the server hung up. It does
+not mean that. With `sync_connect: false` it is what Redix returns whenever the
+background connection has not been established -- it means *"not connected"* and
+says nothing about why. Reading it as a server-side close cost two wrong
+diagnoses (a GitHub token, then TLS) before the real cause was found.
+
+#### Three failure classes
+
+**1. Transient loss** -- Redis restarted, a network blip, provider maintenance.
+
+**Nothing to do. This recovers on its own.** Redix is configured with
+`exit_on_disconnection: false` and retries indefinitely, backing off from 500ms
+to a maximum of 30s (defaults, verified against Redix v1.5.3).
+
+Observed in production on 2026-09-11: a disconnect at 03:35:00 had recovered by
+03:38, with `beam_uptime_seconds` confirming the process never restarted.
+Restarting during this window achieves nothing a few seconds of patience would
+not, and drops the in-process batch cache as well.
+
+Expect warnings like `Redis KEYS ... failed: %Redix.ConnectionError{reason: :closed}`
+in the logs. Degraded, not broken.
+
+**2. Configuration or credential mismatch** -- retrying never fixes this.
+
+```bash
+# What the app believes, from the boot log:
+flyctl logs -a lowendinsight --no-tail | grep "Redix opts"
+#   host=fly-lei-redis.upstash.io port=6379 db=0 ssl=false socket_opts=[:inet6]
+
+# What the instance actually is:
+flyctl redis status lei-redis
+```
+
+Compare host, port and scheme. Two specific traps:
+
+- **`socket_opts` must include `:inet6`.** Fly's private network is IPv6-only and
+  Redix defaults to IPv4. This exact gap made Redis unreachable for months while
+  Postgres -- which had always set `socket_options: [:inet6]` -- worked fine.
+- **`ssl` is derived solely from the URL scheme** (`rediss://` vs `redis://`). A
+  mismatch closes the connection immediately and looks identical to the server
+  rejecting you.
+
+The app reads `REDIS_URL` at boot, so a corrected secret needs a restart --
+`flyctl secrets import` does that for you:
+
+```bash
+printf 'REDIS_URL=%s\n' "<correct-url>" | flyctl secrets import -a lowendinsight
+```
+
+**3. Redis genuinely gone** -- instance deleted, plan suspended, provider outage.
+
+```bash
+flyctl redis list
+flyctl redis status lei-redis
+```
+
+Nothing app-side recovers this. If the instance must be recreated, the cache
+starts cold: expensive and slow, but not data loss. Redis holds the analysis
+cache, not a system of record.
+
+#### Rotating the credential
+
+```bash
+flyctl redis reset lei-redis
+printf 'REDIS_URL=%s\n' "<new-url>" | flyctl secrets import -a lowendinsight
+curl -s https://lowendinsight.dev/readyz    # expect {"redis":"ok",...}
+```
+
+The reset does **not** flush the database; cached entries survive. Do both steps
+back to back -- between them the app holds a credential that no longer works.
+
+#### What monitoring will and will not tell you
+
+`.github/workflows/monitor.yml` polls `/readyz` every 15 minutes and fails on
+`degraded`, naming the failing dependency. That is the alert.
+
+It will **not** catch a transient blip shorter than the polling interval, and it
+should not -- those self-heal. Its purpose is catching the sustained failures in
+classes 2 and 3, which are the ones that need a human.
 
 ### Debug Mode
 
