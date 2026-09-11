@@ -91,6 +91,7 @@ components:
 | Variable | Default | Description |
 |----------|---------|-------------|
 | `PORT` | `4000` | HTTP server port |
+| `LEI_ADMIN_TOKEN` | (unset) | Token for `/admin`. **Unset means /admin denies everyone** -- it fails closed by design, so the dashboard is unreachable until this is set. |
 | `LEI_START_HTTP` | `true` | Start the standalone `Lei.Web.Router` listener (see [Two HTTP listeners](#two-http-listeners)) |
 | `LEI_HTTP_PORT` | `4000` | Port for that standalone listener |
 | `REDIS_URL` | `redis://localhost:6379/0` | Redis connection URL |
@@ -213,6 +214,26 @@ curl -X POST https://lei.example.com/v1/analyze/sbom \
 
 - **Liveness**: `GET /` returns 200
 - **Readiness**: `GET /v1/cache/stats` returns 200 with valid JSON
+
+### Admin dashboard
+
+`GET /admin` shows cache statistics, expiry distribution, recent requests and
+per-org hit/miss counts.
+
+Requires `LEI_ADMIN_TOKEN`. **It fails closed**: if the variable is unset, every
+request is denied, so the dashboard is unreachable rather than open. That is the
+right default, and it is also why the dashboard silently did not work for months
+after it shipped -- the secret was never set. A denial caused by the missing
+variable is now logged distinctly, so the two cases are distinguishable to an
+operator while looking identical to a caller.
+
+```bash
+# Preferred -- keeps the token out of access logs, browser history and Referer
+curl -H "Authorization: Bearer $LEI_ADMIN_TOKEN" https://lowendinsight.dev/admin
+
+# Also supported, for browser use
+open "https://lowendinsight.dev/admin?token=$LEI_ADMIN_TOKEN"
+```
 
 ### Metrics
 
