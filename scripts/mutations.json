@@ -31,8 +31,8 @@
     {
       "id": "rate-limiter-table",
       "bug": "POST /v1/analyze raised for every authenticated caller; the ETS table was created in Plug init/1, which runs at compile time (#91)",
-      "file": "apps/lowendinsight_get/lib/lowendinsight_get/application.ex",
-      "find": "    LowendinsightGet.Plugs.RateLimiter.init_table()\n",
+      "file": "apps/lowendinsight_get/lib/lowendinsight_get/plugs/rate_limiter.ex",
+      "find": "    # Belt and braces: rate limiting must never be the reason an analysis fails.\n    init_table()\n\n",
       "replace": "",
       "guarded_by": "test/lowendinsight_get/rate_limiter_table_test.exs",
       "app": "apps/lowendinsight_get"
