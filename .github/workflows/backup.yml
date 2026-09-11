@@ -1,0 +1,164 @@
+name: backup
+
+# Off-platform logical backup.
+#
+# Fly volume snapshots are the primary recovery mechanism: daily, 30-day
+# retention, restore verified. But they are block-level, restorable only into a
+# Fly volume, and they live in the same Fly organisation as the database. Losing
+# or compromising that account takes the database and every snapshot with it.
+#
+# This covers what snapshots cannot:
+#   - survives loss of the Fly account entirely
+#   - portable: restores into any Postgres, including the uds-core target (#19)
+#   - supports partial recovery (one table, one row) without booting a machine
+#   - pg_dump reads through the SQL layer, so a dump that completes is evidence
+#     the data is logically readable -- a daily integrity check, where a volume
+#     snapshot would faithfully copy corruption
+#
+# Required secrets:
+#   PG_DUMP_URL        postgres://user:pass@localhost:15432/lowendinsight_get_prod
+#                      (host/port must be localhost:15432 -- flyctl proxy below)
+#   BACKUP_PASSPHRASE  symmetric key for the artifact
+#   FLY_API_TOKEN      already present for deploys
+#
+# KEY MANAGEMENT -- GitHub Actions secrets are write-only. Once BACKUP_PASSPHRASE
+# is set it cannot be read back through the UI or API. A passphrase that exists
+# only as a GitHub secret makes every artifact it encrypts permanently
+# unreadable. Record it in a password manager BEFORE setting it here, and keep
+# that copy somewhere that is neither the hosting account nor this CI provider.
+#
+# After rotating the passphrase, download one artifact and decrypt it. A rotated
+# key that was never tested is the same failure as having no backup.
+#
+# Restore:
+#   gpg --batch --yes --passphrase "$BACKUP_PASSPHRASE" -d lei-backup.dump.gpg > lei.dump
+#   pg_restore -d <target> lei.dump            # whole database
+#   pg_restore -d <target> -t orgs lei.dump    # single table
+#
+# Full procedure, including volume-snapshot restore and its two gotchas:
+#   apps/lowendinsight_get/docs/OPERATIONS.md -- "Backup & Recovery"
+
+on:
+  schedule:
+    - cron: '30 3 * * *'
+  workflow_dispatch:
+
+concurrency:
+  group: backup-production
+  cancel-in-progress: false
+
+jobs:
+  dump:
+    name: Dump and archive
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: superfly/flyctl-actions/setup-flyctl@master
+
+      # A backup that silently does not run is worse than one that fails
+      # loudly, so this refuses to proceed half-configured rather than
+      # uploading an unencrypted or empty artifact.
+      - name: Check configuration
+        env:
+          PG_DUMP_URL: ${{ secrets.PG_DUMP_URL }}
+          BACKUP_PASSPHRASE: ${{ secrets.BACKUP_PASSPHRASE }}
+          FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
+        run: |
+          MISSING=""
+          [ -z "$PG_DUMP_URL" ] && MISSING="$MISSING PG_DUMP_URL"
+          [ -z "$BACKUP_PASSPHRASE" ] && MISSING="$MISSING BACKUP_PASSPHRASE"
+          [ -z "$FLY_API_TOKEN" ] && MISSING="$MISSING FLY_API_TOKEN"
+          if [ -n "$MISSING" ]; then
+            echo "::error::Missing required secrets:$MISSING — no backup was taken."
+            exit 1
+          fi
+
+      # The runner ships an older client, and pg_dump refuses to dump from a
+      # newer server than itself. The database is postgres-flex 17.
+      - name: Install PostgreSQL 17 client
+        run: |
+          sudo install -d /usr/share/postgresql-common/pgdg
+          sudo curl -fsSL -o /usr/share/postgresql-common/pgdg/apt.postgresql.org.asc \
+            https://www.postgresql.org/media/keys/ACCC4CF8.asc
+          echo "deb [signed-by=/usr/share/postgresql-common/pgdg/apt.postgresql.org.asc] http://apt.postgresql.org/pub/repos/apt $(lsb_release -cs)-pgdg main" \
+            | sudo tee /etc/apt/sources.list.d/pgdg.list > /dev/null
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq postgresql-client-17
+          pg_dump --version
+
+      - name: Open proxy to the database
+        env:
+          FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
+        run: |
+          flyctl proxy 15432:5432 -a lowendinsight-db &
+          echo $! > /tmp/proxy.pid
+
+          for attempt in $(seq 1 30); do
+            if timeout 2 bash -c '</dev/tcp/127.0.0.1/15432' 2>/dev/null; then
+              echo "Proxy up after ${attempt} attempt(s)."
+              exit 0
+            fi
+            sleep 2
+          done
+          echo "::error::flyctl proxy never accepted connections on 15432."
+          exit 1
+
+      - name: Dump
+        env:
+          PG_DUMP_URL: ${{ secrets.PG_DUMP_URL }}
+        run: |
+          # Custom format: compressed, and restorable selectively with
+          # pg_restore -t for single-table recovery.
+          pg_dump --format=custom --no-owner --no-acl --file=lei-backup.dump "$PG_DUMP_URL"
+
+          SIZE=$(stat -c%s lei-backup.dump)
+          echo "Dump size: ${SIZE} bytes"
+
+          # A tiny file means the dump "succeeded" against an empty or wrong
+          # database. Silent success is the failure mode that matters here.
+          if [ "$SIZE" -lt 10240 ]; then
+            echo "::error::Dump is only ${SIZE} bytes — suspiciously small. Not archiving."
+            exit 1
+          fi
+
+      # Proves the dump is readable, not merely present. This is the integrity
+      # check a block-level snapshot cannot give you.
+      - name: Verify the dump is readable
+        run: |
+          pg_restore --list lei-backup.dump > /tmp/toc.txt
+          TABLES=$(grep -c "TABLE DATA" /tmp/toc.txt || true)
+          echo "Tables with data in dump: ${TABLES}"
+
+          for t in orgs api_keys analysis_usage schema_migrations; do
+            if grep -q "TABLE DATA public $t" /tmp/toc.txt; then
+              echo "  present: $t"
+            else
+              echo "::error::Expected table '$t' is missing from the dump."
+              exit 1
+            fi
+          done
+
+      # The dump holds org records, API key hashes and usage data. Artifacts are
+      # readable by anyone with repository access, so it is encrypted first.
+      - name: Encrypt
+        env:
+          BACKUP_PASSPHRASE: ${{ secrets.BACKUP_PASSPHRASE }}
+        run: |
+          gpg --batch --yes --symmetric --cipher-algo AES256 \
+            --passphrase "$BACKUP_PASSPHRASE" \
+            --output lei-backup.dump.gpg lei-backup.dump
+          rm -f lei-backup.dump
+          ls -la lei-backup.dump.gpg
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: lei-backup-${{ github.run_started_at }}
+          path: lei-backup.dump.gpg
+          retention-days: 90
+          if-no-files-found: error
+
+      - name: Close proxy
+        if: always()
+        run: |
+          if [ -f /tmp/proxy.pid ]; then kill "$(cat /tmp/proxy.pid)" 2>/dev/null || true; fi

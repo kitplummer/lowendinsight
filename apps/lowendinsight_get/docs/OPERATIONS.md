@@ -226,21 +226,122 @@ Approximate cache size per analyzed repo: ~5-10KB
 
 ## Backup & Recovery
 
-### Redis Backup
+Two independent mechanisms cover different failures. Neither replaces the other.
+
+| Scenario | Volume snapshot | Logical dump |
+|---|---|---|
+| Machine or volume dies | yes | yes |
+| Hosting account lost or compromised | **no** | yes |
+| Restore one table or row | no | yes |
+| Migrate to another platform | no | yes |
+| Detect corruption | no, copies it faithfully | yes, a completed dump proves readability |
+
+### 1. Volume snapshots (primary, Fly deployments)
+
+Automatic daily snapshots of the Postgres volume, 30-day retention.
 
 ```bash
-# RDB snapshot
-redis-cli BGSAVE
-
-# Or use cache export endpoint for portable backup
-curl -H "Authorization: Bearer $TOKEN" \
-  https://lei.example.com/v1/cache/export > backup-$(date +%Y%m%d).json
+flyctl volumes list -a lowendinsight-db
+flyctl volumes snapshots list <volume-id> -a lowendinsight-db
+flyctl volumes update <volume-id> --snapshot-retention 30 -a lowendinsight-db
 ```
 
-### PostgreSQL Backup
+Retention changes are **not retroactive** -- existing snapshots keep the
+retention they were created with, and the longer window builds up over time.
+
+#### Verified restore procedure
+
+Restores into a throwaway volume; production is untouched.
 
 ```bash
-pg_dump lowendinsight_get > backup-$(date +%Y%m%d).sql
+flyctl volumes create pg_restore_test --snapshot-id <SNAPSHOT_ID> \
+  -a lowendinsight-db -r iad -s 1 --yes
+
+flyctl machine run postgres:17-alpine -a lowendinsight-db -r iad \
+  -v <NEW_VOL_ID>:/data --vm-memory 512 --rm -- sh -c \
+  'export PGDATA=/data/postgresql; chown -R postgres:postgres $PGDATA; chmod 700 $PGDATA;
+   su postgres -s /bin/sh -c "pg_ctl -D /data/postgresql -o \"-c shared_preload_libraries=\" -w -t 60 start";
+   su postgres -s /bin/sh -c "psql -p 5433 -U postgres -d lowendinsight_get_prod -c \"select count(*) from orgs\""'
+
+flyctl volumes destroy <NEW_VOL_ID> -a lowendinsight-db --yes
+```
+
+**Two gotchas that cost time if you meet them during an incident:**
+
+1. **A stock Postgres image will not start this data directory.** `postgres-flex`
+   sets `shared_preload_libraries = 'repmgr'`, and a plain `postgres:17` image
+   fails with `FATAL: could not access file "repmgr"`. Override it as shown above,
+   or use the `flyio/postgres-flex` image.
+2. **Postgres listens on 5433, not 5432.** `psql` defaults to 5432 and reports
+   `No such file or directory` on the socket, which reads exactly like the server
+   failed to start when it started fine. Use `psql -p 5433`.
+
+Machine output goes to `flyctl logs`, not stdout.
+
+### 2. Off-platform logical dump (disaster recovery)
+
+`.github/workflows/backup.yml` runs daily at 03:30 UTC: `pg_dump` over
+`flyctl proxy`, verified with `pg_restore --list`, encrypted with AES256, and
+uploaded as a GitHub Actions artifact with 90-day retention.
+
+This exists because volume snapshots live in the same hosting account as the
+database. Losing that account takes the database and every snapshot with it.
+
+#### Required secrets
+
+| Secret | Value |
+|---|---|
+| `PG_DUMP_URL` | `postgres://user:pass@localhost:15432/lowendinsight_get_prod` -- host and port must be `localhost:15432`, where `flyctl proxy` listens |
+| `BACKUP_PASSPHRASE` | symmetric encryption key |
+| `FLY_API_TOKEN` | shared with the deploy workflow |
+
+#### Key management
+
+> **GitHub Actions secrets are write-only.** Once `BACKUP_PASSPHRASE` is set it
+> cannot be read back through the UI or API. A passphrase that exists only as a
+> GitHub secret makes every artifact it encrypts permanently unreadable.
+
+Generate and store the passphrase **before** adding it to GitHub:
+
+```bash
+openssl rand -base64 32   # then record it in a password manager
+```
+
+Keep it somewhere that is neither the hosting account nor the CI provider. The
+threat model is losing the hosting account, so CI holding both artifact and key
+is acceptable for that scenario -- but the password manager copy is what makes
+the backup recoverable at all.
+
+#### Restore from a dump
+
+```bash
+gpg --batch --yes --passphrase "$BACKUP_PASSPHRASE" -d lei-backup.dump.gpg > lei.dump
+
+pg_restore -d <target> lei.dump            # whole database
+pg_restore -d <target> -t orgs lei.dump    # single table
+pg_restore --list lei.dump                 # inspect without restoring
+```
+
+### Verify backups on a schedule
+
+An untested backup is a hypothesis. Both mechanisms should be exercised
+periodically, not only when they are needed:
+
+- **After changing `BACKUP_PASSPHRASE`**, download one artifact and decrypt it.
+  A rotated key that was never tested is the same failure as no backup.
+- **Quarterly**, run the volume restore procedure above and confirm row counts
+  against production.
+
+### Redis
+
+Redis holds the analysis cache. It is a performance asset rather than a system
+of record -- a cold cache costs money and latency, not data. `/readyz` reports
+Redis as an **optional** dependency for this reason: losing it degrades the
+service without stopping it.
+
+```bash
+curl -H "Authorization: Bearer $TOKEN" \
+  https://lei.example.com/v1/cache/export > cache-$(date +%Y%m%d).json
 ```
 
 ## Troubleshooting
