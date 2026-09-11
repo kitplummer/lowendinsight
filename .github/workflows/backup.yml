@@ -34,8 +34,15 @@ name: backup
 # unreadable. Record it in a password manager BEFORE setting it here, and keep
 # that copy somewhere that is neither the hosting account nor this CI provider.
 #
-# After rotating the passphrase, download one artifact and decrypt it. A rotated
-# key that was never tested is the same failure as having no backup.
+# The Encrypt step below round-trips the artifact -- decrypting it again and
+# comparing -- so gpg failures and corruption are caught on every run. That
+# check is NOT sufficient on its own: it decrypts with the same secret it
+# encrypted with, so it cannot detect that the copy stored in a password
+# manager has drifted from the GitHub secret.
+#
+# After rotating the passphrase, download one artifact and decrypt it using the
+# stored copy. A rotated key that was never tested against the copy you actually
+# keep is the same failure as having no backup.
 #
 # Restore:
 #   gpg --batch --yes --passphrase "$BACKUP_PASSPHRASE" -d lei-backup.dump.gpg > lei.dump
@@ -179,7 +186,25 @@ jobs:
           gpg --batch --yes --symmetric --cipher-algo AES256 \
             --passphrase "$BACKUP_PASSPHRASE" \
             --output lei-backup.dump.gpg lei-backup.dump
-          rm -f lei-backup.dump
+
+          # Round-trip before discarding the plaintext. Encrypting an archive
+          # nobody has ever decrypted is how a backup becomes a file-shaped
+          # object rather than a backup. This catches gpg failures and
+          # corruption on every run.
+          gpg --batch --yes --passphrase "$BACKUP_PASSPHRASE" \
+            --output roundtrip.dump --decrypt lei-backup.dump.gpg
+
+          if ! cmp -s lei-backup.dump roundtrip.dump; then
+            echo "::error::Decrypted artifact does not match the original dump."
+            exit 1
+          fi
+
+          # Byte-identical is necessary but not sufficient -- confirm the
+          # decrypted file is still a readable archive.
+          pg_restore --list roundtrip.dump > /dev/null
+          echo "Round-trip verified: decrypted artifact is byte-identical and readable."
+
+          rm -f lei-backup.dump roundtrip.dump
           ls -la lei-backup.dump.gpg
 
       - uses: actions/upload-artifact@v4
