@@ -29,17 +29,31 @@ defmodule Lei.Acp.RateLimitTest do
 
   defp limited?(conn), do: conn.halted and conn.status == 429
 
+  # Read the limit rather than hardcoding it. Lei.RateLimiter falls back to the
+  # free-tier limit (60) if :rate_limits is unset or the bucket atom does not
+  # exist, so a hardcoded 20 silently tests nothing when config is not loaded --
+  # which is exactly how this test flaked.
+  defp limit_for(bucket) do
+    Application.get_env(:lowendinsight, :rate_limits, %{})
+    |> Map.get(String.to_atom(bucket))
+  end
+
+  defp exhaust(bucket, path, ip) do
+    for _ <- 1..limit_for(bucket), do: Lei.Acp.RateLimit.call(acp_conn(path, ip), [])
+    :ok
+  end
+
   describe "through the router" do
     test "an anonymous caller is eventually rate limited" do
       ip = "203.0.113.1"
 
       results =
-        for _ <- 1..25 do
+        for _ <- 1..(limit_for("acp") + 5) do
           acp_conn("/checkout", ip) |> Lei.Acp.Router.call(@router_opts)
         end
 
       assert Enum.any?(results, &(&1.status == 429)),
-             "ACP accepted 25 unauthenticated session creations without limiting"
+             "ACP accepted #{limit_for("acp") + 5} unauthenticated session creations without limiting"
     end
 
     test "an unlimited caller would otherwise create unbounded sessions" do
@@ -49,14 +63,28 @@ defmodule Lei.Acp.RateLimitTest do
     end
   end
 
-  describe "session endpoints (acp bucket, 20/min)" do
+  describe "configuration" do
+    # Every other case in this file depends on these being set. Without them
+    # Lei.RateLimiter silently uses the free-tier limit and the tests pass
+    # while asserting nothing.
+    test "acp buckets are configured" do
+      limits = Application.get_env(:lowendinsight, :rate_limits)
+
+      assert is_map(limits), ":rate_limits is not configured"
+      assert limits[:acp] == 20
+      assert limits[:acp_complete] == 5
+      assert limits[:acp_complete] < limits[:acp], "completion must be tighter than sessions"
+    end
+  end
+
+  describe "session endpoints (acp bucket)" do
     test "allows traffic under the limit" do
       refute limited?(Lei.Acp.RateLimit.call(acp_conn("/checkout", "1.2.3.4"), []))
     end
 
     test "rejects once the bucket is exhausted" do
       ip = "1.2.3.5"
-      for _ <- 1..20, do: Lei.Acp.RateLimit.call(acp_conn("/checkout", ip), [])
+      exhaust("acp", "/checkout", ip)
 
       conn = Lei.Acp.RateLimit.call(acp_conn("/checkout", ip), [])
 
@@ -67,26 +95,26 @@ defmodule Lei.Acp.RateLimitTest do
     end
 
     test "buckets are per-IP, so one caller cannot exhaust another" do
-      for _ <- 1..20, do: Lei.Acp.RateLimit.call(acp_conn("/checkout", "1.2.3.6"), [])
+      exhaust("acp", "/checkout", "1.2.3.6")
 
       refute limited?(Lei.Acp.RateLimit.call(acp_conn("/checkout", "9.9.9.9"), []))
     end
   end
 
-  describe "completion (acp_complete bucket, 5/min)" do
+  describe "completion (acp_complete bucket)" do
     # Completion creates an org and an API key, so it is budgeted far tighter.
     test "is limited well before the session bucket would be" do
       ip = "1.2.3.7"
       path = "/checkout/acp_cs_x/complete"
 
-      for _ <- 1..5, do: Lei.Acp.RateLimit.call(acp_conn(path, ip), [])
+      exhaust("acp_complete", path, ip)
 
       assert limited?(Lei.Acp.RateLimit.call(acp_conn(path, ip), []))
     end
 
     test "does not share a bucket with the session endpoints" do
       ip = "1.2.3.8"
-      for _ <- 1..5, do: Lei.Acp.RateLimit.call(acp_conn("/checkout/acp_cs_x/complete", ip), [])
+      exhaust("acp_complete", "/checkout/acp_cs_x/complete", ip)
 
       refute limited?(Lei.Acp.RateLimit.call(acp_conn("/checkout", ip), []))
     end
@@ -98,7 +126,7 @@ defmodule Lei.Acp.RateLimitTest do
       # spread load across fabricated IPs and defeat the limit entirely.
       ip = "1.2.3.9"
 
-      for i <- 1..20 do
+      for i <- 1..limit_for("acp") do
         conn(:post, "/checkout", "{}")
         |> put_req_header("fly-client-ip", ip)
         |> put_req_header("x-forwarded-for", "10.0.0.#{i}")
