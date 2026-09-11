@@ -293,7 +293,13 @@ database. Losing that account takes the database and every snapshot with it.
 |---|---|
 | `PG_DUMP_URL` | `postgres://user:pass@localhost:15432/lowendinsight_get_prod` -- host and port must be `localhost:15432`, where `flyctl proxy` listens |
 | `BACKUP_PASSPHRASE` | symmetric encryption key |
-| `FLY_API_TOKEN` | shared with the deploy workflow |
+| `FLY_DB_TOKEN` | Fly token scoped to the **database** app: `flyctl tokens create deploy -a lowendinsight-db` |
+
+The database runs as a separate Fly app from the application, so the deploy
+workflow's `FLY_API_TOKEN` cannot reach it. Widening that token to organisation
+scope would fix the proxy while handing every workflow authority over the whole
+organisation -- a poor trade for a job whose purpose is surviving an account
+compromise. Two narrow tokens are preferred over one broad one.
 
 #### Key management
 

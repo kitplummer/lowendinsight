@@ -19,7 +19,14 @@ name: backup
 #   PG_DUMP_URL        postgres://user:pass@localhost:15432/lowendinsight_get_prod
 #                      (host/port must be localhost:15432 -- flyctl proxy below)
 #   BACKUP_PASSPHRASE  symmetric key for the artifact
-#   FLY_API_TOKEN      already present for deploys
+#   FLY_DB_TOKEN       Fly token scoped to the DATABASE app:
+#                        flyctl tokens create deploy -a lowendinsight-db
+#                      Deliberately separate from FLY_API_TOKEN, which is
+#                      scoped to the application app and cannot reach the
+#                      database. Widening FLY_API_TOKEN to org scope would fix
+#                      the proxy but hand every workflow authority over the
+#                      whole organisation -- a poor trade for a job whose
+#                      purpose is surviving an account compromise.
 #
 # KEY MANAGEMENT -- GitHub Actions secrets are write-only. Once BACKUP_PASSPHRASE
 # is set it cannot be read back through the UI or API. A passphrase that exists
@@ -63,12 +70,12 @@ jobs:
         env:
           PG_DUMP_URL: ${{ secrets.PG_DUMP_URL }}
           BACKUP_PASSPHRASE: ${{ secrets.BACKUP_PASSPHRASE }}
-          FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
+          FLY_DB_TOKEN: ${{ secrets.FLY_DB_TOKEN }}
         run: |
           MISSING=""
           [ -z "$PG_DUMP_URL" ] && MISSING="$MISSING PG_DUMP_URL"
           [ -z "$BACKUP_PASSPHRASE" ] && MISSING="$MISSING BACKUP_PASSPHRASE"
-          [ -z "$FLY_API_TOKEN" ] && MISSING="$MISSING FLY_API_TOKEN"
+          [ -z "$FLY_DB_TOKEN" ] && MISSING="$MISSING FLY_DB_TOKEN"
           if [ -n "$MISSING" ]; then
             echo "::error::Missing required secrets:$MISSING — no backup was taken."
             exit 1
@@ -89,8 +96,17 @@ jobs:
 
       - name: Open proxy to the database
         env:
-          FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
+          # The database is a separate Fly app, so this needs its own token.
+          FLY_API_TOKEN: ${{ secrets.FLY_DB_TOKEN }}
         run: |
+          # Fail fast and specifically on a scope problem. Without this the
+          # symptom is only "proxy never accepted connections", which reads
+          # like a network issue rather than an authorisation one.
+          if ! flyctl status -a lowendinsight-db >/dev/null 2>&1; then
+            echo "::error::FLY_DB_TOKEN cannot reach app 'lowendinsight-db'. Create one with: flyctl tokens create deploy -a lowendinsight-db"
+            exit 1
+          fi
+
           flyctl proxy 15432:5432 -a lowendinsight-db &
           echo $! > /tmp/proxy.pid
 
