@@ -294,63 +294,63 @@ defmodule Lei.Web.BillingIntegrationTest do
   end
 
   # ---------------------------------------------------------------
-  # Manual check 5: BillingReporter → Stripe usage record created
+  # Manual check 5: usage reported to Stripe as billing meter events
   # ---------------------------------------------------------------
-  describe "BillingReporter Stripe integration" do
-    test "reports overage to Stripe for pro org with metered subscription" do
-      {:ok, org} = ApiKeys.find_or_create_org("Stripe Bill Org", tier: "pro", status: "active")
+  describe "Stripe billing meter events" do
+    test "reports this usage only, never a running total" do
+      {:ok, org} = ApiKeys.find_or_create_org("Meter Org", tier: "pro", status: "active")
 
       org =
         org
-        |> Org.billing_changeset(%{stripe_metered_subscription_item_id: "si_integration_test"})
+        |> Org.stripe_changeset(%{stripe_customer_id: "cus_meter_test"})
         |> Repo.update!()
 
       {:ok, _raw_key, api_key} = ApiKeys.create_api_key(org, "test", ["analyze"])
 
-      # Generate overage: 2000 * 0.5 + 200 * 5.0 = 2000 cents > 1500 credit = 500 overage
-      {:ok, _} = UsageTracker.record_usage(org.id, api_key.id, 2000, 200)
-
-      Mox.expect(Lei.StripeMock, :report_usage, fn "si_integration_test", quantity, timestamp ->
-        assert quantity == 500
+      # 10 hits (0.5c each) + 2 misses (5c each) = 15 cents = 150 tenth-cent units
+      Mox.expect(Lei.StripeMock, :report_meter_event, fn "cus_meter_test", value, timestamp ->
+        assert value == 150
         assert is_integer(timestamp)
-        {:ok, %{"id" => "mbur_integration_test", "quantity" => quantity}}
+        {:ok, %{"identifier" => "mev_1"}}
       end)
 
-      assert {:ok, %{overage_cents: 500, stripe_record: record}} =
-               Lei.BillingReporter.report_for_org(org)
+      {:ok, _} = UsageTracker.record_usage(org.id, api_key.id, 10, 2)
 
-      assert record["id"] == "mbur_integration_test"
+      # A second batch must report only its own cost. Meter events are summed by
+      # Stripe, so sending a cumulative figure here would compound the bill.
+      Mox.expect(Lei.StripeMock, :report_meter_event, fn "cus_meter_test", value, _ts ->
+        assert value == 50, "expected only this batch's cost, got a running total"
+        {:ok, %{"identifier" => "mev_2"}}
+      end)
+
+      {:ok, _} = UsageTracker.record_usage(org.id, api_key.id, 0, 1)
     end
 
-    test "does not report when usage is within pro credit" do
-      {:ok, org} = ApiKeys.find_or_create_org("No Overage Org", tier: "pro", status: "active")
+    test "skips orgs with no Stripe customer" do
+      {:ok, org} = ApiKeys.find_or_create_org("Free Meter Org", tier: "free", status: "active")
+      {:ok, _raw_key, api_key} = ApiKeys.create_api_key(org, "test", ["analyze"])
+
+      # No Mox expectation: a free org must not produce a meter event.
+      {:ok, _} = UsageTracker.record_usage(org.id, api_key.id, 5, 1)
+    end
+
+    test "a metering failure does not fail usage recording" do
+      {:ok, org} = ApiKeys.find_or_create_org("Meter Fail Org", tier: "pro", status: "active")
 
       org =
         org
-        |> Org.billing_changeset(%{stripe_metered_subscription_item_id: "si_no_overage"})
+        |> Org.stripe_changeset(%{stripe_customer_id: "cus_meter_fail"})
         |> Repo.update!()
 
       {:ok, _raw_key, api_key} = ApiKeys.create_api_key(org, "test", ["analyze"])
 
-      # 100 * 0.5 + 10 * 5.0 = 100 cents << 1500 credit
-      {:ok, _} = UsageTracker.record_usage(org.id, api_key.id, 100, 10)
+      Mox.expect(Lei.StripeMock, :report_meter_event, fn _, _, _ ->
+        {:error, %{"error" => "meter unavailable"}}
+      end)
 
-      # No Mox expectation — report_usage should NOT be called
-      assert {:ok, :no_overage} = Lei.BillingReporter.report_for_org(org)
-    end
-
-    test "full billing reporter run processes eligible orgs" do
-      {:ok, org} = ApiKeys.find_or_create_org("Full Run Org", tier: "pro", status: "active")
-
-      org =
-        org
-        |> Org.billing_changeset(%{stripe_metered_subscription_item_id: "si_full_run"})
-        |> Repo.update!()
-
-      # No usage — should report no overage
-      {:ok, results} = Lei.BillingReporter.run_billing_report()
-      matching = Enum.filter(results, fn {_, id, _} -> id == org.id end)
-      assert [{:ok, _, :no_overage}] = matching
+      # The analysis was already served; a metering outage must not undo that.
+      assert {:ok, usage} = UsageTracker.record_usage(org.id, api_key.id, 4, 0)
+      assert usage.cache_hits == 4
     end
   end
 
