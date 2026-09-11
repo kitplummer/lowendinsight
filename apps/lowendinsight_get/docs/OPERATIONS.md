@@ -301,6 +301,47 @@ scope would fix the proxy while handing every workflow authority over the whole
 organisation -- a poor trade for a job whose purpose is surviving an account
 compromise. Two narrow tokens are preferred over one broad one.
 
+#### Backup database user
+
+`pg_dump` runs as a dedicated read-only user rather than the application's own
+credentials, so the backup job holds no write access and can be revoked
+independently.
+
+Connect **to the application database**, not the default `postgres` one --
+`GRANT ... ON ALL TABLES` applies only to the database you are connected to, so
+running it against `postgres` silently grants nothing useful:
+
+```bash
+flyctl postgres connect -a lowendinsight-db -d lowendinsight_get_prod
+```
+
+```sql
+CREATE USER lei_backup WITH PASSWORD '<generated>';
+GRANT CONNECT ON DATABASE lowendinsight_get_prod TO lei_backup;
+GRANT USAGE ON SCHEMA public TO lei_backup;
+
+-- Tables and sequences both. pg_dump reads sequence values to emit setval on
+-- restore, so granting tables alone fails with
+-- "permission denied for sequence <table>_id_seq".
+GRANT SELECT ON ALL TABLES IN SCHEMA public TO lei_backup;
+GRANT SELECT ON ALL SEQUENCES IN SCHEMA public TO lei_backup;
+
+-- ON ALL ... affects only objects that exist right now. Without these, the next
+-- migration creates a table or sequence the backup user cannot read, and the
+-- job starts failing months later for a reason nobody remembers.
+ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT SELECT ON TABLES TO lei_backup;
+ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT SELECT ON SEQUENCES TO lei_backup;
+```
+
+Verify the grants landed in the right database:
+
+```sql
+SELECT count(*) FROM information_schema.table_privileges
+ WHERE grantee = 'lei_backup' AND privilege_type = 'SELECT';
+```
+
+A count of `0` means they were applied to the wrong database.
+
 #### Key management
 
 > **GitHub Actions secrets are write-only.** Once `BACKUP_PASSPHRASE` is set it
