@@ -68,26 +68,49 @@ FAKE_KEY=$(curl -s -o /dev/null -w '%{http_code}' --max-time 10 "$BASE_URL/v1/ca
   -H "Authorization: Bearer lei_00000000000000000000000000000000")
 check "Fake lei_ key returns 401" "401" "$FAKE_KEY"
 
-# --- 4. Signup + API key ---
-bold "4. Signup flow"
-SIGNUP_PAGE=$(curl -s --max-time 10 "$BASE_URL/signup")
-check_contains "Signup page loads" "Create an Organization" "$SIGNUP_PAGE"
+# --- 4. API key ---
+# Signing up creates a real org every run. That is acceptable occasionally but
+# corrosive as a deploy gate or on a schedule, so a provided key is preferred
+# and signup is only exercised when explicitly asked for.
+#
+#   LEI_SMOKE_API_KEY  use this key, skip signup (no org created)
+#   LEI_SMOKE_FULL     force the signup flow even when a key is provided
+if [ -n "${LEI_SMOKE_API_KEY:-}" ] && [ "${LEI_SMOKE_FULL:-false}" != "true" ]; then
+  bold "4. API key (provided — signup skipped, no org created)"
+  API_KEY="$LEI_SMOKE_API_KEY"
 
-SIGNUP_RESP=$(curl -s -X POST "$BASE_URL/signup" \
-  -H "Content-Type: application/x-www-form-urlencoded" \
-  -d "name=smoke-test-$(date +%s)&tier=free" \
-  -L --max-time 15)
-check_contains "Signup returns API key" "lei_" "$SIGNUP_RESP"
-check_contains "Signup returns recovery code" "lei_recover_" "$SIGNUP_RESP"
+  WHOAMI=$(curl -s -o /dev/null -w '%{http_code}' --max-time 10 "$BASE_URL/v1/usage" \
+    -H "Authorization: Bearer $API_KEY")
+  check "Provided API key is accepted" "200" "$WHOAMI"
 
-API_KEY=$(echo "$SIGNUP_RESP" | grep -oP 'lei_[a-f0-9]{32}' | head -1)
-if [ -z "$API_KEY" ]; then
-  red "  FATAL: Could not extract API key — aborting authenticated tests"
-  echo ""
-  bold "=== Results: $PASS passed, $FAIL failed out of $TOTAL ==="
-  exit 1
+  if [ "$WHOAMI" != "200" ]; then
+    red "  FATAL: LEI_SMOKE_API_KEY was rejected — aborting authenticated tests"
+    echo ""
+    bold "=== Results: $PASS passed, $FAIL failed out of $TOTAL ==="
+    exit 1
+  fi
+  echo "  Using key: ${API_KEY:0:12}..."
+else
+  bold "4. Signup flow (creates an org)"
+  SIGNUP_PAGE=$(curl -s --max-time 10 "$BASE_URL/signup")
+  check_contains "Signup page loads" "Create an Organization" "$SIGNUP_PAGE"
+
+  SIGNUP_RESP=$(curl -s -X POST "$BASE_URL/signup" \
+    -H "Content-Type: application/x-www-form-urlencoded" \
+    -d "name=smoke-test-$(date +%s)&tier=free" \
+    -L --max-time 15)
+  check_contains "Signup returns API key" "lei_" "$SIGNUP_RESP"
+  check_contains "Signup returns recovery code" "lei_recover_" "$SIGNUP_RESP"
+
+  API_KEY=$(echo "$SIGNUP_RESP" | grep -oP 'lei_[a-f0-9]{32}' | head -1)
+  if [ -z "$API_KEY" ]; then
+    red "  FATAL: Could not extract API key — aborting authenticated tests"
+    echo ""
+    bold "=== Results: $PASS passed, $FAIL failed out of $TOTAL ==="
+    exit 1
+  fi
+  echo "  Got API key: ${API_KEY:0:12}..."
 fi
-echo "  Got API key: ${API_KEY:0:12}..."
 
 # --- 5. Batch analyze with billing ---
 bold "5. Batch analyze with billing"

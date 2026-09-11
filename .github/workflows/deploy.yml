@@ -61,8 +61,12 @@ jobs:
       # answers /healthz. The smoke suite is what proves the deployed code
       # actually works -- it is the reason three features previously shipped
       # broken with green CI.
+      # LEI_SMOKE_API_KEY keeps the suite from signing up, which would create a
+      # real org on every deploy. Falls back to signup when unset.
       - name: Smoke test against production
         id: smoke
+        env:
+          LEI_SMOKE_API_KEY: ${{ secrets.LEI_SMOKE_API_KEY }}
         run: ./scripts/smoke-test.sh https://lowendinsight.dev
 
       - name: Roll back to previous image
@@ -94,7 +98,7 @@ jobs:
           done
 
           echo "Verifying the previous version is serving:"
-          ./scripts/smoke-test.sh https://lowendinsight.dev
+          LEI_SMOKE_API_KEY="${{ secrets.LEI_SMOKE_API_KEY }}" ./scripts/smoke-test.sh https://lowendinsight.dev
 
       - name: Report deployed version
         if: success()

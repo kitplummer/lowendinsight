@@ -1,0 +1,69 @@
+name: monitor
+
+# Continuous production verification.
+#
+# The deploy gate proves a release works at the moment it ships. Nothing was
+# watching between deploys -- which is how Redis stayed unreachable for months
+# while trending silently returned empty reports and every analysis billed at
+# the cache-miss rate. Fly's health checks did not catch it because a Redis
+# outage is deliberately "degraded", not "down": the instance keeps serving and
+# stays in rotation.
+#
+# A failing run here is the alert. GitHub notifies on workflow failure.
+
+on:
+  schedule:
+    # Every 15 minutes. Cron on GitHub is best-effort and can be delayed under
+    # load, which is fine -- this is a safety net, not a pager SLA.
+    - cron: '*/15 * * * *'
+  workflow_dispatch:
+
+concurrency:
+  group: monitor-production
+  cancel-in-progress: true
+
+jobs:
+  verify:
+    name: Verify production
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      # Checked before the smoke suite because it is the cheap, specific signal.
+      # "degraded" means a dependency is down while the app still serves -- the
+      # exact state that went unnoticed for months.
+      - name: Check readiness
+        run: |
+          BODY=$(curl -s --max-time 15 https://lowendinsight.dev/readyz)
+          echo "readyz: $BODY"
+
+          STATUS=$(echo "$BODY" | jq -r '.status // "unreachable"')
+
+          case "$STATUS" in
+            ok)
+              echo "All dependencies healthy."
+              ;;
+            degraded)
+              FAILING=$(echo "$BODY" | jq -r '.checks | to_entries[] | select(.value != "ok") | .key' | paste -sd, -)
+              echo "::error::Production is DEGRADED. Failing dependencies: ${FAILING}. The app is still serving, which is why nothing else will tell you."
+              exit 1
+              ;;
+            *)
+              echo "::error::Production readiness is '${STATUS}'. Response: ${BODY}"
+              exit 1
+              ;;
+          esac
+
+      # Warns rather than fails when the key is absent. The readiness check above
+      # is the primary signal and has already run; failing here every 15 minutes
+      # until someone sets a secret would be alert fatigue on day one, and an
+      # alarm nobody trusts is worse than no alarm.
+      - name: Smoke test against production
+        env:
+          LEI_SMOKE_API_KEY: ${{ secrets.LEI_SMOKE_API_KEY }}
+        run: |
+          if [ -z "$LEI_SMOKE_API_KEY" ]; then
+            echo "::warning::LEI_SMOKE_API_KEY is not set, so only the readiness check ran. Signing up on a schedule would create a real org every 15 minutes. Create a dedicated smoke-test org and add its key as a repository secret to enable full verification."
+            exit 0
+          fi
+          ./scripts/smoke-test.sh https://lowendinsight.dev
