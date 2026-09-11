@@ -308,9 +308,12 @@ defmodule Lei.Web.BillingIntegrationTest do
       {:ok, _raw_key, api_key} = ApiKeys.create_api_key(org, "test", ["analyze"])
 
       # 10 hits (0.5c each) + 2 misses (5c each) = 15 cents = 150 tenth-cent units
-      Mox.expect(Lei.StripeMock, :report_meter_event, fn "cus_meter_test", value, timestamp ->
+      Mox.expect(Lei.StripeMock, :report_meter_event, fn "cus_meter_test", value, timestamp, identifier ->
         assert value == 150
         assert is_integer(timestamp)
+
+        # Stripe deduplicates on this; without it a retry double-charges.
+        assert is_binary(identifier) and identifier != ""
         {:ok, %{"identifier" => "mev_1"}}
       end)
 
@@ -318,12 +321,72 @@ defmodule Lei.Web.BillingIntegrationTest do
 
       # A second batch must report only its own cost. Meter events are summed by
       # Stripe, so sending a cumulative figure here would compound the bill.
-      Mox.expect(Lei.StripeMock, :report_meter_event, fn "cus_meter_test", value, _ts ->
+      Mox.expect(Lei.StripeMock, :report_meter_event, fn "cus_meter_test", value, _ts, _id ->
         assert value == 50, "expected only this batch's cost, got a running total"
         {:ok, %{"identifier" => "mev_2"}}
       end)
 
       {:ok, _} = UsageTracker.record_usage(org.id, api_key.id, 0, 1)
+    end
+
+    # Ordering matters: the local row is the source of truth and Stripe is
+    # derived from it. Reporting first meant a failed insert could leave the
+    # customer billed for usage this database had no record of.
+    #
+    # The identifier embeds the persisted row id, which cannot be known until
+    # the insert has committed -- so asserting on it proves the ordering
+    # directly, rather than by simulating a failure.
+    test "the meter event is derived from the committed row" do
+      {:ok, org} = ApiKeys.find_or_create_org("Order Org", tier: "pro", status: "active")
+
+      org =
+        org
+        |> Org.stripe_changeset(%{stripe_customer_id: "cus_order_test"})
+        |> Repo.update!()
+
+      {:ok, _raw_key, api_key} = ApiKeys.create_api_key(org, "test", ["analyze"])
+
+      test_pid = self()
+
+      Mox.expect(Lei.StripeMock, :report_meter_event, fn _cus, _value, _ts, identifier ->
+        send(test_pid, {:identifier, identifier})
+        {:ok, %{"identifier" => identifier}}
+      end)
+
+      {:ok, usage} = UsageTracker.record_usage(org.id, api_key.id, 2, 0)
+
+      assert_received {:identifier, identifier}
+
+      assert String.starts_with?(identifier, "lei-usage-#{usage.id}-"),
+             "identifier #{inspect(identifier)} does not reference the committed row #{usage.id}"
+    end
+
+    test "the identifier is stable for the same write and changes for new usage" do
+      {:ok, org} = ApiKeys.find_or_create_org("Ident Org", tier: "pro", status: "active")
+
+      org =
+        org
+        |> Org.stripe_changeset(%{stripe_customer_id: "cus_ident_test"})
+        |> Repo.update!()
+
+      {:ok, _raw_key, api_key} = ApiKeys.create_api_key(org, "test", ["analyze"])
+
+      test_pid = self()
+
+      Mox.expect(Lei.StripeMock, :report_meter_event, 2, fn _cus, _value, _ts, identifier ->
+        send(test_pid, {:identifier, identifier})
+        {:ok, %{"identifier" => identifier}}
+      end)
+
+      {:ok, _} = UsageTracker.record_usage(org.id, api_key.id, 2, 0)
+      assert_received {:identifier, first}
+
+      {:ok, _} = UsageTracker.record_usage(org.id, api_key.id, 4, 0)
+      assert_received {:identifier, second}
+
+      # Distinct usage must not deduplicate against the earlier event, or the
+      # second batch would silently go unbilled.
+      refute first == second
     end
 
     test "skips orgs with no Stripe customer" do
@@ -344,7 +407,7 @@ defmodule Lei.Web.BillingIntegrationTest do
 
       {:ok, _raw_key, api_key} = ApiKeys.create_api_key(org, "test", ["analyze"])
 
-      Mox.expect(Lei.StripeMock, :report_meter_event, fn _, _, _ ->
+      Mox.expect(Lei.StripeMock, :report_meter_event, fn _, _, _, _ ->
         {:error, %{"error" => "meter unavailable"}}
       end)
 

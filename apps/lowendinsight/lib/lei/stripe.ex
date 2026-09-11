@@ -3,7 +3,8 @@ defmodule Lei.StripeBehaviour do
   @callback construct_webhook_event(String.t(), String.t(), String.t()) ::
               {:ok, map()} | {:error, term()}
   @callback create_payment_intent(map()) :: {:ok, map()} | {:error, term()}
-  @callback report_meter_event(String.t(), integer(), integer()) :: {:ok, map()} | {:error, term()}
+  @callback report_meter_event(String.t(), integer(), integer(), String.t()) ::
+              {:ok, map()} | {:error, term()}
   @callback retrieve_subscription(String.t()) :: {:ok, map()} | {:error, term()}
 end
 
@@ -159,12 +160,18 @@ defmodule Lei.Stripe do
   here would compound: report 100, then 250, then 400, and Stripe bills 750.
 
   So callers must send the cost of *this* usage only, never a running total.
+
+  `identifier` is Stripe's deduplication key. Sending the same one twice is a
+  no-op rather than a double charge, which matters because this is called from
+  a Task: anything that retries it -- now or later, deliberately or via an
+  at-least-once queue -- would otherwise bill the customer twice, silently.
   """
-  def report_meter_event(stripe_customer_id, value, timestamp) do
+  def report_meter_event(stripe_customer_id, value, timestamp, identifier) do
     body =
       URI.encode_query(%{
         "event_name" => @meter_event_name,
         "timestamp" => to_string(timestamp),
+        "identifier" => identifier,
         "payload[stripe_customer_id]" => stripe_customer_id,
         "payload[value]" => to_string(value)
       })
