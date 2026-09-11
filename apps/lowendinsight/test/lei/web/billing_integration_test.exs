@@ -329,10 +329,14 @@ defmodule Lei.Web.BillingIntegrationTest do
       {:ok, _} = UsageTracker.record_usage(org.id, api_key.id, 0, 1)
     end
 
-    # Ordering matters: the local row is the source of truth, and Stripe is
+    # Ordering matters: the local row is the source of truth and Stripe is
     # derived from it. Reporting first meant a failed insert could leave the
     # customer billed for usage this database had no record of.
-    test "reports nothing to Stripe when the local write fails" do
+    #
+    # The identifier embeds the persisted row id, which cannot be known until
+    # the insert has committed -- so asserting on it proves the ordering
+    # directly, rather than by simulating a failure.
+    test "the meter event is derived from the committed row" do
       {:ok, org} = ApiKeys.find_or_create_org("Order Org", tier: "pro", status: "active")
 
       org =
@@ -340,13 +344,49 @@ defmodule Lei.Web.BillingIntegrationTest do
         |> Org.stripe_changeset(%{stripe_customer_id: "cus_order_test"})
         |> Repo.update!()
 
-      # nil api_key_id with a nil org_id forces the changeset to fail
-      # validate_required, so no row is committed.
-      # No Mox expectation: report_meter_event must NOT be called.
-      assert {:error, _changeset} = UsageTracker.record_usage(nil, nil, 5, 1)
+      {:ok, _raw_key, api_key} = ApiKeys.create_api_key(org, "test", ["analyze"])
 
-      # And the org itself is untouched.
-      assert UsageTracker.get_current_usage(org.id).total_cost_cents == Decimal.new(0)
+      test_pid = self()
+
+      Mox.expect(Lei.StripeMock, :report_meter_event, fn _cus, _value, _ts, identifier ->
+        send(test_pid, {:identifier, identifier})
+        {:ok, %{"identifier" => identifier}}
+      end)
+
+      {:ok, usage} = UsageTracker.record_usage(org.id, api_key.id, 2, 0)
+
+      assert_received {:identifier, identifier}
+
+      assert String.starts_with?(identifier, "lei-usage-#{usage.id}-"),
+             "identifier #{inspect(identifier)} does not reference the committed row #{usage.id}"
+    end
+
+    test "the identifier is stable for the same write and changes for new usage" do
+      {:ok, org} = ApiKeys.find_or_create_org("Ident Org", tier: "pro", status: "active")
+
+      org =
+        org
+        |> Org.stripe_changeset(%{stripe_customer_id: "cus_ident_test"})
+        |> Repo.update!()
+
+      {:ok, _raw_key, api_key} = ApiKeys.create_api_key(org, "test", ["analyze"])
+
+      test_pid = self()
+
+      Mox.expect(Lei.StripeMock, :report_meter_event, 2, fn _cus, _value, _ts, identifier ->
+        send(test_pid, {:identifier, identifier})
+        {:ok, %{"identifier" => identifier}}
+      end)
+
+      {:ok, _} = UsageTracker.record_usage(org.id, api_key.id, 2, 0)
+      assert_received {:identifier, first}
+
+      {:ok, _} = UsageTracker.record_usage(org.id, api_key.id, 4, 0)
+      assert_received {:identifier, second}
+
+      # Distinct usage must not deduplicate against the earlier event, or the
+      # second batch would silently go unbilled.
+      refute first == second
     end
 
     test "skips orgs with no Stripe customer" do
