@@ -139,7 +139,10 @@ if config_env() == :prod do
     stripe_webhook_secret: System.get_env("STRIPE_WEBHOOK_SECRET"),
     stripe_pro_price_id: System.get_env("STRIPE_PRO_PRICE_ID"),
     stripe_metered_price_id: System.get_env("STRIPE_METERED_PRICE_ID"),
-    lei_base_url: System.get_env("LEI_BASE_URL") || "https://lowendinsight.fly.dev",
+    # Customer-facing: Stripe Checkout success/cancel redirects and the
+    # payment-intent return_url. Must be the canonical domain, not the
+    # fly.dev hostname, or paying customers land on the wrong brand.
+    lei_base_url: System.get_env("LEI_BASE_URL") || "https://lowendinsight.dev",
     acp_bearer_token: System.get_env("LEI_ACP_BEARER_TOKEN"),
     acp_signing_secret: System.get_env("LEI_ACP_SIGNING_SECRET")
 

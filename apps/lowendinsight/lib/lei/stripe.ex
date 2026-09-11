@@ -108,7 +108,11 @@ defmodule Lei.Stripe do
         "confirm" => "true",
         "return_url" =>
           params[:return_url] ||
-            Application.get_env(:lowendinsight, :lei_base_url, "https://lowendinsight.fly.dev")
+            # Production always configures :lei_base_url in runtime.exs; this
+            # fallback is for dev and test. Kept identical to the one in
+            # Lei.Web.Router so the two cannot disagree about where a customer
+            # is sent after paying.
+            Application.get_env(:lowendinsight, :lei_base_url, "http://localhost:4000")
       })
 
     case HTTPoison.post(
