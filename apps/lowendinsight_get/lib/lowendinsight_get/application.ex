@@ -22,6 +22,10 @@ defmodule LowendinsightGet.Application do
   end
 
   defp children do
+    # Must exist before any request is served; see RateLimiter.init_table/0 for
+    # why it cannot be created in the plug's init/1.
+    LowendinsightGet.Plugs.RateLimiter.init_table()
+
     redis_url = Application.get_env(:redix, :redis_url)
 
     uri = URI.parse(redis_url)

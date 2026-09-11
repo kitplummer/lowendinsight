@@ -112,6 +112,30 @@ else
   echo "  Got API key: ${API_KEY:0:12}..."
 fi
 
+# --- 4b. Authenticated single analyze ---
+# This is the primary documented endpoint, and the suite only ever checked that
+# it rejects anonymous callers. It raised on every *authenticated* request for
+# as long as the rate limiter existed, because the limiter built its ETS table
+# in init/1 -- which Plug resolves at compile time.
+bold "4b. Authenticated POST /v1/analyze"
+ANALYZE_RESP=$(curl -s -X POST "$BASE_URL/v1/analyze" \
+  -H "Content-Type: application/json" \
+  -H "Authorization: Bearer $API_KEY" \
+  --max-time 60 \
+  -d '{"urls":["https://github.com/kitplummer/xmpp4rails"]}')
+
+if echo "$ANALYZE_RESP" | grep -q "POSTful service"; then
+  red "  FAIL: POST /v1/analyze returned the generic error handler (it raised)"
+  FAIL=$((FAIL + 1))
+  TOTAL=$((TOTAL + 1))
+else
+  green "  PASS: POST /v1/analyze did not raise"
+  PASS=$((PASS + 1))
+  TOTAL=$((TOTAL + 1))
+fi
+
+check_contains "Analyze response has metadata" "metadata" "$ANALYZE_RESP"
+
 # --- 5. Batch analyze with billing ---
 bold "5. Batch analyze with billing"
 BATCH_RESP=$(curl -s -X POST "$BASE_URL/v1/analyze/batch" \
