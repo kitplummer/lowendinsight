@@ -10,18 +10,58 @@ then a credential swap plus a re-verification, not a leap of faith.
 
 ## Current state (2026-09-11)
 
+**The Pro path is verified end to end in sandbox.** Every step below was
+exercised against production with a real Stripe Checkout, not simulated.
+
 | | |
 |---|---|
-| Free tier | **Working and verified** — `billing-smoke-test.sh` passes 19/19 against production |
-| Pricing calculation | **Correct** — observed `2 cache hits × $0.005 = 1.0 cents` on live traffic |
-| Usage recording | **Working** — `/v1/usage` and the dashboard both report it |
-| Stripe keys | Test mode (sandbox) |
-| Webhook endpoint | Registered and Active, but targets the `fly.dev` hostname |
-| Webhook deliveries | None yet — nothing to reconcile |
-| Stripe Checkout | Not yet configured |
-| Billing meter | `analysis_cost` — create per section 1 |
-| Pro tier | Untested end to end |
-| ACP self-provisioning | Reachable, but unauthenticated (see below) |
+| Free tier | **Verified** — `billing-smoke-test.sh` passes 19/19 against production |
+| Pro checkout | **Verified** — org created `tier: "pro"`, activated by webhook |
+| Stripe webhook | **Verified** — `POST /webhooks/stripe` returned 200; signature matches |
+| Success redirect | **Verified** — lands on `lowendinsight.dev` |
+| Usage recording | **Verified** — 2 cache misses recorded as `total_cost_cents: 10.0` |
+| Meter events | **Verified** — `aggregated_value: 100` in Stripe |
+| Included credit | **Verified** — 15,000-unit tier absorbs it; amount due stays $29 |
+| `POST /v1/analyze` | **Verified** authenticated (was raising until #91/#92) |
+| Stripe keys | Test mode (sandbox) — live mode still to do |
+| ACP self-provisioning | Reachable but **unauthenticated** — see below |
+
+### The verified chain
+
+```
+2 cache misses x $0.05          = $0.10
+  -> UsageTracker.calculate_cost  = 10.0 cents
+  -> to_meter_units (x10)         = 100 units
+  -> meter event, keyed by customer
+  -> Stripe aggregates            = 100        <- observed
+```
+
+That the numbers land exactly on ADR-001's figures is the evidence the
+tenth-of-a-cent unit was the right choice: 15,000 units is $15.00, which is
+3,000 cache hits or 300 misses, matching the stated Pro credit without adjustment.
+
+### Sandbox objects created
+
+| Object | ID |
+|---|---|
+| Meter | `mtr_test_61VNt1N74r40DMKnn4136n3SNNombE1Q` |
+| Product | `prod_VEzHnMVO4j6RDi` |
+| Pro price ($29/mo) | `price_1UEVQx36n3SNNomb9bwoiS5M` |
+| Metered price (graduated) | `price_1UEVRK36n3SNNombFIKvyqje` |
+
+These are **test-mode objects and do not exist in live mode.** Section 6.
+
+### Defects found by running the flow
+
+Five, none of which code review had surfaced:
+
+| Defect | Fixed in |
+|---|---|
+| `/signup/success` raised — customer paid, saw a 500, never received their key | #90 |
+| Pro signup reusing an existing name silently stayed on the free tier | #89 |
+| Unauthenticated signup issued admin keys for **existing** orgs | #89 |
+| `POST /v1/analyze` raised for every authenticated caller | #91 |
+| Metered billing used an API removed from the account's version, and never captured the subscription item, and its reporter was never started | #88 |
 
 ---
 
@@ -142,6 +182,10 @@ means replacing all four values, not just the secret key.
 
 Run in order — each step depends on the previous one having worked.
 
+**Completed 2026-09-11.** Re-run this whole sequence after switching to live
+keys; passing in sandbox does not carry over, because live mode has entirely
+separate objects.
+
 ```bash
 # 1. Free tier still healthy
 ./scripts/billing-smoke-test.sh https://lowendinsight.dev
@@ -167,10 +211,18 @@ where a licensed-instead-of-metered price, or a unit mismatch, finally shows up.
 
 ## 6. Going live
 
-1. Recreate both prices and the webhook endpoint **in live mode**
-2. Replace all four `STRIPE_*` secrets together
-3. Re-run section 5 against live keys, using a real card and refunding it
-4. Watch the first real invoice end to end rather than assuming it matches
+Nothing from sandbox carries over. Test and live mode hold entirely separate
+meters, products, prices, webhook endpoints and signing secrets.
+
+1. Recreate **in live mode**: the `analysis_cost` meter, the product, both prices
+   (including the graduated first tier), and the webhook endpoint
+2. Replace all four `STRIPE_*` secrets **together** — a live secret key paired
+   with a test price ID fails in a way that looks like a pricing bug
+3. Re-run **all** of section 5 against live keys, with a real card, then refund
+4. Watch the first real invoice line by line rather than assuming it matches
+
+The sandbox run found five defects, four of them customer-facing. Treat the live
+run as a real test, not a formality.
 
 ## ACP self-provisioning
 
