@@ -1,6 +1,6 @@
 # ADR-002: Credit Ledger with Multiple Payment Rails
 
-**Status:** Proposed
+**Status:** Proposed — core decisions resolved 2026-09-11, accounting open
 **Date:** 2026-09-11
 **Authors:** Kit Plummer, Claude (AI pair)
 **Amends:** ADR-001 (cache-tiered pricing) — the rates stand; the settlement mechanism changes
@@ -90,8 +90,13 @@ credit_entries
   reason ("grant:subscription" | "purchase:stripe" | "purchase:x402" |
           "debit:analysis" | "adjustment:manual" | "expiry"),
   external_ref (stripe payment intent, x402 tx hash, ...),
+  usd_value_cents (nullable; USD value at receipt, grants only),
+  jurisdiction (nullable; whatever location signal was obtainable),
   metadata, inserted_at
 ```
+
+`usd_value_cents` and `jurisdiction` exist for the accounting requirements below
+and are null on debits.
 
 Balance is the sum of deltas. **Not a mutable balance column** — money needs an
 audit trail, and "how did this balance get here" must be answerable without
@@ -101,6 +106,26 @@ against the sum.
 `external_ref` is **unique where present**. That is the idempotency boundary: a
 replayed Stripe webhook or a resubmitted x402 payment proof cannot double-credit.
 
+### Agent identity: an org per wallet
+
+An x402 agent has no signup, no email and no organisation. Its only durable
+identifier is **the wallet address that paid**.
+
+**Decision: create an org whose identity is a wallet address.**
+
+The alternative — keying credits to an address with no org row — is conceptually
+cleaner but means a parallel data model: every existing table, every usage
+record, the rate limiter and all reporting assume `org_id`. An org row with a
+wallet address preserves all of it.
+
+The cost is conceptual honesty: there will be `orgs` rows that are not
+organisations. That is an acceptable price for not maintaining two identity
+systems, and the column name says what it is.
+
+```
+orgs.wallet_address  text, unique where present
+```
+
 ### Funding rails
 
 | Rail | Grants credits when |
@@ -108,8 +133,41 @@ replayed Stripe webhook or a resubmitted x402 payment proof cannot double-credit
 | Stripe subscription | invoice paid → monthly grant (15,000 for Pro) |
 | Stripe one-off / ACP | payment intent succeeds → credits proportional to amount |
 | **x402** | payment proof verified on-chain → credits for that request |
-| Free tier | scheduled monthly grant |
+| Free tier | scheduled monthly grant -- **web signups only, see below** |
 | Manual | support adjustments, with a reason |
+
+### No free tier for agents
+
+**Decision: agents fund a block before their first request. The free tier is for
+humans evaluating the product.**
+
+A monthly free credit grant is farmable. ACP self-provisioning is open by
+design, so an agent can create orgs cheaply and harvest a grant from each.
+Rate limiting (#95) slows that to roughly 7,200 orgs/day; it does not stop it.
+
+The current quota has the same hole. Nobody exploited it because ACP did not
+work until this week.
+
+Splitting by provenance removes the vector entirely and matches how the two
+audiences behave: a human needs to try before buying, while an agent is already
+spending someone's budget. It does mean an agent cannot sample before paying,
+which is a deliberate trade.
+
+### Settlement granularity: blocks, not per-request
+
+**Decision: credits are purchased in blocks.**
+
+This is forced by economics rather than preference. A USDC transfer on Base
+costs roughly $0.001-0.005 in gas. A cache hit is **$0.005**. Settling each call
+on-chain would spend between 20% and 100% of the transaction value on the
+transaction itself. For a cache miss ($0.05) it is 2-10%, tolerable but poor.
+
+So the 402 challenge says "buy credits", not "pay for this call". It is still
+x402 -- the protocol does not require one payment per request -- but the unit
+being sold is a balance.
+
+This also strengthens the case for the ledger: without a balance to draw
+against, calls priced at half a cent cannot be settled on-chain at all.
 
 ### Overage: per-org policy, not global
 
@@ -134,6 +192,93 @@ mechanism that exists.
 `analysis_usage` continues to record what was consumed. Credits record what was
 paid. They are reconciled, not merged: one is operational, the other financial,
 and conflating them is how the current design lost track of ACP payments.
+
+## Accounting and tax
+
+**This section states the shape of the problem and what the ledger must capture.
+It is not tax advice, and several items below need a qualified accountant before
+credits are sold to anyone.**
+
+### Selling credits is not earning revenue
+
+Under ASC 606 and IFRS 15, payment received before the service is delivered is a
+**contract liability**, not income. Revenue is recognised as credits are
+consumed.
+
+The append-only ledger gives this directly, which is a reason to prefer it over
+a balance column beyond auditability:
+
+```
+sum(grants)            = liability incurred
+sum(debits)            = revenue recognised
+sum(all deltas)        = deferred revenue outstanding
+```
+
+A mutable balance can tell you what is owed. It cannot tell you what was earned,
+or when.
+
+### Breakage
+
+Credits sold and never consumed are **breakage**. Under ASC 606 it may be
+recognised proportionally as the rest is consumed *if* non-redemption can be
+reliably estimated, and otherwise only when redemption becomes remote.
+
+With no history, no reliable estimate exists, so breakage is recognised late or
+not at all. That argues for the no-expiry decision being revisited once there is
+data -- not for adding an expiry now to manufacture a recognition event.
+
+### The location problem
+
+This is the sharpest issue and it is created by the wallet-as-identity decision.
+
+VAT on digital services depends on **where the customer is**. A stablecoin
+payment follows the normal VAT rules for the underlying service -- the crypto
+leg itself is exempt as currency exchange (CJEU, *Hedqvist* C-264/14) but the
+service is not. EU cross-border B2C digital services can require One-Stop Shop
+registration, and for some digital-service categories from the **first sale**,
+with no threshold.
+
+**A wallet address tells us nothing about jurisdiction.** Stripe determines this
+today and handles the filing; x402 does not.
+
+Three directions, none free:
+
+| | |
+|---|---|
+| **Merchant of record** | An MoR takes on the tax liability and filing, at a percentage. Removes the problem rather than solving it. |
+| **Collect a declaration** | Require the buyer to state jurisdiction. Cheap, and weak evidence if audited. |
+| **Restrict availability** | Sell x402 credits only where the obligation is manageable. Narrows the market deliberately. |
+
+This needs deciding **before** credits are sold, not after. It is the one item
+here that can create a liability retroactively.
+
+### Receiving USDC
+
+USD value must be recorded **at the moment of receipt**, not at conversion. For
+a dollar-pegged stablecoin the spread is small but not always zero, and holding
+rather than converting can create a basis to track.
+
+The ledger therefore records, on every grant:
+
+```
+usd_value_cents      integer   -- value at receipt, not credit face value
+external_ref         text      -- tx hash or payment intent, unique
+jurisdiction         text      -- nullable; whatever signal was obtainable
+```
+
+`usd_value_cents` and the credit face value are usually equal and occasionally
+are not. Storing only one of them makes the difference unrecoverable.
+
+### For a qualified accountant
+
+1. Is the taxable supply the **sale** of credits or their **redemption**?
+2. What VAT/GST registration does selling to unidentified international buyers
+   create, and does a merchant of record change the answer?
+3. Is a jurisdiction declaration from the buyer sufficient evidence?
+4. What breakage policy is defensible with no redemption history?
+5. Does holding USDC rather than converting on receipt create reporting we do
+   not want?
+6. At what volume do money-transmission or AML obligations begin?
 
 ## Rationale
 
@@ -196,16 +341,27 @@ money units are where rounding errors become revenue errors.
 
 ## Open questions
 
-1. Do credits expire? Never-expiring credits are an unbounded liability;
-   expiring ones need clear terms and a policy someone will complain about.
-2. Does x402 grant credits per-request, or in blocks? Per-request is simplest and
-   matches the protocol; blocks reduce on-chain cost per unit of value.
-3. Which network and asset — USDC on Base is the x402 default, but that is a
-   dependency worth naming explicitly rather than inheriting.
-4. Do we run verification or use a facilitator?
-5. What is the opening balance for existing orgs at migration?
-6. Does the free tier become a monthly credit grant, or stay a separate quota
-   check? A grant is simpler; a quota is harder to farm by creating orgs.
+Resolved 2026-09-11: agent identity (org per wallet), agent free tier (none),
+settlement granularity (blocks). Network and asset default to USDC on Base, the
+x402 default; verification via a facilitator rather than self-hosted, since
+running it means an RPC dependency, reorg handling and a confirmation policy
+that are not where the value is.
+
+Remaining:
+
+1. **Do credits expire?** Decided *no* for now. Revisit when there is redemption
+   history, since breakage cannot be estimated without it. Note that adding
+   expiry later changes terms for existing holders.
+2. **The location problem above.** Merchant of record, buyer declaration, or
+   restricted availability. Must be settled before credits are sold.
+3. **Opening balance at migration.** Nearly moot -- 36 test orgs, no paying
+   customers. Proposal: Pro orgs 15,000 credits, free orgs their remaining
+   monthly allowance.
+4. **Block sizes.** What denominations does an agent buy? Too small and gas
+   dominates again; too large and the on-ramp has a high first step.
+5. **What happens at zero mid-request?** A batch that exhausts the balance
+   partway through is either refused entirely, served and allowed to go slightly
+   negative, or truncated. Each is defensible; silence is not.
 
 ## Implementation sketch
 
