@@ -91,6 +91,8 @@ components:
 | Variable | Default | Description |
 |----------|---------|-------------|
 | `PORT` | `4000` | HTTP server port |
+| `LEI_START_HTTP` | `true` | Start the standalone `Lei.Web.Router` listener (see [Two HTTP listeners](#two-http-listeners)) |
+| `LEI_HTTP_PORT` | `4000` | Port for that standalone listener |
 | `REDIS_URL` | `redis://localhost:6379/0` | Redis connection URL |
 | `DATABASE_URL` | - | PostgreSQL connection URL |
 | `SECRET_KEY_BASE` | - | Secret for signing/encryption |
@@ -121,6 +123,39 @@ config :lowendinsight_get,
 config :redix,
   redis_url: System.get_env("REDIS_URL") || "redis://localhost:6379/0"
 ```
+
+## Two HTTP listeners
+
+Production runs **two** HTTP listeners. This is deliberate and neither is
+redundant.
+
+| Port | Serves | Entry point for |
+|---|---|---|
+| 8080 | `LowendinsightGet.Endpoint`, with `Lei.Web.Router` mounted inside it | Fly.io (`fly.toml` `internal_port`) |
+| 4000 | `Lei.Web.Router` standalone | Kubernetes / Zarf (`apps/lowendinsight/manifests/service.yaml`) |
+
+On Fly the 4000 listener receives no traffic, because only 8080 is routed. **It
+is not dead code.** Removing it as part of Fly cleanup would break the UDS
+deployment path.
+
+Set `LEI_START_HTTP=false` where only the Fly entry point is needed.
+
+### Routing caveat
+
+`Lei.Web.Router` is only reachable on 8080 for paths listed in `@auth_paths`
+(`apps/lowendinsight_get/lib/lowendinsight_get/endpoint.ex`). A route added to
+`Lei.Web.Router` is **unreachable in production until its prefix is added
+there**, and returns the endpoint's catch-all 404 instead.
+
+Eight routes were unreachable this way for months, including the whole
+`/v1/orgs` provisioning family and every health and metrics endpoint. When
+adding a route, add it to `@auth_paths` and to `scripts/smoke-test.sh`.
+
+### Manifest inconsistency
+
+`apps/lowendinsight_get/k8s/deployment.yaml` exposes `containerPort: 4444`
+while `apps/lowendinsight_get/k8s/service.yaml` targets port 4000.
+Pre-existing, harmless on Fly, and worth resolving before UDS work resumes.
 
 ## Air-Gapped Deployment
 
@@ -443,7 +478,9 @@ LOG_LEVEL=debug ./bin/lowendinsight_get foreground
 
 Required secrets:
 - `SECRET_KEY_BASE` - Minimum 64 characters
-- `DATABASE_URL` - PostgreSQL credentials
+- `DATABASE_URL` - PostgreSQL credentials. **Required in production** -- the app
+  raises at boot if it is unset, rather than falling back to localhost and
+  failing confusingly later.
 - `LEI_GH_TOKEN` - GitHub API token (optional but recommended)
 
 ## Cache Performance
