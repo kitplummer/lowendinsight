@@ -72,7 +72,28 @@ jobs:
         run: |
           echo "::error::Smoke test failed against production. Rolling back to ${{ steps.current.outputs.image }}"
           flyctl deploy --image "${{ steps.current.outputs.image }}" --strategy immediate -a lowendinsight
-          echo "Rolled back. Verifying the previous version is serving:"
+
+          # --strategy immediate replaces the machine without waiting for health
+          # checks, which is what we want for a rollback -- get the known-good
+          # code serving as fast as possible. But it means the app is still
+          # booting when this step continues, so wait for it before verifying.
+          # Without this the smoke test raced the restart and exited 28 (curl
+          # timeout) on its first request, reporting a failed rollback that had
+          # actually succeeded.
+          echo "Waiting for the rolled-back version to answer /healthz..."
+          for attempt in $(seq 1 30); do
+            if curl -fsS --max-time 5 https://lowendinsight.dev/healthz >/dev/null 2>&1; then
+              echo "Healthy after ${attempt} attempt(s)."
+              break
+            fi
+            if [ "$attempt" = "30" ]; then
+              echo "::error::Rolled-back version did not become healthy within 150s."
+              exit 1
+            fi
+            sleep 5
+          done
+
+          echo "Verifying the previous version is serving:"
           ./scripts/smoke-test.sh https://lowendinsight.dev
 
       - name: Report deployed version
