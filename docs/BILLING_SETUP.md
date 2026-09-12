@@ -192,6 +192,70 @@ side. Update it to:
 https://lowendinsight.dev/webhooks/stripe
 ```
 
+### Rotating the webhook signing secret
+
+Signing secrets do not expire on their own. The expiry you set when rolling
+applies to the **previous** secret, not the new one -- it is how long Stripe
+keeps accepting the old signature while you migrate, up to 24 hours. During
+that window Stripe signs each event with both secrets, so there is no cutover
+gap unless you choose one.
+
+Do it in this order. Rolling last is what creates an outage.
+
+1. **Roll in the Stripe Dashboard** with the old secret expiring in **24 hours**,
+   not immediately. Webhooks keep working throughout.
+
+2. **Set it in Fly**, without the value entering argv or shell history:
+
+   ```bash
+   read -rs STRIPE_WH && printf 'STRIPE_WEBHOOK_SECRET=%s\n' "$STRIPE_WH" \
+     | flyctl secrets import -a lowendinsight && unset STRIPE_WH
+   ```
+
+   This triggers a release. Use `--stage` and a separate `flyctl deploy` if you
+   are changing several secrets together.
+
+   Do **not** use `flyctl secrets set KEY=value` -- the value is visible in
+   `ps` and lands in shell history.
+
+3. **Verify with a real delivery.** The digest changing proves only that
+   *something* changed. Resend a recent event from the Dashboard and confirm a
+   200, or watch the app:
+
+   ```bash
+   flyctl logs -a lowendinsight | grep -i webhook
+   ```
+
+   A mismatch logs `STRIPE_WEBHOOK_SECRET is set but does not match the sending
+   endpoint`.
+
+4. **Check the counters** once traffic has flowed:
+
+   ```bash
+   curl -s https://lowendinsight.dev/metrics | grep lei_stripe_webhook_total
+   ```
+
+   `result="ok"` should be increasing. Any `result="invalid"` means the secret
+   does not match; `result="unconfigured"` means it is not set at all.
+   `result="unsigned"` is internet scanners hitting a public URL and is not a
+   problem.
+
+The `monitor` workflow checks these every 15 minutes and fails on `invalid` or
+`unconfigured`, so a botched rotation surfaces on its own. That check exists
+because a wrong secret is indistinguishable from an unset one from the outside:
+every delivery 400s, subscriptions quietly stop activating, and nothing else
+changes.
+
+The 24-hour grace period is also why this failure arrives *late* -- the
+breakage appears a day after the change that caused it, by which point the two
+are easy not to connect.
+
+#### If you are rotating `STRIPE_SECRET_KEY` instead
+
+Different mechanism, different number: rotating an API key keeps the old one
+working for up to **7 days**, not 24 hours. Same ordering applies -- rotate,
+update Fly, verify, and let the old key lapse rather than revoking it first.
+
 ## 4. Environment
 
 | Secret | Set | Notes |

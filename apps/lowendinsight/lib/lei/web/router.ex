@@ -7,6 +7,7 @@ defmodule Lei.Web.Router do
   HTML signup/login/dashboard routes.
   """
   use Plug.Router
+  require Logger
 
   @otp_app :lowendinsight
 
@@ -228,18 +229,55 @@ defmodule Lei.Web.Router do
     webhook_secret = Application.get_env(:lowendinsight, :stripe_webhook_secret, "")
     stripe = Lei.Stripe.impl()
 
-    case stripe.construct_webhook_event(raw_body, signature, webhook_secret) do
-      {:ok, event} ->
-        Lei.StripeWebhookHandler.handle_event(event)
+    # A wrong signing secret fails exactly like an unset one, and both fail
+    # exactly like a scanner POSTing junk at a public URL. Separating them is
+    # the difference between an alert worth waking up for and noise: only a
+    # request Stripe actually signed can indicate a secret problem.
+    cond do
+      signature == "" ->
+        Lei.WebhookStats.record(:unsigned)
 
         conn
         |> put_resp_content_type("application/json")
-        |> send_resp(200, Poison.encode!(%{status: "ok"}))
+        |> send_resp(400, Poison.encode!(%{error: "missing stripe-signature header"}))
 
-      {:error, _reason} ->
+      webhook_secret in [nil, ""] ->
+        Lei.WebhookStats.record(:unconfigured)
+
+        Logger.error(
+          "Stripe signed a webhook but STRIPE_WEBHOOK_SECRET is not set. " <>
+            "Every delivery will 400 until it is."
+        )
+
         conn
         |> put_resp_content_type("application/json")
-        |> send_resp(400, Poison.encode!(%{error: "invalid webhook signature"}))
+        |> send_resp(400, Poison.encode!(%{error: "webhook secret not configured"}))
+
+      true ->
+        case stripe.construct_webhook_event(raw_body, signature, webhook_secret) do
+          {:ok, event} ->
+            Lei.WebhookStats.record(:ok)
+            Lei.StripeWebhookHandler.handle_event(event)
+
+            conn
+            |> put_resp_content_type("application/json")
+            |> send_resp(200, Poison.encode!(%{status: "ok"}))
+
+          {:error, reason} ->
+            Lei.WebhookStats.record(:invalid)
+
+            # The secret is set and disagrees with Stripe's signature. Almost
+            # always a rotation that updated the endpoint but not the app, or
+            # updated it from a different endpoint's secret.
+            Logger.error(
+              "Stripe webhook signature rejected (#{inspect(reason)}). " <>
+                "STRIPE_WEBHOOK_SECRET is set but does not match the sending endpoint."
+            )
+
+            conn
+            |> put_resp_content_type("application/json")
+            |> send_resp(400, Poison.encode!(%{error: "invalid webhook signature"}))
+        end
     end
   end
 

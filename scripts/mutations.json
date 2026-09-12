@@ -90,6 +90,15 @@
       "replace": "        File.cd!(path)\n\n        case System.cmd(\"grep\", [\"-rIL\", \".\"]) do",
       "guarded_by": "test/cwd_restoration_test.exs",
       "app": "apps/lowendinsight"
+    },
+    {
+      "id": "webhook-outcome-conflation",
+      "bug": "A wrong STRIPE_WEBHOOK_SECRET failed identically to an unset one and to a scanner POSTing junk -- all three returned 400 with no way to tell them apart. The secret sat set-but-wrong with webhooks silently 400ing and nothing surfaced it. Collapsing 'unconfigured' back into 'invalid' makes the monitor report a rotation problem when the real fault is a missing secret.",
+      "file": "apps/lowendinsight/lib/lei/web/router.ex",
+      "find": "        Lei.WebhookStats.record(:unconfigured)",
+      "replace": "        Lei.WebhookStats.record(:invalid)",
+      "guarded_by": "test/lei/webhook_monitoring_test.exs",
+      "app": "apps/lowendinsight"
     }
   ]
 }
