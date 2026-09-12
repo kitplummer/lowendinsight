@@ -140,7 +140,8 @@ defmodule AnalyzerModule do
       agentic_analysis =
         Lei.AgenticDetector.analyze(contributors_with_messages, num_filtered_contributors)
 
-      {:ok, agentic_classification} = RiskLogic.agentic_classification(agentic_analysis.agentic_contribution_ratio)
+      {:ok, agentic_classification} =
+        RiskLogic.agentic_classification(agentic_analysis.agentic_contribution_ratio)
 
       project_types_identified =
         case Map.has_key?(options, :types) && options.types == true do

@@ -308,7 +308,10 @@ defmodule Lei.Web.BillingIntegrationTest do
       {:ok, _raw_key, api_key} = ApiKeys.create_api_key(org, "test", ["analyze"])
 
       # 10 hits (0.5c each) + 2 misses (5c each) = 15 cents = 150 tenth-cent units
-      Mox.expect(Lei.StripeMock, :report_meter_event, fn "cus_meter_test", value, timestamp, identifier ->
+      Mox.expect(Lei.StripeMock, :report_meter_event, fn "cus_meter_test",
+                                                         value,
+                                                         timestamp,
+                                                         identifier ->
         assert value == 150
         assert is_integer(timestamp)
 

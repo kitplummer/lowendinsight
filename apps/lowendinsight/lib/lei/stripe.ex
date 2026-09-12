@@ -40,7 +40,6 @@ defmodule Lei.Stripe do
 
   @impl true
   def create_checkout_session(params) do
-
     metered_price_id = params[:metered_price_id]
 
     base_params = %{
@@ -118,19 +117,18 @@ defmodule Lei.Stripe do
 
   @impl true
   def create_payment_intent(params) do
-
     body =
       URI.encode_query(%{
         "amount" => to_string(params.amount),
         "currency" => params.currency,
         "payment_method" => params.payment_method,
         "confirm" => "true",
+        # Production always configures :lei_base_url in runtime.exs; this
+        # fallback is for dev and test. Kept identical to the one in
+        # Lei.Web.Router so the two cannot disagree about where a customer
+        # is sent after paying.
         "return_url" =>
           params[:return_url] ||
-            # Production always configures :lei_base_url in runtime.exs; this
-            # fallback is for dev and test. Kept identical to the one in
-            # Lei.Web.Router so the two cannot disagree about where a customer
-            # is sent after paying.
             Application.get_env(:lowendinsight, :lei_base_url, "http://localhost:4000")
       })
 
@@ -190,7 +188,6 @@ defmodule Lei.Stripe do
 
   @impl true
   def retrieve_subscription(subscription_id) do
-
     case HTTPoison.get(
            "https://api.stripe.com/v1/subscriptions/#{subscription_id}",
            headers()
