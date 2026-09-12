@@ -99,6 +99,24 @@
       "replace": "        Lei.WebhookStats.record(:invalid)",
       "guarded_by": "test/lei/webhook_monitoring_test.exs",
       "app": "apps/lowendinsight"
+    },
+    {
+      "id": "credit-debit-atomicity",
+      "bug": "The usage row and its ledger debit are one transaction because they describe the same event: a committed usage row with no debit is an analysis delivered and never accounted for, findable only by reconciliation after the fact. Letting a failed debit fall through instead of rolling back recreates that gap on every failure.",
+      "file": "apps/lowendinsight/lib/lei/usage_tracker.ex",
+      "find": "          {:error, reason} -> Repo.rollback(reason)",
+      "replace": "          {:error, reason} -> {:error, reason}",
+      "guarded_by": "test/lei/credit_debit_test.exs",
+      "app": "apps/lowendinsight"
+    },
+    {
+      "id": "credit-debit-missing",
+      "bug": "Anticipated: dropping the ledger debit from the usage path leaves analyses consumed with no internal record of what they cost, which is the state ADR-002 exists to end.",
+      "file": "apps/lowendinsight/lib/lei/usage_tracker.ex",
+      "find": "             :ok <- debit_credits(usage, cache_hits, cache_misses) do",
+      "replace": "             :ok <- :ok do",
+      "guarded_by": "test/lei/credit_debit_test.exs",
+      "app": "apps/lowendinsight"
     }
   ]
 }

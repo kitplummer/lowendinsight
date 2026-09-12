@@ -9,7 +9,7 @@ defmodule Lei.UsageTracker do
 
   import Ecto.Query
   require Logger
-  alias Lei.{Repo, Org, AnalysisUsage}
+  alias Lei.{Repo, Org, AnalysisUsage, Credits}
 
   @default_hit_cost_cents 0.5
   @default_miss_cost_cents 5.0
@@ -23,45 +23,64 @@ defmodule Lei.UsageTracker do
     period_start = current_period_start()
     cost = calculate_cost(cache_hits, cache_misses)
 
-    # The local row is written first and is the source of truth. Reporting to
-    # Stripe before committing meant a failed insert left the customer billed
-    # for usage this database had no record of -- unreconcilable, and invisible
-    # until someone queried an invoice. Stripe is now derived from a committed
-    # row, so the worst case is usage recorded but unbilled, which is
-    # recoverable and errs against us rather than the customer.
+    # The usage row and the ledger debit are one transaction. Both are local
+    # writes describing the same event, so there is no state in which one is
+    # correct without the other -- a committed usage row with no debit is an
+    # analysis delivered and not accounted for, and a debit with no usage row
+    # is a charge for nothing.
+    #
+    # Reconciliation (#105) then guards against drift from other causes, rather
+    # than against a gap this function creates on every failure.
     result =
-      case Repo.one(
-             from(u in AnalysisUsage,
-               where: u.org_id == ^org_id and u.period_start == ^period_start
-             )
-           ) do
-        nil ->
-          %AnalysisUsage{}
-          |> AnalysisUsage.changeset(%{
-            org_id: org_id,
-            api_key_id: api_key_id,
-            period_start: period_start,
-            cache_hits: cache_hits,
-            cache_misses: cache_misses,
-            total_cost_cents: cost
-          })
-          |> Repo.insert()
+      Repo.transaction(fn ->
+        with {:ok, usage} <-
+               upsert_usage(org_id, api_key_id, period_start, cache_hits, cache_misses, cost),
+             :ok <- debit_credits(usage, cache_hits, cache_misses) do
+          usage
+        else
+          {:error, reason} -> Repo.rollback(reason)
+        end
+      end)
 
-        existing ->
-          existing
-          |> AnalysisUsage.changeset(%{
-            cache_hits: existing.cache_hits + cache_hits,
-            cache_misses: existing.cache_misses + cache_misses,
-            total_cost_cents: Decimal.add(existing.total_cost_cents, cost)
-          })
-          |> Repo.update()
-      end
-
+    # Stripe is reported only once the transaction has committed, and never
+    # from inside it. Two reasons: an HTTP call holds a database connection open
+    # for its whole duration, and reporting from inside a transaction that later
+    # rolls back bills a customer for usage this database has no record of --
+    # the fault fixed in #96.
     with {:ok, usage} <- result do
       report_meter_event(org_id, cost, usage)
     end
 
     result
+  end
+
+  defp upsert_usage(org_id, api_key_id, period_start, cache_hits, cache_misses, cost) do
+    case Repo.one(
+           from(u in AnalysisUsage,
+             where: u.org_id == ^org_id and u.period_start == ^period_start
+           )
+         ) do
+      nil ->
+        %AnalysisUsage{}
+        |> AnalysisUsage.changeset(%{
+          org_id: org_id,
+          api_key_id: api_key_id,
+          period_start: period_start,
+          cache_hits: cache_hits,
+          cache_misses: cache_misses,
+          total_cost_cents: cost
+        })
+        |> Repo.insert()
+
+      existing ->
+        existing
+        |> AnalysisUsage.changeset(%{
+          cache_hits: existing.cache_hits + cache_hits,
+          cache_misses: existing.cache_misses + cache_misses,
+          total_cost_cents: Decimal.add(existing.total_cost_cents, cost)
+        })
+        |> Repo.update()
+    end
   end
 
   @doc """
@@ -158,6 +177,69 @@ defmodule Lei.UsageTracker do
 
   defp free_tier_limit do
     Application.get_env(:lowendinsight, :free_tier_monthly_limit, @default_free_tier_limit)
+  end
+
+  # Records what this analysis consumed against the org's credit balance.
+  #
+  # Returns {:error, reason} rather than logging and continuing. The caller runs
+  # this inside the same transaction as the usage row, so a failure here rolls
+  # both back: the alternative is a usage row with no matching debit, which is
+  # drift that has to be found later rather than a failure handled now.
+  #
+  # The balance is allowed to go negative. Refusal belongs before the work, not
+  # after it -- see ADR-002.
+  defp debit_credits(%AnalysisUsage{} = usage, cache_hits, cache_misses) do
+    credits = Credits.cost_in_credits(cache_hits, cache_misses)
+
+    if credits > 0 do
+      case Credits.debit(usage.org_id, credits, debit_reason(),
+             external_ref: debit_ref(usage),
+             metadata: %{
+               "analysis_usage_id" => usage.id,
+               "cache_hits" => cache_hits,
+               "cache_misses" => cache_misses,
+               "period_start" => Date.to_iso8601(usage.period_start)
+             }
+           ) do
+        {:ok, _entry} ->
+          :ok
+
+        {:error, :duplicate} ->
+          # This exact state of the usage row was already debited. Expected on a
+          # retry of the ledger write, and not a reason to roll back the usage
+          # row that produced it.
+          :ok
+
+        {:error, reason} ->
+          Logger.error(
+            "Credit debit failed for org #{usage.org_id}: #{inspect(reason)}. " <>
+              "Rolling back #{credits} credits of usage rather than recording it unbilled."
+          )
+
+          {:error, reason}
+      end
+    else
+      :ok
+    end
+  end
+
+  # A seam so the rollback path is reachable from a test. Nothing in production
+  # sets it; an invalid reason fails Lei.CreditEntry's changeset, which is the
+  # closest reachable stand-in for a database error mid-transaction.
+  defp debit_reason do
+    Application.get_env(:lowendinsight, :credit_debit_reason, "debit:analysis")
+  end
+
+  # The usage row's cumulative counters after the update. They only ever
+  # increase, so each committed increment yields a distinct reference, and
+  # re-deriving it from an unchanged row yields the same one.
+  #
+  # This makes the ledger write idempotent with respect to itself. It does not
+  # deduplicate analyses -- a genuinely repeated request increments
+  # analysis_usage again and is debited again, which is correct, because it was
+  # served again.
+  defp debit_ref(%AnalysisUsage{} = usage) do
+    "analysis-#{usage.id}-#{usage.cache_hits}-#{usage.cache_misses}"
   end
 
   # Reports this usage to Stripe as a billing meter event.
