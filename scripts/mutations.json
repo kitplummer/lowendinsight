@@ -162,6 +162,15 @@
       "replace": "          balance: Lei.Credits.balance(conn.params[\"org_id\"] || org_id),",
       "guarded_by": "test/lei/web/credits_endpoint_test.exs",
       "app": "apps/lowendinsight"
+    },
+    {
+      "id": "meter-report-unrecorded",
+      "bug": "The Stripe meter call happens outside the usage transaction and its result was discarded -- so a failed call meant usage consumed, ledger debited, customer never billed, with nothing written down. Under-billing that errs against us, and invisible. Dropping the failure record restores that blind spot.",
+      "file": "apps/lowendinsight/lib/lei/usage_tracker.ex",
+      "find": "              record_meter_report(org_id, usage, identifier, units, \"failed\", inspect(reason))\n",
+      "replace": "",
+      "guarded_by": "test/lei/meter_reporting_test.exs",
+      "app": "apps/lowendinsight"
     }
   ]
 }

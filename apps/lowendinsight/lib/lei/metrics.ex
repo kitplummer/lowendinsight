@@ -66,7 +66,13 @@ defmodule Lei.Metrics do
       # public.
       "# HELP lei_credit_reconciliation Ledger agreement with recorded usage",
       "# TYPE lei_credit_reconciliation gauge",
-      reconciliation_metrics()
+      reconciliation_metrics(),
+      "",
+      # Whether metered usage reached Stripe. Only the half we can answer
+      # without asking Stripe: did our call succeed, and was it made.
+      "# HELP lei_stripe_metering Metered usage reported to Stripe",
+      "# TYPE lei_stripe_metering gauge",
+      metering_metrics()
     ]
     |> List.flatten()
   end
@@ -97,6 +103,23 @@ defmodule Lei.Metrics do
     Enum.map(Lei.WebhookStats.outcomes(), fn outcome ->
       "lei_stripe_webhook_total{result=\"#{outcome}\"} #{Map.get(stats, outcome, 0)}"
     end)
+  end
+
+  defp metering_metrics do
+    report = Lei.Reconciliation.stripe_reporting()
+
+    [
+      "lei_stripe_metering{measure=\"reported\"} #{report.reported}",
+      "lei_stripe_metering{measure=\"failed\"} #{report.failed}",
+      "lei_stripe_metering{measure=\"unreported\"} #{report.unreported}",
+      "lei_stripe_metering{measure=\"unreported_credits\"} #{report.unreported_credits}",
+      "lei_stripe_metering{measure=\"metered_orgs\"} #{report.metered_orgs}"
+    ]
+  rescue
+    error ->
+      require Logger
+      Logger.error("Metering metrics failed: #{inspect(error)}")
+      ["lei_stripe_metering{measure=\"error\"} 1"]
   end
 
   defp format_ecosystem_metrics(ecosystems) when map_size(ecosystems) == 0, do: []
