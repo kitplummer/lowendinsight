@@ -339,6 +339,42 @@ defmodule Lei.Web.Router do
     end
   end
 
+  get "/v1/credits" do
+    # Scoped to the authenticated org by construction: org_id comes from the
+    # API key, never from a parameter. There is no way to ask for another org's
+    # ledger through this route, which is the point -- a balance is money.
+    case extract_billing_context(conn) do
+      {nil, _, _} ->
+        json_resp(conn, 401, %{error: "API key required for credits endpoint"})
+
+      {org_id, _, _tier} ->
+        entries =
+          org_id
+          |> Lei.Credits.entries(limit: 50)
+          |> Enum.map(fn entry ->
+            %{
+              delta: entry.delta,
+              reason: entry.reason,
+              # external_ref is deliberately omitted: it is a Stripe payment
+              # intent or an on-chain transaction hash, and the balance does
+              # not need it to be explicable.
+              at: NaiveDateTime.to_iso8601(entry.inserted_at)
+            }
+          end)
+
+        json_resp(conn, 200, %{
+          balance: Lei.Credits.balance(org_id),
+          # Stated rather than assumed by the caller. One credit is $0.001.
+          credit_value_usd: "0.001",
+          pricing: %{
+            cache_hit: Lei.Credits.credits_per_cache_hit(),
+            cache_miss: Lei.Credits.credits_per_cache_miss()
+          },
+          entries: entries
+        })
+    end
+  end
+
   get "/v1/usage" do
     case extract_billing_context(conn) do
       {nil, _, _} ->

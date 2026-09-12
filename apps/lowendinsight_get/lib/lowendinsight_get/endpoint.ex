@@ -17,7 +17,7 @@ defmodule LowendinsightGet.Endpoint do
   # to this endpoint's own routes and 404s, so a route added to Lei.Web.Router
   # is unreachable in production until its prefix appears here.
   @auth_paths ~w(/signup /login /dashboard /keys /logout /static /recover /webhooks
-                 /v1/analyze/batch /v1/usage /v1/health /v1/orgs
+                 /v1/analyze/batch /v1/usage /v1/credits /v1/health /v1/orgs
                  /healthz /readyz /metrics)
 
   plug(LowendinsightGet.Auth)

@@ -56,9 +56,39 @@ defmodule Lei.Metrics do
       # URL and is deliberately not an error signal.
       "# HELP lei_stripe_webhook_total Stripe webhook verification outcomes since boot",
       "# TYPE lei_stripe_webhook_total counter",
-      webhook_metrics()
+      webhook_metrics(),
+      "",
+      # The ledger is only worth having if a discrepancy is visible. Exposed
+      # here because /metrics is already scraped every 15 minutes, and a
+      # dashboard nobody opens is not monitoring.
+      #
+      # Aggregates only: no org identities, no balances. This endpoint is
+      # public.
+      "# HELP lei_credit_reconciliation Ledger agreement with recorded usage",
+      "# TYPE lei_credit_reconciliation gauge",
+      reconciliation_metrics()
     ]
     |> List.flatten()
+  end
+
+  defp reconciliation_metrics do
+    report = Lei.Reconciliation.usage_vs_credits()
+
+    [
+      "lei_credit_reconciliation{measure=\"drifting_rows\"} #{report.drifting_rows}",
+      "lei_credit_reconciliation{measure=\"drift_credits\"} #{report.drift_credits}",
+      "lei_credit_reconciliation{measure=\"reconciled_rows\"} #{report.reconciled_rows}",
+      "lei_credit_reconciliation{measure=\"pre_ledger_rows\"} #{report.pre_ledger_rows}"
+    ]
+  rescue
+    # A metrics endpoint must not fail because one gauge cannot be computed --
+    # it is what monitoring uses to decide everything else is alright. Emitting
+    # -1 rather than omitting the series: a gauge that vanishes looks like
+    # "nothing to report", and this one vanishing means the opposite.
+    error ->
+      require Logger
+      Logger.error("Reconciliation metrics failed: #{inspect(error)}")
+      ["lei_credit_reconciliation{measure=\"error\"} 1"]
   end
 
   defp webhook_metrics do
