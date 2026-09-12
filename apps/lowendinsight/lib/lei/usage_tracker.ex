@@ -9,7 +9,7 @@ defmodule Lei.UsageTracker do
 
   import Ecto.Query
   require Logger
-  alias Lei.{Repo, Org, AnalysisUsage}
+  alias Lei.{Repo, Org, AnalysisUsage, Credits}
 
   @default_hit_cost_cents 0.5
   @default_miss_cost_cents 5.0
@@ -58,6 +58,12 @@ defmodule Lei.UsageTracker do
       end
 
     with {:ok, usage} <- result do
+      # Same ordering as the Stripe report and for the same reason: the
+      # committed row is the source of truth, and everything derived from it
+      # happens after it exists. The ledger is the internal record of what was
+      # consumed; Stripe is how Pro orgs are charged for it. They are
+      # reconciled (#105), not merged.
+      debit_credits(usage, cache_hits, cache_misses)
       report_meter_event(org_id, cost, usage)
     end
 
@@ -158,6 +164,63 @@ defmodule Lei.UsageTracker do
 
   defp free_tier_limit do
     Application.get_env(:lowendinsight, :free_tier_monthly_limit, @default_free_tier_limit)
+  end
+
+  # Records what this analysis consumed against the org's credit balance.
+  #
+  # Deliberately does not fail the caller. By the time usage is recorded the
+  # analysis has already been served, so refusing here would not un-serve it --
+  # it would only lose the record. A failed debit is therefore logged at error
+  # level rather than swallowed: it means work was delivered that nothing was
+  # charged for, and the reconciliation check (#105) exists to bound how much
+  # of that is outstanding rather than assume it is zero.
+  #
+  # The balance is allowed to go negative. Refusal belongs before the work, not
+  # after it -- see ADR-002.
+  defp debit_credits(%AnalysisUsage{} = usage, cache_hits, cache_misses) do
+    credits = Credits.cost_in_credits(cache_hits, cache_misses)
+
+    if credits > 0 do
+      case Credits.debit(usage.org_id, credits, "debit:analysis",
+             external_ref: debit_ref(usage),
+             metadata: %{
+               "analysis_usage_id" => usage.id,
+               "cache_hits" => cache_hits,
+               "cache_misses" => cache_misses,
+               "period_start" => Date.to_iso8601(usage.period_start)
+             }
+           ) do
+        {:ok, _entry} ->
+          :ok
+
+        {:error, :duplicate} ->
+          # This exact state of the usage row was already debited. Expected on
+          # a retry, not a fault.
+          :ok
+
+        {:error, reason} ->
+          Logger.error(
+            "Credit debit failed for org #{usage.org_id}: #{inspect(reason)}. " <>
+              "#{credits} credits of analysis were delivered and not recorded."
+          )
+
+          :error
+      end
+    else
+      :ok
+    end
+  end
+
+  # The usage row's cumulative counters after the update. They only ever
+  # increase, so each committed increment yields a distinct reference, and
+  # re-deriving it from an unchanged row yields the same one.
+  #
+  # This makes the ledger write idempotent with respect to itself. It does not
+  # deduplicate analyses -- a genuinely repeated request increments
+  # analysis_usage again and is debited again, which is correct, because it was
+  # served again.
+  defp debit_ref(%AnalysisUsage{} = usage) do
+    "analysis-#{usage.id}-#{usage.cache_hits}-#{usage.cache_misses}"
   end
 
   # Reports this usage to Stripe as a billing meter event.

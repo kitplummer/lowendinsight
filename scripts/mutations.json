@@ -90,6 +90,15 @@
       "replace": "        File.cd!(path)\n\n        case System.cmd(\"grep\", [\"-rIL\", \".\"]) do",
       "guarded_by": "test/cwd_restoration_test.exs",
       "app": "apps/lowendinsight"
+    },
+    {
+      "id": "credit-debit-ordering",
+      "bug": "Anticipated: debiting credits before the usage row commits repeats the fault fixed in #96 from the other side -- a failed insert would leave the org debited for an analysis the database has no record of, unreconcilable against analysis_usage.",
+      "file": "apps/lowendinsight/lib/lei/usage_tracker.ex",
+      "find": "      debit_credits(usage, cache_hits, cache_misses)\n      report_meter_event(org_id, cost, usage)",
+      "replace": "      report_meter_event(org_id, cost, usage)",
+      "guarded_by": "test/lei/credit_debit_test.exs",
+      "app": "apps/lowendinsight"
     }
   ]
 }
