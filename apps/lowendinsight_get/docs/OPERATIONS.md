@@ -382,12 +382,44 @@ GRANT USAGE ON SCHEMA public TO lei_backup;
 GRANT SELECT ON ALL TABLES IN SCHEMA public TO lei_backup;
 GRANT SELECT ON ALL SEQUENCES IN SCHEMA public TO lei_backup;
 
--- ON ALL ... affects only objects that exist right now. Without these, the next
--- migration creates a table or sequence the backup user cannot read, and the
--- job starts failing months later for a reason nobody remembers.
+-- ON ALL ... affects only objects that exist right now. Without the defaults
+-- below, the next migration creates a table or sequence the backup user cannot
+-- read, and the job starts failing months later for a reason nobody remembers.
+--
+-- FOR ROLE is the part that is easy to get wrong, and it is not optional.
+-- ALTER DEFAULT PRIVILEGES applies only to objects created by the role that
+-- ran it -- which, when you connect with `flyctl postgres connect`, is
+-- `postgres`. Migrations run as the application's role, so its new tables
+-- inherit nothing and the backup breaks on the next deploy that adds one.
+-- This is exactly what happened when credit_entries landed.
+--
+-- Find the role that actually owns the tables:
+--   SELECT tableowner, count(*) FROM pg_tables
+--    WHERE schemaname = 'public' GROUP BY 1;
+ALTER DEFAULT PRIVILEGES FOR ROLE <table_owner> IN SCHEMA public
+  GRANT SELECT ON TABLES TO lei_backup;
+ALTER DEFAULT PRIVILEGES FOR ROLE <table_owner> IN SCHEMA public
+  GRANT SELECT ON SEQUENCES TO lei_backup;
+
+-- Keep the ownerless form too, for anything created while connected as postgres.
 ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT SELECT ON TABLES TO lei_backup;
 ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT SELECT ON SEQUENCES TO lei_backup;
 ```
+
+##### When a backup fails with "permission denied for table"
+
+```
+pg_dump: error: query failed: ERROR:  permission denied for table credit_entries
+```
+
+A migration added a table the backup user cannot read. Re-run the two
+`GRANT ... ON ALL` statements above to fix the immediate failure, then the
+`ALTER DEFAULT PRIVILEGES FOR ROLE` statements so the next migration does not
+do it again.
+
+The backup job fails loudly here rather than archiving a partial dump, which is
+the behaviour you want: a backup missing a table is worse than no backup,
+because it looks like one.
 
 Verify the grants landed in the right database:
 
@@ -397,6 +429,17 @@ SELECT count(*) FROM information_schema.table_privileges
 ```
 
 A count of `0` means they were applied to the wrong database.
+
+A count lower than the number of tables means some are missing. To see which:
+
+```sql
+SELECT tablename FROM pg_tables
+ WHERE schemaname = 'public'
+   AND NOT has_table_privilege('lei_backup', schemaname || '.' || tablename, 'SELECT');
+```
+
+An empty result is what you want. Worth running after any deploy that adds a
+table, until the default privileges above are confirmed working.
 
 #### Key management
 
