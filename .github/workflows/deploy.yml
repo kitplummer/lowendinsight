@@ -69,12 +69,21 @@ jobs:
           LEI_SMOKE_API_KEY: ${{ secrets.LEI_SMOKE_API_KEY }}
         run: ./scripts/smoke-test.sh https://lowendinsight.dev
 
+      # The Analyze button hung forever in production while every layer beneath
+      # it was green. A deploy that breaks the journey should not ship.
+      - name: Canary the web UI
+        id: canary
+        env:
+          LEI_ADMIN_API_KEY: ${{ secrets.LEI_ADMIN_API_KEY }}
+          CANARY_STRICT: "1"
+        run: scripts/canary.sh https://lowendinsight.dev
+
       - name: Roll back to previous image
-        if: failure() && steps.smoke.outcome == 'failure' && steps.current.outputs.image != ''
+        if: failure() && (steps.smoke.outcome == 'failure' || steps.canary.outcome == 'failure') && steps.current.outputs.image != ''
         env:
           FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
         run: |
-          echo "::error::Smoke test failed against production. Rolling back to ${{ steps.current.outputs.image }}"
+          echo "::error::Post-deploy verification failed (smoke: ${{ steps.smoke.outcome }}, canary: ${{ steps.canary.outcome }}). Rolling back to ${{ steps.current.outputs.image }}"
           flyctl deploy --image "${{ steps.current.outputs.image }}" --strategy immediate -a lowendinsight
 
           # --strategy immediate replaces the machine without waiting for health

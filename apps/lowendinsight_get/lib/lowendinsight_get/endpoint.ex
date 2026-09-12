@@ -344,6 +344,30 @@ defmodule LowendinsightGet.Endpoint do
   end
 
   # GET /v1/cache/stats - Get cache statistics.
+  # POST /v1/cache/invalidate - drop a cached report so the next request for it
+  # does the real analysis. Admin scope, enforced in LowendinsightGet.Auth.
+  post "/v1/cache/invalidate" do
+    case conn.body_params["url"] do
+      url when is_binary(url) and url != "" ->
+        case LowendinsightGet.Datastore.delete_from_cache(url) do
+          {:ok, removed} ->
+            conn
+            |> put_resp_content_type(@content_type)
+            |> send_resp(200, Poison.encode!(%{url: url, removed: removed}))
+
+          {:error, reason} ->
+            conn
+            |> put_resp_content_type(@content_type)
+            |> send_resp(503, Poison.encode!(%{error: "cache unavailable: #{inspect(reason)}"}))
+        end
+
+      _ ->
+        conn
+        |> put_resp_content_type(@content_type)
+        |> send_resp(400, Poison.encode!(%{error: "missing required field: url"}))
+    end
+  end
+
   get "/v1/cache/stats" do
     stats = LowendinsightGet.Datastore.cache_stats()
 

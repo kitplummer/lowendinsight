@@ -35,7 +35,11 @@ defmodule LowendinsightGet.Auth do
     case Joken.verify(jwt, signer()) do
       {:ok, _} ->
         Logger.debug("Valid Token, proceed")
-        conn
+        # Marked explicitly so the scope check can tell a signed operator token
+        # apart from an API key, rather than inferring it from the absence of
+        # an assign -- which would also be true of a request that was never
+        # authenticated at all.
+        Plug.Conn.assign(conn, :auth_method, :jwt)
 
       {:error, err} ->
         send_401(conn, %{error: err})
@@ -82,9 +86,49 @@ defmodule LowendinsightGet.Auth do
         conn
         |> get_auth_header
         |> authenticate
+        |> check_scope(path)
 
       true ->
         conn
+    end
+  end
+
+  # Routes served by this endpoint rather than forwarded to Lei.Web.Router did
+  # not have their scopes checked at all -- this plug authenticated and stopped
+  # there, and none of the handlers checked either. Any key that could call the
+  # API could export the whole cache, or import over it and change the answers
+  # everyone else gets.
+  #
+  # Lei.Auth enforces scopes for the routes it owns; this is the same rule for
+  # the routes it does not.
+  @admin_prefixes ["/v1/cache"]
+
+  defp check_scope(%Plug.Conn{halted: true} = conn, _path), do: conn
+
+  defp check_scope(conn, path) do
+    if Enum.any?(@admin_prefixes, &String.starts_with?(path, &1)) do
+      # A JWT is signed with the deployment's own secret, so holding one is
+      # already operator-level. API keys are handed out to customers, and an
+      # analyze-scoped key must not be able to read or rewrite the cache.
+      if conn.assigns[:auth_method] == :jwt or admin_key?(conn) do
+        conn
+      else
+        Logger.warning("#{path} requested without admin scope")
+
+        conn
+        |> put_resp_content_type("application/json")
+        |> send_resp(403, Poison.encode!(%{error: "insufficient scope", required: "admin"}))
+        |> halt()
+      end
+    else
+      conn
+    end
+  end
+
+  defp admin_key?(conn) do
+    case conn.assigns[:current_api_key] do
+      %{scopes: scopes} when is_list(scopes) -> "admin" in scopes
+      _ -> false
     end
   end
 end

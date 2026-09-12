@@ -171,6 +171,15 @@
       "replace": "",
       "guarded_by": "test/lei/meter_reporting_test.exs",
       "app": "apps/lowendinsight"
+    },
+    {
+      "id": "cache-routes-unscoped",
+      "bug": "No /v1/cache route enforced any scope and LowendinsightGet.Auth did not either -- it authenticated and stopped. Any API key that could call the API could export every cached report, or import over them and change the answers everyone else received.",
+      "file": "apps/lowendinsight_get/lib/lowendinsight_get/auth.ex",
+      "find": "      if conn.assigns[:auth_method] == :jwt or admin_key?(conn) do",
+      "replace": "      if true do",
+      "guarded_by": "test/lowendinsight_get/cache_invalidate_test.exs",
+      "app": "apps/lowendinsight_get"
     }
   ]
 }
