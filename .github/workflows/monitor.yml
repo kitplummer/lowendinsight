@@ -54,6 +54,47 @@ jobs:
               ;;
           esac
 
+      # A wrong STRIPE_WEBHOOK_SECRET fails exactly like an unset one: every
+      # delivery 400s, subscriptions quietly stop activating, and nothing else
+      # changes. That state already went unnoticed once in this project.
+      #
+      # Rolling a signing secret is the usual cause -- Stripe keeps the old one
+      # valid for up to 24 hours, so the failure appears a day after the change
+      # that caused it, by which point nobody connects the two.
+      - name: Check Stripe webhook verification
+        run: |
+          METRICS=$(curl -s --max-time 15 https://lowendinsight.dev/metrics)
+
+          if ! echo "$METRICS" | grep -q "lei_stripe_webhook_total"; then
+            echo "::warning::No webhook metrics exposed. Deployed release predates them."
+            exit 0
+          fi
+
+          field() {
+            echo "$METRICS" | grep "lei_stripe_webhook_total{result=\"$1\"}" \
+              | awk '{print $2}' | tr -d '\r'
+          }
+
+          OK=$(field ok); INVALID=$(field invalid)
+          UNCONFIGURED=$(field unconfigured); UNSIGNED=$(field unsigned)
+
+          echo "verified: ${OK}  invalid: ${INVALID}  unconfigured: ${UNCONFIGURED}  unsigned: ${UNSIGNED}"
+
+          # "unsigned" is scanners hitting a public URL. Deliberately not an error.
+          FAILED=0
+
+          if [ "${UNCONFIGURED:-0}" -gt 0 ]; then
+            echo "::error::Stripe signed ${UNCONFIGURED} webhook(s) but STRIPE_WEBHOOK_SECRET is unset on the running app. Set it with: flyctl secrets import -a lowendinsight"
+            FAILED=1
+          fi
+
+          if [ "${INVALID:-0}" -gt 0 ]; then
+            echo "::error::${INVALID} Stripe webhook(s) failed signature verification. The secret is set but does not match the sending endpoint — usually a rolled secret that was not copied to Fly, or copied from a different endpoint. See docs/BILLING_SETUP.md."
+            FAILED=1
+          fi
+
+          exit $FAILED
+
       # Warns rather than fails when the key is absent. The readiness check above
       # is the primary signal and has already run; failing here every 15 minutes
       # until someone sets a secret would be alert fatigue on day one, and an
