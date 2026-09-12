@@ -178,4 +178,62 @@ defmodule Lei.CreditDebitTest do
       assert Credits.balance(org.id) == -50
     end
   end
+
+  describe "the usage row and the debit are one transaction" do
+    setup do
+      on_exit(fn -> Application.delete_env(:lowendinsight, :credit_debit_reason) end)
+      :ok
+    end
+
+    defp usage_rows(org_id) do
+      Repo.all(from(u in Lei.AnalysisUsage, where: u.org_id == ^org_id))
+    end
+
+    test "a failed debit rolls back the usage row", %{org: org, api_key: key} do
+      # Without the transaction this leaves a committed usage row with no
+      # matching ledger entry -- an analysis delivered and never accounted for,
+      # discoverable only by reconciliation after the fact.
+      Application.put_env(:lowendinsight, :credit_debit_reason, "not:a:valid:reason")
+
+      assert {:error, _reason} = UsageTracker.record_usage(org.id, key.id, 5, 1)
+
+      assert usage_rows(org.id) == []
+      assert debits(org.id) == []
+      assert Credits.balance(org.id) == 0
+    end
+
+    test "a failed debit does not partially update an existing row", %{org: org, api_key: key} do
+      {:ok, first} = UsageTracker.record_usage(org.id, key.id, 2, 0)
+      assert first.cache_hits == 2
+
+      Application.put_env(:lowendinsight, :credit_debit_reason, "not:a:valid:reason")
+
+      assert {:error, _} = UsageTracker.record_usage(org.id, key.id, 7, 3)
+
+      # The increment must not survive the rolled-back debit.
+      [row] = usage_rows(org.id)
+      assert row.cache_hits == 2
+      assert row.cache_misses == 0
+      assert length(debits(org.id)) == 1
+    end
+
+    test "a successful debit commits with the usage row", %{org: org, api_key: key} do
+      assert {:ok, usage} = UsageTracker.record_usage(org.id, key.id, 3, 1)
+
+      assert [row] = usage_rows(org.id)
+      assert row.id == usage.id
+      assert [entry] = debits(org.id)
+      assert entry.metadata["analysis_usage_id"] == row.id
+    end
+
+    test "a duplicate debit is not a rollback", %{org: org, api_key: key} do
+      # :duplicate means this row state was already debited. Rolling the usage
+      # row back over it would be wrong -- nothing failed.
+      {:ok, usage} = UsageTracker.record_usage(org.id, key.id, 1, 0)
+
+      assert [_] = usage_rows(org.id)
+      assert [_] = debits(org.id)
+      assert usage.cache_hits == 1
+    end
+  end
 end
