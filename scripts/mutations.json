@@ -83,12 +83,12 @@
       "app": "apps/lowendinsight"
     },
     {
-      "id": "find-binary-files-cwd",
-      "bug": "Files.find_binary_files/1 cd'd into the checkout it was scanning. cwd is global to the BEAM and AnalyzerModule runs analyses concurrently under Task.async_stream, so save-and-restore was racy by construction: one task captured another task's temporary checkout as its 'original' and restored into it after it had been deleted. Every later relative path in the node then failed (#108).",
+      "id": "find-binary-files-external-process",
+      "bug": "GET /url= hung forever in production. find_binary_files shelled out to `grep -rIL .` with no file operand: GNU grep searches the working directory, BusyBox grep -- what the Alpine runtime image provides -- reads stdin, and System.cmd holds the child's stdin open forever. No assertion about grep's behaviour can catch this on a machine with GNU grep, so the guard is the absence of the external process: the test runs with PATH emptied.",
       "file": "apps/lowendinsight/lib/files.ex",
-      "find": "        case System.cmd(\"grep\", [\"-rIL\", \".\"], cd: path) do",
-      "replace": "        File.cd!(path)\n\n        case System.cmd(\"grep\", [\"-rIL\", \".\"]) do",
-      "guarded_by": "test/cwd_restoration_test.exs",
+      "find": "        |> Stream.filter(&binary?/1)",
+      "replace": "        |> Stream.filter(fn f -> match?({_, 0}, System.cmd(\"grep\", [\"-qI\", \".\", f])) end)",
+      "guarded_by": "test/binary_detection_test.exs",
       "app": "apps/lowendinsight"
     },
     {
