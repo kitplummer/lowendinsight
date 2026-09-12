@@ -147,7 +147,7 @@
     },
     {
       "id": "reconciliation-empty-ledger",
-      "bug": "The first version inferred the ledger's start date from the earliest credit entry, so an empty ledger made every usage row 'pre-ledger' and the check reported clean having reconciled nothing -- a check that passes by examining nothing, which is the failure it exists to catch. The start now comes from when the credit_entries migration ran, and an unknown start excludes nothing rather than everything.",
+      "bug": "The boundary for 'pre-ledger' usage must fail towards reporting. Excusing every row when no boundary can be derived means an un-debited system reports clean having reconciled nothing -- the failure this module exists to catch, written into it. Separately, the boundary is the first debit and not the migration timestamp: the credit_entries table existed sixteen hours before anything wrote to it in production, and seven usage rows recorded in between were reported as drift.",
       "file": "apps/lowendinsight/lib/lei/reconciliation.ex",
       "find": "  defp pre_ledger?(_row, nil), do: false",
       "replace": "  defp pre_ledger?(_row, nil), do: true",
