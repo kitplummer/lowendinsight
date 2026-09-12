@@ -72,6 +72,24 @@
       "replace": "",
       "guarded_by": "test/lei/credits_test.exs",
       "app": "apps/lowendinsight"
+    },
+    {
+      "id": "scanner-cwd-restore",
+      "bug": "A failed scan left the BEAM's working directory inside a checkout that was then deleted. cwd is node-global, so every later relative path failed with 'could not get current working directory'. Surfaced as an order-dependent cascade in CI that the test retry loop had been hiding (#108).",
+      "file": "apps/lowendinsight/lib/scanner_module.ex",
+      "find": "    try do\n      File.cd!(path)\n      fun.()\n    after\n      File.cd!(cwd)\n    end",
+      "replace": "    File.cd!(path)\n    result = fun.()\n    File.cd!(cwd)\n    result",
+      "guarded_by": "test/cwd_restoration_test.exs",
+      "app": "apps/lowendinsight"
+    },
+    {
+      "id": "find-binary-files-cwd",
+      "bug": "Files.find_binary_files/1 cd'd into the checkout it was scanning. cwd is global to the BEAM and AnalyzerModule runs analyses concurrently under Task.async_stream, so save-and-restore was racy by construction: one task captured another task's temporary checkout as its 'original' and restored into it after it had been deleted. Every later relative path in the node then failed (#108).",
+      "file": "apps/lowendinsight/lib/files.ex",
+      "find": "        case System.cmd(\"grep\", [\"-rIL\", \".\"], cd: path) do",
+      "replace": "        File.cd!(path)\n\n        case System.cmd(\"grep\", [\"-rIL\", \".\"]) do",
+      "guarded_by": "test/cwd_restoration_test.exs",
+      "app": "apps/lowendinsight"
     }
   ]
 }

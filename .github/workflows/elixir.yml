@@ -43,21 +43,45 @@ jobs:
     - name: Setup Database
       run: |
         cd apps/lowendinsight && MIX_ENV=test mix ecto.create && MIX_ENV=test mix ecto.migrate
+    # This step used to retry up to five times, each attempt with a fresh
+    # random seed. That turned a seed-dependent failure into a green check:
+    # Lei.Acp.RateLimitTest was failing on roughly two seeds in three and CI
+    # never once reported it (#107). A retry loop over a randomised suite does
+    # not paper over flakiness, it hides ordering bugs -- which is the same
+    # "reports success while broken" failure this project keeps shipping.
+    #
+    # One run, one seed, no retries. If it fails, it failed.
     - name: Run LEI Library Tests
       run: |
         git config --global --add safe.directory /__w/lowendinsight/lowendinsight
-        max_attempts=5
-        attempt=1
-        until cd apps/lowendinsight && MIX_ENV=test mix test --exclude network --exclude long && cd ../..; do
-          cd $GITHUB_WORKSPACE
-          if [ $attempt -ge $max_attempts ]; then
-            echo "All $max_attempts attempts failed"
-            exit 1
+        cd apps/lowendinsight && MIX_ENV=test mix test --exclude network --exclude long
+
+    # Application env and ETS outlive the test that touched them, so a test
+    # that fails to clean up breaks a different file -- but only on the
+    # orderings where it runs first. A single seed per CI run finds that
+    # eventually; several find it now.
+    - name: Seed sweep
+      run: |
+        cd apps/lowendinsight
+        failed=""
+        for seed in $(shuf -i 1-999999 -n 5); do
+          echo "::group::seed $seed"
+          if MIX_ENV=test mix test --seed "$seed" --exclude network --exclude long; then
+            echo "seed $seed: ok"
+          else
+            echo "seed $seed: FAILED"
+            failed="$failed $seed"
           fi
-          echo "Attempt $attempt failed, retrying in 2s..."
-          attempt=$((attempt + 1))
-          sleep 2
+          echo "::endgroup::"
         done
+
+        if [ -n "$failed" ]; then
+          echo "Order-dependent failure on seed(s):$failed"
+          echo "Reproduce with: cd apps/lowendinsight && mix test --seed <seed>"
+          exit 1
+        fi
+
+        echo "Suite is order-independent across 5 seeds."
     - name: Generate Docs
       run: |
         cd apps/lowendinsight && MIX_ENV=dev mix docs

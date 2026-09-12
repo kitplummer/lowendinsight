@@ -8,23 +8,38 @@ defmodule ScannerModule do
   """
 
   def dependencies(path) do
-    cwd = File.cwd!()
-
-    File.cd!(path)
-
-    deps =
+    # The cd back must happen even when the read or parse raises. Without the
+    # try/after a failed scan left the whole node's working directory inside a
+    # checkout that is about to be deleted -- cwd is global to the BEAM, so
+    # every later relative path in the process fails with an unhelpful
+    # "could not get current working directory".
+    in_directory(path, fn ->
       File.read!("./mix.lock")
       |> Hex.Lockfile.parse!(true)
       |> Hex.Encoder.lockfile_json()
+    end)
+  end
 
-    File.cd!(cwd)
-    deps
+  @doc false
+  # File.cd!/2 does exactly this, but taking it through one function here keeps
+  # the guarantee in one place and gives the guard-verification mutation a
+  # single site to remove.
+  def in_directory(path, fun) do
+    cwd = File.cwd!()
+
+    try do
+      File.cd!(path)
+      fun.()
+    after
+      File.cd!(cwd)
+    end
   end
 
   def scan(path) do
-    cwd = File.cwd!()
+    in_directory(path, fn -> scan_in_place(path) end)
+  end
 
-    File.cd!(path)
+  defp scan_in_place(path) do
     start_time = DateTime.utc_now()
 
     project_types_identified = ProjectIdent.get_project_types_identified(path)
@@ -58,8 +73,6 @@ defmodule ScannerModule do
         reports,
         project_types_identified
       )
-
-    File.cd!(cwd)
 
     Poison.encode!(result, pretty: true)
   end

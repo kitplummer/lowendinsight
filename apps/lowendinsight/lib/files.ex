@@ -27,20 +27,35 @@ defmodule Lowendinsight.Files do
             )
         ) :: %{binary_files: list, binary_files_count: non_neg_integer}
   def find_binary_files(path) do
-    cwd = File.cwd!()
-
+    # Deliberately does not change directory. The working directory is global
+    # to the BEAM node, and analyses run concurrently under Task.async_stream
+    # in AnalyzerModule, so save-and-restore cannot be made correct: one task
+    # captures the cwd while another is inside its checkout, the first task
+    # finishes and deletes that checkout, and the second restores into a
+    # directory that no longer exists. From then on every relative path in the
+    # node fails with "could not get current working directory".
+    #
+    # System.cmd's :cd option sets the directory of the spawned process only,
+    # which is what was actually wanted. Every other function in this module
+    # already takes the path explicitly; this one was the exception.
     binary_files =
-      with :ok <- File.cd(path),
-           {files, 0} <- System.cmd("grep", ["-rIL", "."]) do
-        files
-        |> String.split("\n")
-        |> Enum.reject(&(String.contains?(&1, ".git/") || &1 == ""))
-        |> Enum.sort()
-      else
-        :error -> []
-      end
+      if File.dir?(path) do
+        case System.cmd("grep", ["-rIL", "."], cd: path) do
+          {files, 0} ->
+            files
+            |> String.split("\n")
+            |> Enum.reject(&(String.contains?(&1, ".git/") || &1 == ""))
+            |> Enum.sort()
 
-    File.cd!(cwd)
+          # grep exits 1 when it matches nothing, and 2 on an unreadable tree.
+          # Neither is an error worth propagating: there are no binary files to
+          # report either way, which is what the empty list already meant.
+          _ ->
+            []
+        end
+      else
+        []
+      end
 
     %{binary_files: binary_files, binary_files_count: Enum.count(binary_files)}
   end
