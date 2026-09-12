@@ -122,6 +122,13 @@ defmodule Lei.UsageTracker do
       nil ->
         {:error, :org_not_found}
 
+      # A wallet-identified org has no free allowance at all -- ADR-002, and the
+      # reason is that a wallet costs nothing to create, so any per-wallet
+      # allowance is a per-attacker allowance. Access is the credit balance and
+      # nothing else, checked before the work rather than after it.
+      %Org{wallet_address: wallet} = org when is_binary(wallet) and wallet != "" ->
+        check_credit_balance(org)
+
       %Org{tier: "pro"} ->
         {:ok, :unlimited}
 
@@ -135,6 +142,20 @@ defmodule Lei.UsageTracker do
         else
           {:ok, limit - total_analyses}
         end
+    end
+  end
+
+  # Credits are the whole gate for a wallet org. A zero or negative balance is
+  # refused here, before the analysis runs -- ADR-002 allows a balance to go
+  # negative because refusing after the work is done loses the record rather
+  # than preventing the cost, so the refusal has to happen at this point.
+  defp check_credit_balance(%Org{id: org_id}) do
+    case Lei.Credits.balance(org_id) do
+      balance when balance > 0 ->
+        {:ok, balance}
+
+      balance ->
+        {:error, :insufficient_credits, %{balance: balance}}
     end
   end
 

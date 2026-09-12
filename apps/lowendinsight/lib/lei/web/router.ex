@@ -320,6 +320,16 @@ defmodule Lei.Web.Router do
               limit: info.limit,
               upgrade_url: "https://lowendinsight.fly.dev/signup?tier=pro"
             })
+
+          # Also a 402, and deliberately so: this is the status x402 uses to
+          # say "pay and retry", and a wallet-identified caller is exactly the
+          # client that knows how to act on it. The payment requirements
+          # themselves arrive with x402 in #104.
+          {:error, :insufficient_credits, info} ->
+            json_resp(conn, 402, %{
+              error: "insufficient_credits",
+              balance: info.balance
+            })
         end
 
       {:error, message} ->
@@ -625,6 +635,7 @@ defmodule Lei.Web.Router do
         case Lei.UsageTracker.check_free_tier_quota(org_id) do
           {:ok, _remaining} -> {:ok, :within_quota}
           {:error, :quota_exceeded, info} -> {:error, :quota_exceeded, info}
+          {:error, :insufficient_credits, info} -> {:error, :insufficient_credits, info}
           {:error, _} -> {:ok, :unknown}
         end
     end

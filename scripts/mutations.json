@@ -117,6 +117,33 @@
       "replace": "             :ok <- :ok do",
       "guarded_by": "test/lei/credit_debit_test.exs",
       "app": "apps/lowendinsight"
+    },
+    {
+      "id": "wallet-org-takeover",
+      "bug": "A wallet address is public, so provisioning that returns an existing org for a presented address hands an attacker a credential for someone else's funded org -- #89's bug in a new costume. provision/2 must never return an existing org; only the caller, having proved control, may decide that.",
+      "file": "apps/lowendinsight/lib/lei/wallets.ex",
+      "find": "        if unique_violation?(errors) do\n          {:error, :wallet_taken}",
+      "replace": "        if unique_violation?(errors) do\n          {:ok, find_by_address(normalised)}",
+      "guarded_by": "test/lei/wallets_test.exs",
+      "app": "apps/lowendinsight"
+    },
+    {
+      "id": "wallet-free-tier-grant",
+      "bug": "A wallet costs nothing to create, so any per-wallet free allowance is a per-attacker free allowance. Giving wallet orgs the default free-tier limit reopens the farming vector ADR-002 closes by granting none.",
+      "file": "apps/lowendinsight/lib/lei/wallets.ex",
+      "find": "    |> Ecto.Changeset.put_change(:free_tier_analyses_limit, 0)\n",
+      "replace": "",
+      "guarded_by": "test/lei/wallets_test.exs",
+      "app": "apps/lowendinsight"
+    },
+    {
+      "id": "wallet-credit-gate",
+      "bug": "A wallet org's only gate is its credit balance, checked before the analysis runs. Falling through to the tier check would serve a zero-balance agent for free, and ADR-002 allows balances to go negative precisely because refusal has to happen before the work.",
+      "file": "apps/lowendinsight/lib/lei/usage_tracker.ex",
+      "find": "      %Org{wallet_address: wallet} = org when is_binary(wallet) and wallet != \"\" ->\n        check_credit_balance(org)\n\n",
+      "replace": "",
+      "guarded_by": "test/lei/wallets_test.exs",
+      "app": "apps/lowendinsight"
     }
   ]
 }
