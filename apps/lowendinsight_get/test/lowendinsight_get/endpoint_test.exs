@@ -37,6 +37,7 @@ defmodule LowendinsightGet.EndpointTest do
     # template edit that drops it should fail here rather than be noticed by
     # someone reading the footer months later.
     assert String.contains?(conn.resp_body, "(r)evolve")
+    assert String.contains?(conn.resp_body, "https://revolveteam.com")
     assert String.contains?(conn.resp_body, "GTRI")
   end
 
