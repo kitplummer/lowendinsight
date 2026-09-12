@@ -37,7 +37,6 @@ defmodule Lei.RateLimiterTest do
     assert {:ok, 1} = Lei.RateLimiter.check("limited-key", "free")
     assert {:ok, 0} = Lei.RateLimiter.check("limited-key", "free")
     assert {:error, :rate_limited, _retry} = Lei.RateLimiter.check("limited-key", "free")
-
   end
 
   test "pro tier gets higher limit" do
@@ -50,7 +49,6 @@ defmodule Lei.RateLimiterTest do
     Lei.RateLimiter.check("pro-key", "pro")
     Lei.RateLimiter.check("pro-key", "pro")
     assert {:ok, _} = Lei.RateLimiter.check("pro-key", "pro")
-
   end
 
   test "different keys are independent" do
@@ -59,7 +57,6 @@ defmodule Lei.RateLimiterTest do
     assert {:ok, 0} = Lei.RateLimiter.check("key-a", "free")
     assert {:error, :rate_limited, _} = Lei.RateLimiter.check("key-a", "free")
     assert {:ok, 0} = Lei.RateLimiter.check("key-b", "free")
-
   end
 
   test "reset clears state for a key" do
@@ -69,7 +66,6 @@ defmodule Lei.RateLimiterTest do
     assert {:error, :rate_limited, _} = Lei.RateLimiter.check("reset-key", "free")
     Lei.RateLimiter.reset("reset-key")
     assert {:ok, 0} = Lei.RateLimiter.check("reset-key", "free")
-
   end
 
   test "returns retry_after when rate limited" do
@@ -79,6 +75,5 @@ defmodule Lei.RateLimiterTest do
     assert {:error, :rate_limited, retry_after} = Lei.RateLimiter.check("retry-key", "free")
     assert is_integer(retry_after)
     assert retry_after >= 0
-
   end
 end

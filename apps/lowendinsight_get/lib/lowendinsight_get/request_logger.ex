@@ -49,7 +49,10 @@ defmodule LowendinsightGet.RequestLogger do
     |> Enum.map(fn {_, entry} -> entry end)
   end
 
-  def handle_cast({:log, endpoint, org_id, key_id, repo_urls, cache_status}, %{counter: counter} = state) do
+  def handle_cast(
+        {:log, endpoint, org_id, key_id, repo_urls, cache_status},
+        %{counter: counter} = state
+      ) do
     new_counter = counter + 1
 
     entry = %{

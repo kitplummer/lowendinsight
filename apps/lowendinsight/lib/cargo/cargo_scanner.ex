@@ -79,7 +79,7 @@ defmodule Cargo.Scanner do
   For crates.io packages, queries the API. For git sources, uses the URL directly.
   """
   @spec get_repo_url(String.t(), term()) :: String.t() | nil
-  def get_repo_url(name, {:git, %{url: url}}) do
+  def get_repo_url(_name, {:git, %{url: url}}) do
     # Git dependency - use the URL directly
     url
   end

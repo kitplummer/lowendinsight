@@ -12,7 +12,7 @@ defmodule LowendinsightGet.Endpoint do
   # alias Plug.{Adapters.Cowboy}
 
   require Logger
-  alias Plug.{Adapters.Cowboy}
+  alias Plug.Cowboy
   # Paths forwarded to Lei.Web.Router. Anything not listed here falls through
   # to this endpoint's own routes and 404s, so a route added to Lei.Web.Router
   # is unreachable in production until its prefix appears here.
@@ -247,7 +247,7 @@ defmodule LowendinsightGet.Endpoint do
 
           if cache_mode in @valid_cache_modes do
             case LowendinsightGet.SbomParser.parse(sbom) do
-              {:ok, urls} when length(urls) > 0 ->
+              {:ok, [_ | _] = urls} ->
                 opts = %{cache_mode: cache_mode, cache_timeout: cache_timeout}
 
                 case LowendinsightGet.Analysis.process_urls(urls, uuid, start_time, opts) do
@@ -297,10 +297,8 @@ defmodule LowendinsightGet.Endpoint do
 
   ## Cache Management Endpoints (Phase 3: Distributable Cache)
 
-  @doc """
-  GET /v1/cache/export - Export entire cache for air-gapped deployment.
-  Returns JSON with all cached analysis reports.
-  """
+  # GET /v1/cache/export - Export entire cache for air-gapped deployment.
+  # Returns JSON with all cached analysis reports.
   get "/v1/cache/export" do
     {:ok, entries, stats} = LowendinsightGet.Datastore.export_cache()
 
@@ -316,11 +314,9 @@ defmodule LowendinsightGet.Endpoint do
     |> send_resp(200, body)
   end
 
-  @doc """
-  POST /v1/cache/import - Import pre-warmed cache for air-gapped deployment.
-  Accepts JSON with "entries" array from export endpoint.
-  Options: overwrite (bool), ttl (seconds)
-  """
+  # POST /v1/cache/import - Import pre-warmed cache for air-gapped deployment.
+  # Accepts JSON with "entries" array from export endpoint.
+  # Options: overwrite (bool), ttl (seconds)
   post "/v1/cache/import" do
     {status, body} =
       case conn.body_params do
@@ -347,9 +343,7 @@ defmodule LowendinsightGet.Endpoint do
     |> send_resp(status, body)
   end
 
-  @doc """
-  GET /v1/cache/stats - Get cache statistics.
-  """
+  # GET /v1/cache/stats - Get cache statistics.
   get "/v1/cache/stats" do
     stats = LowendinsightGet.Datastore.cache_stats()
 
@@ -358,11 +352,9 @@ defmodule LowendinsightGet.Endpoint do
     |> send_resp(200, Poison.encode!(stats))
   end
 
-  @doc """
-  GET /admin - Admin dashboard showing cache stats, usage monitoring, and active jobs.
-  Protected by LEI_ADMIN_TOKEN env var; pass token via ?token= query parameter.
-  Returns 401 if token is missing or invalid.
-  """
+  # GET /admin - Admin dashboard showing cache stats, usage monitoring, and active jobs.
+  # Protected by LEI_ADMIN_TOKEN env var; pass token via ?token= query parameter.
+  # Returns 401 if token is missing or invalid.
   get "/admin" do
     conn = fetch_query_params(conn)
 
