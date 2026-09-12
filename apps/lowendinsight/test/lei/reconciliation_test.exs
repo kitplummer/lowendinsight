@@ -151,8 +151,16 @@ defmodule Lei.ReconciliationTest do
         |> Ecto.Changeset.change(updated_at: ~N[2020-01-01 00:00:00])
         |> Repo.update()
 
-      # Something has to be in the ledger for a start time to exist.
-      {:ok, _} = Lei.Credits.grant(org.id, 100, "adjustment:manual")
+      # A debit has to exist somewhere for a boundary to exist, and it must be
+      # another org's -- recording usage for this one would land on the same
+      # period row and give it the debit the test is asserting it lacks.
+      {:ok, other} =
+        ApiKeys.find_or_create_org("Recon Boundary #{System.unique_integer([:positive])}",
+          status: "active"
+        )
+
+      {:ok, _raw, other_key} = ApiKeys.create_api_key(other, "recon", ["analyze"])
+      {:ok, _} = UsageTracker.record_usage(other.id, other_key.id, 1, 0)
 
       report = Reconciliation.usage_vs_credits()
 
@@ -192,19 +200,16 @@ defmodule Lei.ReconciliationTest do
   end
 
   describe "an unknown ledger start does not excuse everything" do
-    test "drift is still reported when the migration row is absent", %{org: org, api_key: key} do
-      # The first version inferred the ledger's start from the earliest credit
-      # entry, so an empty ledger made every row pre-ledger and the check
-      # reported clean having reconciled nothing.
+    test "drift is still reported when nothing has ever been debited", %{org: org, api_key: key} do
+      # An earlier version of this check excused every row when it could not
+      # determine a start, and reported clean having reconciled nothing.
       #
-      # This exercises the branch where the start cannot be determined at all.
-      # It is not reachable otherwise, because the migration row always exists
-      # in a migrated database -- which is exactly why the mutation for it was
-      # reported unguarded until this test existed.
-      {:ok, usage} = UsageTracker.record_usage(org.id, key.id, 3, 0)
-      Repo.delete_all(from_debits_for(usage.id))
+      # The boundary is now the first debit, so "no debits at all" is exactly
+      # the case where it cannot be determined -- and every row must still be
+      # reconciled rather than excused.
+      {:ok, _usage} = UsageTracker.record_usage(org.id, key.id, 3, 0)
 
-      Repo.delete_all(from(m in "schema_migrations", where: m.version == 20_260_911_000_001))
+      Repo.delete_all(from(e in CreditEntry, where: e.reason == "debit:analysis"))
 
       report = Reconciliation.usage_vs_credits()
 

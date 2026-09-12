@@ -225,17 +225,24 @@ defmodule Lei.Reconciliation do
 
   defp drift(row), do: row.expected - row.debited
 
-  # When the ledger began, taken from when its table was created rather than
-  # inferred from the data in it. The earliest credit entry is not the same
-  # thing: entries can be absent, and a ledger with nothing in it is exactly
-  # the case that must not silently excuse every row.
-  @ledger_migration 20_260_911_000_001
-
+  # When debiting began, which is the only boundary that matters here.
+  #
+  # This was originally the credit_entries migration timestamp, on the reasoning
+  # that it was when "the ledger started". It is not: Stage A created the table
+  # and Stage B started writing debits to it, and in production those were
+  # sixteen hours apart. Every usage row recorded in between had no debit and
+  # never would, and the check reported seven of them as drift.
+  #
+  # The first debit is the moment debiting began, by definition. Inferring it
+  # from the data was also the first version's approach and was wrong then for
+  # a different reason -- an empty ledger returned nil and every row was
+  # excused. That is why the nil case above excludes nothing: this can be
+  # derived safely only because getting it wrong now fails towards reporting.
   defp ledger_started_at do
     Repo.one(
-      from(m in "schema_migrations",
-        where: m.version == ^@ledger_migration,
-        select: m.inserted_at
+      from(e in CreditEntry,
+        where: e.reason == ^@debit_reason,
+        select: min(e.inserted_at)
       )
     )
   end
