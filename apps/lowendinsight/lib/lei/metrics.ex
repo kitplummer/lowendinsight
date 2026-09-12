@@ -48,9 +48,25 @@ defmodule Lei.Metrics do
       "",
       "# HELP lei_cache_ecosystems Cache entries by ecosystem",
       "# TYPE lei_cache_ecosystems gauge",
-      format_ecosystem_metrics(cache_stats[:ecosystems] || %{})
+      format_ecosystem_metrics(cache_stats[:ecosystems] || %{}),
+      "",
+      # A wrong signing secret is indistinguishable from an unset one from the
+      # outside: every delivery 400s and nothing else changes. These counters
+      # are how monitoring sees it. "unsigned" is scanners hitting a public
+      # URL and is deliberately not an error signal.
+      "# HELP lei_stripe_webhook_total Stripe webhook verification outcomes since boot",
+      "# TYPE lei_stripe_webhook_total counter",
+      webhook_metrics()
     ]
     |> List.flatten()
+  end
+
+  defp webhook_metrics do
+    stats = Lei.WebhookStats.all()
+
+    Enum.map(Lei.WebhookStats.outcomes(), fn outcome ->
+      "lei_stripe_webhook_total{result=\"#{outcome}\"} #{Map.get(stats, outcome, 0)}"
+    end)
   end
 
   defp format_ecosystem_metrics(ecosystems) when map_size(ecosystems) == 0, do: []
