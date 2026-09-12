@@ -117,6 +117,15 @@
       "replace": "             :ok <- :ok do",
       "guarded_by": "test/lei/credit_debit_test.exs",
       "app": "apps/lowendinsight"
+    },
+    {
+      "id": "settlement-idempotency-boundary",
+      "bug": "Every payment rail, on either side, credits the ledger through one function so there is a single idempotency boundary. Dropping the external_ref makes a replayed webhook or resubmitted payment proof credit twice -- duplicate settlement under concurrency being both a documented x402 attack class and this codebase's recurring failure.",
+      "file": "apps/lowendinsight/lib/lei/payments.ex",
+      "find": "      external_ref: ref,",
+      "replace": "",
+      "guarded_by": "test/lei/payments_test.exs",
+      "app": "apps/lowendinsight"
     }
   ]
 }
