@@ -23,7 +23,7 @@
       "id": "auth-paths-omission",
       "bug": "Eight routes unreachable in production, including all health/metrics and the /v1/orgs family (#69)",
       "file": "apps/lowendinsight_get/lib/lowendinsight_get/endpoint.ex",
-      "find": "/v1/analyze/batch /v1/usage /v1/health /v1/orgs\n                 /healthz /readyz /metrics)",
+      "find": "/v1/analyze/batch /v1/usage /v1/credits /v1/health /v1/orgs\n                 /healthz /readyz /metrics)",
       "replace": "/v1/analyze/batch /v1/usage)",
       "guarded_by": "test/lowendinsight_get/ops_routing_test.exs",
       "app": "apps/lowendinsight_get"
@@ -143,6 +143,24 @@
       "find": "      %Org{wallet_address: wallet} = org when is_binary(wallet) and wallet != \"\" ->\n        check_credit_balance(org)\n\n",
       "replace": "",
       "guarded_by": "test/lei/wallets_test.exs",
+      "app": "apps/lowendinsight"
+    },
+    {
+      "id": "reconciliation-empty-ledger",
+      "bug": "The first version inferred the ledger's start date from the earliest credit entry, so an empty ledger made every usage row 'pre-ledger' and the check reported clean having reconciled nothing -- a check that passes by examining nothing, which is the failure it exists to catch. The start now comes from when the credit_entries migration ran, and an unknown start excludes nothing rather than everything.",
+      "file": "apps/lowendinsight/lib/lei/reconciliation.ex",
+      "find": "  defp pre_ledger?(_row, nil), do: false",
+      "replace": "  defp pre_ledger?(_row, nil), do: true",
+      "guarded_by": "test/lei/reconciliation_test.exs",
+      "app": "apps/lowendinsight"
+    },
+    {
+      "id": "credits-endpoint-scoping",
+      "bug": "A balance is money. /v1/credits derives org_id from the authenticated API key and nothing else; taking it from a query parameter would let any key read any org's ledger.",
+      "file": "apps/lowendinsight/lib/lei/web/router.ex",
+      "find": "          balance: Lei.Credits.balance(org_id),",
+      "replace": "          balance: Lei.Credits.balance(conn.params[\"org_id\"] || org_id),",
+      "guarded_by": "test/lei/web/credits_endpoint_test.exs",
       "app": "apps/lowendinsight"
     }
   ]

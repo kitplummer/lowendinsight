@@ -95,6 +95,47 @@ jobs:
 
           exit $FAILED
 
+      # The ledger exists so a discrepancy is visible. Checked here rather
+      # than in a dashboard, for the same reason as everything else in this
+      # file: a dashboard nobody opens is not monitoring.
+      #
+      # Drift means recorded usage and debited credits disagree. Since #112
+      # they commit in one transaction, so any non-zero value is a real fault
+      # rather than an expected gap.
+      - name: Check credit ledger reconciliation
+        run: |
+          METRICS=$(curl -s --max-time 15 https://lowendinsight.dev/metrics)
+
+          if ! echo "$METRICS" | grep -q "lei_credit_reconciliation"; then
+            echo "::warning::No reconciliation metrics exposed. Deployed release predates them."
+            exit 0
+          fi
+
+          measure() {
+            echo "$METRICS" | grep "lei_credit_reconciliation{measure=\"$1\"}" \
+              | awk '{print $2}' | tr -d '\r'
+          }
+
+          DRIFTING=$(measure drifting_rows)
+          DRIFT=$(measure drift_credits)
+          RECONCILED=$(measure reconciled_rows)
+          PRE_LEDGER=$(measure pre_ledger_rows)
+          ERRORED=$(measure error)
+
+          echo "reconciled: ${RECONCILED}  drifting: ${DRIFTING}  drift: ${DRIFT} credits  pre-ledger: ${PRE_LEDGER}"
+
+          if [ -n "${ERRORED:-}" ]; then
+            echo "::error::Reconciliation could not be computed. The check is not reporting clean, it is not reporting."
+            exit 1
+          fi
+
+          if [ "${DRIFTING:-0}" -gt 0 ]; then
+            echo "::error::${DRIFTING} usage row(s) disagree with the ledger by ${DRIFT} credits (\$$(awk "BEGIN{printf \"%.3f\", ${DRIFT}/1000}")). Investigate with Lei.Reconciliation.drifting_rows/0."
+            exit 1
+          fi
+
+          echo "Ledger agrees with recorded usage."
+
       # Warns rather than fails when the key is absent. The readiness check above
       # is the primary signal and has already run; failing here every 15 minutes
       # until someone sets a secret would be alert fatigue on day one, and an
