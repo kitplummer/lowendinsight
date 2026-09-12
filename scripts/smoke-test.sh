@@ -48,6 +48,9 @@ check "GET / returns 200" "200" "$STATUS"
 
 BODY=$(curl -s --max-time 10 "$BASE_URL/")
 check_contains "Homepage contains LowEndInsight" "LowEndInsight" "$BODY"
+# Attribution is a claim about who operates the service. A template edit that
+# silently drops it should fail rather than go unnoticed.
+check_contains "Homepage credits (r)evolve" "(r)evolve" "$BODY"
 
 # --- 2. Static assets ---
 bold "2. Static assets"

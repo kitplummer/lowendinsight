@@ -202,7 +202,9 @@
 
     <footer class="footer" style="padding: 1.5rem;">
       <div class="content has-text-centered">
-        <p>LowEndInsight &mdash; originally by <a href="https://gtri.gatech.edu">GTRI</a> &mdash; BSD 3-Clause License</p>
+        <p>LowEndInsight is developed and operated by <a href="https://revolveteam.com"><strong>(r)evolve</strong></a>.</p>
+        <p style="font-size: 0.85rem;">Originally created as research at
+          <a href="https://gtri.gatech.edu">GTRI</a> &mdash; BSD 3-Clause License</p>
         <p style="font-size: 0.75rem; color: #999;">v<%= version %></p>
       </div>
     </footer>
