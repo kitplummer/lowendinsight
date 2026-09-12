@@ -53,11 +53,102 @@ STALE=0
 bold "=== Guard verification ==="
 echo ""
 
+# Validate the manifest before doing anything with it.
+#
+# This block exists because the script failed exactly the way it was built to
+# catch. With an unparseable manifest, IDS came back empty, the loop ran zero
+# times, and it printed "0 verified, 0 unguarded" and exited 0 -- a green run
+# reporting that every guard was verified, having verified nothing. A malformed
+# JSON file is far more likely than it sounds: the manifest is appended to by
+# almost every branch and is a recurring merge-conflict site.
+if ! python3 - "$MANIFEST" <<'VALIDATE'
+import json, os, sys
+
+path = sys.argv[1]
+# 'replace' is deliberately absent: an empty replace is a deletion mutation,
+# which is how several guards reintroduce a bug that was fixed by adding a
+# line. It is checked separately for being a string that differs from 'find'.
+required = ("id", "bug", "file", "find", "guarded_by", "app")
+problems = []
+
+try:
+    with open(path) as f:
+        manifest = json.load(f)
+except FileNotFoundError:
+    sys.exit(f"manifest not found: {path}")
+except json.JSONDecodeError as e:
+    sys.exit(f"manifest is not valid JSON: {e}")
+
+mutations = manifest.get("mutations")
+
+if not isinstance(mutations, list):
+    sys.exit("manifest has no 'mutations' list")
+
+# The check that matters most. An empty list is not "nothing to do", it is a
+# manifest that has lost its contents.
+if not mutations:
+    sys.exit("manifest contains no mutations — refusing to report success")
+
+seen = set()
+
+for i, m in enumerate(mutations):
+    where = m.get("id") or f"entry {i}"
+
+    if not isinstance(m, dict):
+        problems.append(f"{where}: not an object")
+        continue
+
+    for key in required:
+        if not m.get(key):
+            problems.append(f"{where}: missing or empty '{key}'")
+
+    if m.get("id") in seen:
+        # Duplicate ids silently shadow each other in the lookup below, so one
+        # mutation would never run while still being counted as present.
+        problems.append(f"{where}: duplicate id")
+    seen.add(m.get("id"))
+
+    if not isinstance(m.get("replace"), str):
+        problems.append(f"{where}: 'replace' must be a string (\"\" to delete)")
+    elif m.get("find") == m.get("replace"):
+        problems.append(f"{where}: 'find' and 'replace' are identical — mutates nothing")
+
+    target = m.get("file")
+    if target and not os.path.isfile(target):
+        problems.append(f"{where}: file does not exist: {target}")
+
+    app, guarded_by = m.get("app"), m.get("guarded_by")
+    if app and guarded_by and not os.path.isfile(os.path.join(app, guarded_by)):
+        problems.append(f"{where}: guarding test does not exist: {app}/{guarded_by}")
+
+if problems:
+    sys.exit("manifest is invalid:\n  " + "\n  ".join(problems))
+
+print(f"{len(mutations)} mutations declared", file=sys.stderr)
+VALIDATE
+then
+  red "Manifest validation failed. Not running -- a manifest that cannot be read"
+  red "would otherwise produce a green run that checked nothing."
+  exit 1
+fi
+
 IDS=$(python3 -c "
 import json
 m = json.load(open('$MANIFEST'))['mutations']
 print('\n'.join(x['id'] for x in m))
 ")
+
+if [ -z "$IDS" ]; then
+  red "No mutation ids read from the manifest. Refusing to report success."
+  exit 1
+fi
+
+if [ -n "$ONLY" ] && ! grep -qx "$ONLY" <<<"$IDS"; then
+  # Previously a typo here skipped every mutation and exited 0.
+  red "No mutation with id '$ONLY'. Known ids:"
+  sed 's/^/  /' <<<"$IDS"
+  exit 1
+fi
 
 for id in $IDS; do
   if [ -n "$ONLY" ] && [ "$ONLY" != "$id" ]; then continue; fi
@@ -116,6 +207,13 @@ restore
 bold "=== $PASS verified, $FAIL unguarded, $STALE stale ==="
 
 if [ "$FAIL" -gt 0 ] || [ "$STALE" -gt 0 ]; then
+  exit 1
+fi
+
+# Belt and braces against the same failure arriving by another route: if
+# nothing ran, this is not a pass.
+if [ "$PASS" -eq 0 ]; then
+  red "No mutations were verified. That is a failure, not a clean run."
   exit 1
 fi
 
