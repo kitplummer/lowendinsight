@@ -68,23 +68,75 @@ defmodule CwdRestorationTest do
     end
   end
 
-  describe "Files.find_binary_files/1" do
-    test "restores the working directory for a path that cannot be entered", %{before: before} do
-      missing = Path.join(System.tmp_dir!(), "lei-does-not-exist-#{System.unique_integer()}")
+  describe "Lowendinsight.Files.find_binary_files/1" do
+    test "never changes the working directory at all", %{tmp: tmp, before: before} do
+      # Not "restores it" -- does not touch it. cwd is node-global and analyses
+      # run concurrently, so a save-and-restore here is racy by construction:
+      # another task can capture this task's temporary directory as its
+      # "original" and restore into it after it has been deleted.
+      File.write!(Path.join(tmp, "a.txt"), "hello")
 
-      # File.cd/1 returns {:error, :enoent}, which the old `else` clause could
-      # not match -- it raised WithClauseError and skipped the restore.
-      assert %{binary_files: [], binary_files_count: 0} = Lowendinsight.Files.find_binary_files(missing)
+      assert %{binary_files_count: _} = Lowendinsight.Files.find_binary_files(tmp)
 
       assert File.cwd!() == before
     end
 
-    test "restores the working directory for a directory with no matching files", %{
-      tmp: tmp,
-      before: before
-    } do
-      # `grep -rIL .` exits 1 when it matches nothing, which is not {_, 0}.
-      assert %{binary_files_count: _} = Lowendinsight.Files.find_binary_files(tmp)
+    test "returns empty for a path that does not exist", %{before: before} do
+      missing = Path.join(System.tmp_dir!(), "lei-does-not-exist-#{System.unique_integer()}")
+
+      assert %{binary_files: [], binary_files_count: 0} =
+               Lowendinsight.Files.find_binary_files(missing)
+
+      assert File.cwd!() == before
+    end
+
+    test "returns empty for a directory with nothing in it", %{tmp: tmp, before: before} do
+      # grep exits 1 when it matches nothing, which is not {_, 0}.
+      assert %{binary_files: [], binary_files_count: 0} =
+               Lowendinsight.Files.find_binary_files(tmp)
+
+      assert File.cwd!() == before
+    end
+
+    test "still finds binary files when there are some", %{tmp: tmp} do
+      # grep -rIL lists files *without* a match, treating binaries as
+      # non-matching -- so a text file is correctly excluded and a file with
+      # NUL bytes is reported.
+      File.write!(Path.join(tmp, "readme.md"), "text")
+      File.write!(Path.join(tmp, "blob.bin"), <<0, 1, 2, 0, 255>>)
+
+      %{binary_files: files, binary_files_count: count} =
+        Lowendinsight.Files.find_binary_files(tmp)
+
+      assert "blob.bin" in files
+      refute "readme.md" in files
+      assert count == 1
+    end
+
+    test "concurrent calls do not corrupt the working directory", %{before: before} do
+      # The failure this reproduces: several analyses run under
+      # Task.async_stream, each against its own checkout, and the checkouts are
+      # deleted as each finishes.
+      dirs =
+        for _ <- 1..8 do
+          dir =
+            Path.join(System.tmp_dir!(), "lei-cwd-race-#{:erlang.unique_integer([:positive])}")
+
+          File.mkdir_p!(dir)
+          File.write!(Path.join(dir, "f.txt"), "x")
+          dir
+        end
+
+      dirs
+      |> Task.async_stream(
+        fn dir ->
+          result = Lowendinsight.Files.find_binary_files(dir)
+          File.rm_rf!(dir)
+          result
+        end,
+        max_concurrency: 8
+      )
+      |> Stream.run()
 
       assert File.cwd!() == before
     end

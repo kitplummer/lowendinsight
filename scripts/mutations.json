@@ -83,11 +83,11 @@
       "app": "apps/lowendinsight"
     },
     {
-      "id": "find-binary-files-else",
-      "bug": "Files.find_binary_files/1 matched only `:error` in its else, but File.cd/1 returns {:error, reason} and `grep -rIL .` exits 1 when nothing matches. Both raised WithClauseError, which skipped the cwd restore.",
+      "id": "find-binary-files-cwd",
+      "bug": "Files.find_binary_files/1 cd'd into the checkout it was scanning. cwd is global to the BEAM and AnalyzerModule runs analyses concurrently under Task.async_stream, so save-and-restore was racy by construction: one task captured another task's temporary checkout as its 'original' and restored into it after it had been deleted. Every later relative path in the node then failed (#108).",
       "file": "apps/lowendinsight/lib/files.ex",
-      "find": "          _ -> []",
-      "replace": "          :error -> []",
+      "find": "        case System.cmd(\"grep\", [\"-rIL\", \".\"], cd: path) do",
+      "replace": "        File.cd!(path)\n\n        case System.cmd(\"grep\", [\"-rIL\", \".\"]) do",
       "guarded_by": "test/cwd_restoration_test.exs",
       "app": "apps/lowendinsight"
     }
