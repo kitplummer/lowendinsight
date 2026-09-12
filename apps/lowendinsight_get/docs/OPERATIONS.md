@@ -441,6 +441,25 @@ SELECT tablename FROM pg_tables
 An empty result is what you want. Worth running after any deploy that adds a
 table, until the default privileges above are confirmed working.
 
+##### Checking the grant contract without touching production
+
+```bash
+scripts/verify-backup-grants.sh
+```
+
+Creates a throwaway database with the same two-role structure, runs the real
+migrations as the application role, applies the grants above, then creates one
+more table *after* the grants and dumps as the backup role. That last step is
+the one that matters: a check limited to tables that already exist passes
+happily while the next migration breaks production.
+
+Runs locally and in CI (`backup-grants` in `umbrella_ci`), needs no Fly access,
+and is the only part of the backup path that can be validated without it.
+
+It verifies the **contract**, not production. If production's actual grants have
+drifted from what is documented here, only the `has_table_privilege` query above
+run against the real database will tell you.
+
 #### Key management
 
 > **GitHub Actions secrets are write-only.** Once `BACKUP_PASSPHRASE` is set it

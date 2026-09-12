@@ -38,11 +38,13 @@ config :redix,
 
 # --- lowendinsight (library) test overrides ---
 
+# Overridable so the backup-grant check can run migrations as a non-superuser
+# role. Defaults are unchanged for everyone else.
 config :lowendinsight, Lei.Repo,
-  database: "lowendinsight_test",
-  username: "postgres",
-  password: "postgres",
-  hostname: "localhost",
+  database: System.get_env("LEI_TEST_DB") || "lowendinsight_test",
+  username: System.get_env("LEI_TEST_DB_USER") || "postgres",
+  password: System.get_env("LEI_TEST_DB_PASS") || "postgres",
+  hostname: System.get_env("LEI_TEST_DB_HOST") || "localhost",
   pool: Ecto.Adapters.SQL.Sandbox,
   pool_size: 5
 
