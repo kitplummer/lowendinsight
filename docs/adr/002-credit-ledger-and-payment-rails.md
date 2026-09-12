@@ -1,6 +1,7 @@
 # ADR-002: Credit Ledger with Multiple Payment Rails
 
-**Status:** Proposed — core decisions resolved 2026-09-11, accounting open
+**Status:** Proposed — core decisions resolved 2026-09-11, amended 2026-09-12 (see
+Amendment 1: rails are pluggable, MPP first)
 **Date:** 2026-09-11
 **Authors:** Kit Plummer, Claude (AI pair)
 **Amends:** ADR-001 (cache-tiered pricing) — the rates stand; the settlement mechanism changes
@@ -155,6 +156,11 @@ which is a deliberate trade.
 
 ### Settlement granularity: blocks, not per-request
 
+> **Superseded by Amendment 1 (2026-09-12).** The reasoning below is sound and
+> its conclusion no longer follows: it assumes a chain transaction on the
+> request path, which MPP's streaming cadence removes. Settlement granularity
+> is now a property of the rail, not a global policy.
+
 **Decision: credits are purchased in blocks.**
 
 This is forced by economics rather than preference. A USDC transfer on Base
@@ -280,6 +286,167 @@ are not. Storing only one of them makes the difference unrecoverable.
    not want?
 6. At what volume do money-transmission or AML obligations begin?
 
+
+## Amendment 1 — Two sides, pluggable rails, MPP first
+
+**Date:** 2026-09-12
+**Supersedes:** the settlement-granularity decision, the funding-rails decision,
+and much of the location problem.
+
+### Why this is being reopened
+
+The original survey predates the **Machine Payments Protocol** (MPP), published
+by Stripe and Tempo in March 2026. Choosing x402 without weighing it was a gap
+in the research, not a judgement call.
+
+It matters because MPP invalidates the reasoning behind one of the three
+"resolved" decisions and dissolves the open question flagged as most dangerous.
+
+### What MPP is
+
+An open standard for machine-to-machine payment over HTTP, using the same 402
+status code as x402 and the **same signature substrate** — EIP-3009 and Permit2
+for off-chain authorisation. It is not a competing primitive; it is x402's
+primitive plus the lifecycle machinery x402 leaves to the implementer: payment
+cadence (one-shot, recurring, **streaming**), cancellation, and reconciliation.
+
+The service answers with a payment requirement naming price, accepted methods,
+cadence and metadata. Settlement is rail-agnostic: stablecoins on Tempo, cards
+and BNPL through Stripe's Shared Payment Tokens, Bitcoin over Lightning.
+
+### What it changes
+
+**Settlement granularity — the reason for blocks is gone.**
+
+The original decision reads: credits are purchased in blocks, because gas is
+$0.001–0.005 and a cache hit sells for $0.005, so per-request settlement can
+cost more than the thing being sold. That arithmetic was right, and it was
+entirely a consequence of putting a chain transaction on the request path.
+
+MPP's model is pre-authorise once, then stream granular usage without a
+transaction per interaction. The constraint that forced blocks does not exist
+on that rail. Blocks were never desirable in themselves — they were a tax on
+the on-ramp and an open question about denomination that nobody wanted to
+answer.
+
+**The location problem — largely solved, and not by us.**
+
+The accounting section identified this as the one item that can create liability
+retroactively: VAT on digital services depends on where the customer is, a
+wallet address says nothing about that, and EU registration can be required from
+the first sale. Stripe determines this today and files it; x402 does not.
+
+Under MPP, funds settle into the existing Stripe balance in the default
+currency on the normal payout schedule, and the usual Stripe machinery applies
+— tax calculation, fraud, reporting, refunds. The thing that made this hard was
+building a parallel money path outside the system that already solves it.
+
+This does not make the questions for a qualified accountant go away. It moves
+most of them from "we must answer this before selling anything" to "this is
+handled the way our existing revenue is handled."
+
+**Security posture.**
+
+x402 now has a body of adversarial analysis: cross-resource substitution via
+context-agnostic signatures, a duplicate-settlement race through nonce reuse
+under concurrency, allowance overdraft, and denial of settlement. The root cause
+named across those papers is bridging synchronous HTTP to asynchronous chain
+finality.
+
+Two things worth noting rather than reading as a verdict. Several findings are
+SDK and implementation flaws rather than protocol breaks, and MPP shares enough
+substrate that it does not automatically escape them. And duplicate-settlement
+under concurrency is precisely the class this codebase keeps meeting — the
+unique index on `credit_entries.external_ref` is the defence on our side, and
+it is already there.
+
+### Decision: two sides, each with pluggable rails
+
+**Neither protocol gets to be the architecture.** The payment construct has two
+faces, each a behaviour with adapters behind it:
+
+```
+machine side                        human side
+  Lei.Payments.MachineRail            Lei.Payments.HumanRail
+    requirements/2  -> the 402 body     checkout/2    -> hosted checkout
+    verify/2        -> proof accepted   handle_event/1 -> webhook settled
+    settlement_ref/1                    settlement_ref/1
+      |                                   |
+      MPP adapter                         Stripe Billing adapter
+      x402 adapter                        (others)
+      (others)
+               \                       /
+                Lei.Credits.grant/4
+                reason: "purchase:<rail>"
+                external_ref: settlement_ref
+```
+
+Both sides terminate in the same ledger. A rail's only privileges are producing
+payment requirements, verifying a settlement, and naming it — the naming being
+what makes the grant idempotent.
+
+This is the point of the shape rather than a nicety. Every claim in this
+amendment is a claim about a market that is roughly six months old and has
+already invalidated one of our decisions. The structure that survives being
+wrong again is the one where a rail is a module, not a set of assumptions spread
+through the request path.
+
+**Decision: MPP is the first machine adapter. x402 is the second.**
+
+MPP first because it removes the accounting blocker that currently prevents
+selling anything to anyone, settles into infrastructure already in use, and
+does not put a chain transaction on the request path.
+
+x402 second rather than never: it is vendor-neutral (Apache 2.0, x402
+Foundation) where MPP settlement runs through Stripe, and it has the larger
+installed base — over 100 million transactions on Base through Q1 2026 against
+a protocol six months old. An agent that speaks x402 and not MPP is a customer
+we would otherwise turn away, and the adapter boundary is what makes serving
+both cheap.
+
+**Decision: settlement granularity is a rail's concern, not a global policy.**
+
+Blocks are how a rail behaves when per-request settlement costs more than the
+request. They are not a property of the product. MPP streams; x402 sells blocks;
+the ledger records credits either way and does not care which arrived how.
+
+### What this does not change
+
+Stages A, B and C stand as built. The append-only ledger, integer credits, the
+debit inside the usage transaction, and wallet identity are all rail-agnostic —
+`purchase:x402` is a string in a `reason` column, and `purchase:mpp` costs
+nothing to add.
+
+One qualification on wallet identity. An org per wallet assumes a crypto-native
+customer. MPP's card and Lightning rails mean a paying agent may have no wallet
+at all, so `orgs.wallet_address` becomes *one* identity type rather than *the*
+identity type for machines. Nothing built so far forbids that — the column is
+nullable and the unique index is partial — but the assumption should be named
+before more is built on it.
+
+### Availability, which is a real constraint
+
+Stablecoin acceptance through Stripe is available to US businesses except New
+York. Outside the US it requires requesting access for 30+ countries. Shared
+Payment Tokens are available in all US states. This needs confirming against
+where the business is actually established before committing to MPP as the
+first adapter.
+
+### What has not been verified
+
+- The MPP specification has been read as documentation and summaries, not
+  implemented against. The "few lines of code with PaymentIntents" claim is
+  Stripe's, untested here.
+- No fee modelling against our actual per-analysis prices. Stripe's stablecoin
+  and SPT pricing needs confirming; 2.9% + 30¢ on a $0.005 cache hit would be
+  absurd, which strongly implies different terms for machine payments that
+  should be read rather than assumed.
+- The x402 attack papers have been read via abstracts and summaries. Before
+  building the x402 adapter they should be read in full, since several findings
+  are about SDK behaviour an implementer inherits.
+- Whether Tempo settlement introduces a dependency worth caring about, given
+  Stripe offramps to the normal balance automatically.
+
 ## Rationale
 
 **Why a ledger rather than fixing the ACP path.** Patching
@@ -341,27 +508,37 @@ money units are where rounding errors become revenue errors.
 
 ## Open questions
 
-Resolved 2026-09-11: agent identity (org per wallet), agent free tier (none),
-settlement granularity (blocks). Network and asset default to USDC on Base, the
-x402 default; verification via a facilitator rather than self-hosted, since
-running it means an RPC dependency, reorg handling and a confirmation policy
-that are not where the value is.
+Resolved 2026-09-11: agent identity (org per wallet), agent free tier (none).
+
+Revised by Amendment 1 (2026-09-12): settlement granularity is a rail's concern
+rather than a global policy, so block denomination is no longer a blocking
+question — it applies to rails that need blocks. The location problem moves
+from blocking to handled-as-existing-revenue under MPP, without removing the
+need for an accountant.
 
 Remaining:
 
-1. **Do credits expire?** Decided *no* for now. Revisit when there is redemption
-   history, since breakage cannot be estimated without it. Note that adding
-   expiry later changes terms for existing holders.
-2. **The location problem above.** Merchant of record, buyer declaration, or
-   restricted availability. Must be settled before credits are sold.
-3. **Opening balance at migration.** Nearly moot -- 36 test orgs, no paying
+1. **Do credits expire?** Still no. Revisit when there is redemption history,
+   since breakage cannot be estimated without it. Adding expiry later changes
+   terms for existing holders.
+2. **Where is the business established?** Stripe stablecoin acceptance is US
+   except New York, with access outside the US on request for 30+ countries.
+   This gates MPP as the first adapter and is a fact to confirm, not a decision
+   to make.
+3. **Fee structure per rail.** Unmodelled. Standard card pricing against a
+   $0.005 cache hit would be absurd, which implies machine payments carry
+   different terms — to be read rather than assumed.
+4. **Opening balance at migration.** Nearly moot — 36 test orgs, no paying
    customers. Proposal: Pro orgs 15,000 credits, free orgs their remaining
    monthly allowance.
-4. **Block sizes.** What denominations does an agent buy? Too small and gas
-   dominates again; too large and the on-ramp has a high first step.
 5. **What happens at zero mid-request?** A batch that exhausts the balance
-   partway through is either refused entirely, served and allowed to go slightly
-   negative, or truncated. Each is defensible; silence is not.
+   partway through is either refused entirely, served and allowed to go
+   slightly negative, or truncated. Each is defensible; silence is not.
+   Currently the balance is checked before the batch and not during it.
+6. **Is a wallet still the machine identity?** MPP's card and Lightning rails
+   mean a paying agent may have no wallet. `orgs.wallet_address` is nullable
+   and its index is partial, so nothing forbids other identity types — but
+   what they are has not been decided.
 
 ## Implementation sketch
 
@@ -383,6 +560,20 @@ Steps 1–4 close the ACP gap and are useful without x402. Step 5 is the
 positioning bet and can be deferred without stranding anything.
 
 ## References
+
+Amendment 1:
+
+- Machine Payments Protocol — <https://mpp.dev/>, spec at
+  <https://github.com/tempoxyz/mpp-specs>, Stripe's announcement at
+  <https://stripe.com/blog/machine-payments-protocol>
+- Stripe machine payments docs — <https://docs.stripe.com/payments/machine>
+- *Free-Riding the Agentic Web: A Systematic Security Analysis of x402
+  Payments* — <https://arxiv.org/abs/2605.30998>
+- *Five Attacks on x402 Agentic Payment Protocol* —
+  <https://arxiv.org/abs/2605.11781>
+- *When HTTP 402 Meets the Blockchain: Risks on Emerging x402 Payments* —
+  <https://arxiv.org/abs/2607.19545>
+
 
 - [ADR-001: Cache-Tiered Pricing Model](001-pricing-model-cache-tiered-analysis.md)
 - [docs/BILLING_SETUP.md](../BILLING_SETUP.md) — the verified Stripe path this amends

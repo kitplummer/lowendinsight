@@ -10,9 +10,13 @@ defmodule Lei.CreditEntry do
   use Ecto.Schema
   import Ecto.Changeset
 
+  # Adding a payment rail means adding its reason here, deliberately. A typo in
+  # a rail name would otherwise create a category of revenue that nothing
+  # reconciles and no report knows to look for.
   @reasons ~w(
     grant:subscription
     purchase:stripe
+    purchase:mpp
     purchase:x402
     debit:analysis
     adjustment:manual
