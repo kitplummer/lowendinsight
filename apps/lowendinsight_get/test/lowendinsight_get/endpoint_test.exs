@@ -32,6 +32,12 @@ defmodule LowendinsightGet.EndpointTest do
     assert conn.state == :sent
     assert conn.status == 200
     assert String.contains?(conn.resp_body, "<html>")
+
+    # Who operates the service is a claim on the page, not decoration. A
+    # template edit that drops it should fail here rather than be noticed by
+    # someone reading the footer months later.
+    assert String.contains?(conn.resp_body, "(r)evolve")
+    assert String.contains?(conn.resp_body, "GTRI")
   end
 
   test "it returns error when error" do

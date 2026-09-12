@@ -81,7 +81,9 @@
   </body>
   <footer id="footer" class="footer">
     <div class="content has-text-centered">
-      <img id="gtri" src="../images/gtri.png">
+      <p>LowEndInsight is developed and operated by <strong>(r)evolve</strong>.</p>
+      <p style="font-size: 0.85rem;">Originally created as research at
+        <a href="https://gtri.gatech.edu">GTRI</a> &mdash; BSD 3-Clause License</p>
       <p style="font-size: 0.75rem; color: #999;">v<%= version %></p>
     </div>
   </footer>
