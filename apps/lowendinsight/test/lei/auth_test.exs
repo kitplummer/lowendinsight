@@ -93,6 +93,20 @@ defmodule Lei.AuthTest do
     {:ok, org} = Lei.ApiKeys.find_or_create_org("Rate Limit Org", status: "active")
     {:ok, raw_key, _} = Lei.ApiKeys.create_api_key(org, "rate-test", ["analyze", "admin"])
 
+    # Restore rather than delete, and do it on exit rather than at the end of
+    # the body. Deleting left :rate_limits unset for whatever ran next, which
+    # made Lei.Acp.RateLimitTest fail or pass on the ExUnit seed; cleaning up
+    # only on the happy path meant one failed assertion here contaminated the
+    # rest of the run. Same defect as rate_limiter_test.exs (#99), second file.
+    original = Application.get_env(:lowendinsight, :rate_limits)
+
+    on_exit(fn ->
+      case original do
+        nil -> Application.delete_env(:lowendinsight, :rate_limits)
+        value -> Application.put_env(:lowendinsight, :rate_limits, value)
+      end
+    end)
+
     Application.put_env(:lowendinsight, :rate_limits, %{free: 2, pro: 600})
 
     conn1 =
@@ -118,7 +132,5 @@ defmodule Lei.AuthTest do
     assert conn3.halted
     body = Poison.decode!(conn3.resp_body)
     assert body["error"] == "rate limit exceeded"
-
-    Application.delete_env(:lowendinsight, :rate_limits)
   end
 end
