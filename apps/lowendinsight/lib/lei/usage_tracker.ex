@@ -9,7 +9,7 @@ defmodule Lei.UsageTracker do
 
   import Ecto.Query
   require Logger
-  alias Lei.{Repo, Org, AnalysisUsage, Credits}
+  alias Lei.{Repo, Org, AnalysisUsage, Credits, MeterReport}
 
   @default_hit_cost_cents 0.5
   @default_miss_cost_cents 5.0
@@ -290,10 +290,12 @@ defmodule Lei.UsageTracker do
                  identifier
                ) do
             {:ok, _} ->
+              record_meter_report(org_id, usage, identifier, units, "ok", nil)
               :ok
 
             {:error, reason} ->
               Logger.warning("Stripe meter event failed for org #{org_id}: #{inspect(reason)}")
+              record_meter_report(org_id, usage, identifier, units, "failed", inspect(reason))
               :error
           end
         else
@@ -322,6 +324,44 @@ defmodule Lei.UsageTracker do
   # than a second charge. Derived from the committed row's id and updated_at,
   # which together change exactly when new usage is recorded -- so a retry of
   # the *same* write reuses the key, while genuinely new usage gets a new one.
+  # Writes down what happened, so that "we never told Stripe" is answerable
+  # without asking Stripe. The failure this catches is ours: the call is made
+  # outside the transaction and its result was previously discarded, so usage
+  # could be debited locally and never billed with no trace of it.
+  #
+  # Failing to record must not turn a successful meter report into an error, so
+  # this swallows its own failures -- but loudly. A silent gap in the record of
+  # gaps would be worse than no record.
+  defp record_meter_report(org_id, usage, identifier, units, status, error) do
+    %MeterReport{}
+    |> MeterReport.changeset(%{
+      org_id: org_id,
+      analysis_usage_id: usage.id,
+      identifier: identifier,
+      units: units,
+      status: status,
+      error: error
+    })
+    |> Repo.insert()
+    |> case do
+      {:ok, _} ->
+        :ok
+
+      {:error, %Ecto.Changeset{errors: errors}} ->
+        # A duplicate identifier means this exact report was already recorded.
+        # Expected on a retry, and not worth logging as a fault.
+        unless Keyword.has_key?(errors, :identifier) do
+          Logger.error("Could not record meter report #{identifier}: #{inspect(errors)}")
+        end
+
+        :ok
+    end
+  rescue
+    e ->
+      Logger.error("Recording meter report #{identifier} raised: #{inspect(e)}")
+      :ok
+  end
+
   defp meter_event_identifier(%AnalysisUsage{id: id, updated_at: updated_at}, units) do
     stamp = updated_at |> NaiveDateTime.to_iso8601() |> String.replace(~r/[^0-9]/, "")
     "lei-usage-#{id}-#{stamp}-#{units}"

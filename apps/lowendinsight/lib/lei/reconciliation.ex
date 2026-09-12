@@ -24,18 +24,24 @@ defmodule Lei.Reconciliation do
       row recorded after the ledger began, something is wrong that nothing else
       would report.
 
-  ## What this does not cover
+  ## Telling Stripe is a separate question
 
-  The Stripe meter report happens *outside* the transaction, deliberately: an
-  HTTP call inside one holds a database connection for its duration. So the
-  ledger and what Stripe has been told can diverge, and this check cannot see
-  it -- it compares two local tables. That axis needs Stripe's own data and is
-  a separate mechanism.
+  The meter report happens *outside* the transaction, deliberately: an HTTP
+  call inside one holds a database connection for its duration. So the ledger
+  and what Stripe has been told can diverge.
+
+  `stripe_reporting/0` answers the half of that we can answer locally: did our
+  call succeed, and was it made at all. The failure is under-billing -- usage
+  debited, Stripe never told -- which errs against us rather than the customer
+  and is still worth knowing.
+
+  What it cannot see is Stripe's side: an event accepted and then lost or
+  double-counted there. That needs Stripe's own data and a different mechanism.
   """
 
   import Ecto.Query
 
-  alias Lei.{AnalysisUsage, CreditEntry, Repo}
+  alias Lei.{AnalysisUsage, CreditEntry, MeterReport, Org, Repo}
 
   @debit_reason "debit:analysis"
 
@@ -65,6 +71,72 @@ defmodule Lei.Reconciliation do
       expected_credits: reconcilable |> Enum.map(& &1.expected) |> Enum.sum(),
       debited_credits: reconcilable |> Enum.map(& &1.debited) |> Enum.sum()
     }
+  end
+
+  @doc """
+  Whether metered usage reached Stripe.
+
+  Only Pro orgs with a Stripe customer are metered at all, so those are the
+  only ones counted. `unreported` means a debit exists for a metered org with
+  no corresponding meter report -- the call was never made, or the process died
+  before it returned.
+  """
+  def stripe_reporting do
+    metered_orgs = metered_org_ids()
+
+    debits = debits_for_orgs(metered_orgs)
+    reports = reports_by_usage_id()
+
+    {reported, unreported} =
+      Enum.split_with(debits, fn d -> Map.has_key?(reports, d.usage_id) end)
+
+    failed =
+      reported
+      |> Enum.filter(fn d -> Map.get(reports, d.usage_id) == "failed" end)
+
+    %{
+      metered_orgs: length(metered_orgs),
+      reported: length(reported) - length(failed),
+      failed: length(failed),
+      unreported: length(unreported),
+      unreported_credits: unreported |> Enum.map(& &1.credits) |> Enum.sum()
+    }
+  end
+
+  defp metered_org_ids do
+    Repo.all(
+      from(o in Org,
+        where: o.tier == "pro" and not is_nil(o.stripe_customer_id),
+        select: o.id
+      )
+    )
+  end
+
+  defp debits_for_orgs([]), do: []
+
+  defp debits_for_orgs(org_ids) do
+    Repo.all(
+      from(e in CreditEntry,
+        where: e.reason == ^@debit_reason,
+        where: e.org_id in ^org_ids,
+        where: not is_nil(fragment("?->>'analysis_usage_id'", e.metadata)),
+        select: %{
+          usage_id: fragment("(?->>'analysis_usage_id')::bigint", e.metadata),
+          credits: fragment("-?", e.delta)
+        }
+      )
+    )
+    |> Enum.map(fn row -> Map.update!(row, :credits, &to_integer/1) end)
+  end
+
+  defp reports_by_usage_id do
+    Repo.all(
+      from(r in MeterReport,
+        where: not is_nil(r.analysis_usage_id),
+        select: {r.analysis_usage_id, r.status}
+      )
+    )
+    |> Map.new()
   end
 
   @doc """

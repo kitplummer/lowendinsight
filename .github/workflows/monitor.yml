@@ -136,6 +136,31 @@ jobs:
 
           echo "Ledger agrees with recorded usage."
 
+          if ! echo "$METRICS" | grep -q "lei_stripe_metering"; then
+            echo "::warning::No metering metrics exposed. Deployed release predates them."
+            exit 0
+          fi
+
+          meter() {
+            echo "$METRICS" | grep "lei_stripe_metering{measure=\"$1\"}" \
+              | awk '{print $2}' | tr -d '\r'
+          }
+
+          FAILED_METER=$(meter failed)
+          UNREPORTED=$(meter unreported)
+          UNREPORTED_CREDITS=$(meter unreported_credits)
+
+          echo "metering — reported: $(meter reported)  failed: ${FAILED_METER}  unreported: ${UNREPORTED}"
+
+          # Both mean usage was consumed and Stripe was not told, which is
+          # under-billing. They need different responses: "failed" we know
+          # about and can replay, "unreported" means the call was never made
+          # or the process died before it returned.
+          if [ "${FAILED_METER:-0}" -gt 0 ] || [ "${UNREPORTED:-0}" -gt 0 ]; then
+            echo "::error::${FAILED_METER} failed and ${UNREPORTED} unreported meter events, worth ${UNREPORTED_CREDITS} credits of unbilled usage."
+            exit 1
+          fi
+
       # Warns rather than fails when the key is absent. The readiness check above
       # is the primary signal and has already run; failing here every 15 minutes
       # until someone sets a secret would be alert fatigue on day one, and an
