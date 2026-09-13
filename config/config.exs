@@ -131,6 +131,15 @@ config :lowendinsight,
   # payment_settle is much tighter than payment_challenge: asking the price is
   # cheap, but every credential presented can reach Stripe, and that is the
   # half an attacker would use to grind through stolen tokens.
+  # The rails the app will accept payment through.
+  #
+  # Configured rather than discovered, so adding a rail is a deliberate act:
+  # Lei.Payments.validate_rails!/0 checks these at boot and refuses a name the
+  # ledger cannot record or a cadence a rail cannot perform. An empty list
+  # passes that check by having nothing to check, which is the failure this
+  # codebase keeps meeting -- so the list is set here rather than left to a
+  # default.
+  payment_rails: [Lei.Payments.Rails.Mpp],
   rate_limits: %{
     free: 60,
     pro: 600,

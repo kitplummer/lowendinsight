@@ -324,6 +324,15 @@
       "replace": "]",
       "guarded_by": "test/lei/payments/challenge_reaper_test.exs",
       "app": "apps/lowendinsight"
+    },
+    {
+      "id": "no-payment-rails-configured",
+      "bug": "validate_rails!/0 passes trivially on an empty list: it refuses bad names and contradictory cadences, and an empty list has neither. The rail shipped unconfigured, so the boot guarantee was nominal -- a misnamed or contradictory rail would have sailed through because there were no rails to check. A check that passes by examining nothing.",
+      "file": "config/config.exs",
+      "find": "  payment_rails: [Lei.Payments.Rails.Mpp],\n",
+      "replace": "  payment_rails: [],\n",
+      "guarded_by": "test/lei/payments_test.exs",
+      "app": "apps/lowendinsight"
     }
   ]
 }

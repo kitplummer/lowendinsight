@@ -324,6 +324,33 @@ defmodule Lei.PaymentsTest do
     end
   end
 
+  describe "the boot check has something to check" do
+    test "at least one rail is configured" do
+      # validate_rails!/0 passes trivially on an empty list -- it refuses bad
+      # names and contradictory cadences, and an empty list has neither. The
+      # rail shipped unconfigured once, so the boot guarantee was nominal: a
+      # misnamed rail would have sailed through because there were no rails.
+      rails = Application.get_env(:lowendinsight, :payment_rails, [])
+
+      assert rails != [],
+             "no payment rails configured, so validate_rails!/0 checks nothing"
+    end
+
+    test "every configured rail passes the check it exists for" do
+      assert :ok = Payments.validate_rails!()
+    end
+
+    test "every configured rail can actually write to the ledger" do
+      # The reason whitelist fires at insert time, after a rail has verified a
+      # real payment. A name the ledger will not accept means money taken and
+      # no entry to find it by.
+      for rail <- Application.get_env(:lowendinsight, :payment_rails, []) do
+        assert rail.name() in Payments.known_rails(),
+               "#{inspect(rail)} is configured but #{rail.name()} is not a ledger reason"
+      end
+    end
+  end
+
   describe "rail names are checked before money moves" do
     defmodule GoodRail do
       @behaviour Lei.Payments.MachineRail
