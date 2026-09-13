@@ -68,8 +68,7 @@ config :lowendinsight,
   critical_currency_level:
     String.to_integer(System.get_env("LEI_CRITICAL_CURRENCY_LEVEL") || "104"),
   high_currency_level: String.to_integer(System.get_env("LEI_HIGH_CURRENCY_LEVEL") || "52"),
-  medium_currency_level:
-    String.to_integer(System.get_env("LEI_MEDIUM_CURRENCY_LEVEL") || "26"),
+  medium_currency_level: String.to_integer(System.get_env("LEI_MEDIUM_CURRENCY_LEVEL") || "26"),
   critical_large_commit_level:
     String.to_float(System.get_env("LEI_CRITICAL_LARGE_COMMIT_LEVEL") || "0.30"),
   high_large_commit_level:
@@ -77,23 +76,16 @@ config :lowendinsight,
   medium_large_commit_level:
     String.to_float(System.get_env("LEI_MEDIUM_LARGE_COMMIT_LEVEL") || "0.05"),
   critical_functional_contributors_level:
-    String.to_integer(
-      System.get_env("LEI_CRITICAL_FUNCTIONAL_CONTRIBUTORS_LEVEL") || "2"
-    ),
+    String.to_integer(System.get_env("LEI_CRITICAL_FUNCTIONAL_CONTRIBUTORS_LEVEL") || "2"),
   high_functional_contributors_level:
     String.to_integer(System.get_env("LEI_HIGH_FUNCTIONAL_CONTRIBUTORS_LEVEL") || "3"),
   medium_functional_contributors_level:
-    String.to_integer(
-      System.get_env("LEI_MEDIUM_FUNCTIONAL_CONTRIBUTORS_LEVEL") || "5"
-    ),
+    String.to_integer(System.get_env("LEI_MEDIUM_FUNCTIONAL_CONTRIBUTORS_LEVEL") || "5"),
   jobs_per_core_max: String.to_integer(System.get_env("LEI_JOBS_PER_CORE_MAX") || "1"),
   base_temp_dir: System.get_env("LEI_BASE_TEMP_DIR") || "/tmp",
-  critical_agentic_level:
-    String.to_float(System.get_env("LEI_CRITICAL_AGENTIC_LEVEL") || "0.9"),
-  high_agentic_level:
-    String.to_float(System.get_env("LEI_HIGH_AGENTIC_LEVEL") || "0.7"),
-  medium_agentic_level:
-    String.to_float(System.get_env("LEI_MEDIUM_AGENTIC_LEVEL") || "0.3"),
+  critical_agentic_level: String.to_float(System.get_env("LEI_CRITICAL_AGENTIC_LEVEL") || "0.9"),
+  high_agentic_level: String.to_float(System.get_env("LEI_HIGH_AGENTIC_LEVEL") || "0.7"),
+  medium_agentic_level: String.to_float(System.get_env("LEI_MEDIUM_AGENTIC_LEVEL") || "0.3"),
   session_secret_key_base:
     System.get_env("LEI_SESSION_SECRET") ||
       "lei_dev_session_secret_that_is_at_least_64_bytes_long_for_cookie_store_to_work_properly"
@@ -136,6 +128,16 @@ config :lowendinsight,
 # acp_complete is far tighter than acp because completion creates an org and an
 # API key, where the other endpoints only write a session row.
 config :lowendinsight,
-  rate_limits: %{free: 60, pro: 600, acp: 20, acp_complete: 5}
+  # payment_settle is much tighter than payment_challenge: asking the price is
+  # cheap, but every credential presented can reach Stripe, and that is the
+  # half an attacker would use to grind through stolen tokens.
+  rate_limits: %{
+    free: 60,
+    pro: 600,
+    acp: 20,
+    acp_complete: 5,
+    payment_challenge: 30,
+    payment_settle: 10
+  }
 
 import_config "#{Mix.env()}.exs"
