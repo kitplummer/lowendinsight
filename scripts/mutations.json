@@ -216,6 +216,42 @@
       "replace": "",
       "guarded_by": "test/lowendinsight_get/theme_test.exs",
       "app": "apps/lowendinsight_get"
+    },
+    {
+      "id": "settlement-idempotency-boundary",
+      "bug": "Every payment rail, on either side, credits the ledger through one function so there is a single idempotency boundary. Dropping the external_ref makes a replayed webhook or resubmitted payment proof credit twice -- duplicate settlement under concurrency being both a documented x402 attack class and this codebase's recurring failure.",
+      "file": "apps/lowendinsight/lib/lei/payments.ex",
+      "find": "      external_ref: \"#{rail}:#{ref}\",\n",
+      "replace": "",
+      "guarded_by": "test/lei/payments_test.exs",
+      "app": "apps/lowendinsight"
+    },
+    {
+      "id": "settlement-ref-not-namespaced",
+      "bug": "external_ref is globally unique, so writing a rail's raw reference into it means two rails that ever mint the same string collapse into one another. Because {:error, :duplicate} is documented as an expected retry outcome, a caller following that contract treats a real second payment as an already-handled replay: money taken, no credits granted, and nothing in an append-only ledger to find it by.",
+      "file": "apps/lowendinsight/lib/lei/payments.ex",
+      "find": "      external_ref: \"#{rail}:#{ref}\",",
+      "replace": "      external_ref: ref,",
+      "guarded_by": "test/lei/payments_test.exs",
+      "app": "apps/lowendinsight"
+    },
+    {
+      "id": "reversal-ref-collides-with-purchase",
+      "bug": "Rails commonly identify a refund by the payment it reverses. Sharing the purchase's namespace means the reversal collides with its own original on external_ref and is refused as a duplicate -- the money goes back and nothing in the ledger records it.",
+      "file": "apps/lowendinsight/lib/lei/payments.ex",
+      "find": "      external_ref: \"#{rail}:reversal:#{ref}\",",
+      "replace": "      external_ref: \"#{rail}:#{ref}\",",
+      "guarded_by": "test/lei/payments_test.exs",
+      "app": "apps/lowendinsight"
+    },
+    {
+      "id": "cadence-unchecked",
+      "bug": "Rails declare which cadences they support and what they cost to collect through. Unchecked, a rail that declares none can never sell anything, and one declaring both :streaming and a minimum purchase has a contradiction -- streaming settles per interaction, so there is no purchase to apply a minimum to. Either is discovered at the first payment, which means discovered from a customer.",
+      "file": "apps/lowendinsight/lib/lei/payments.ex",
+      "find": "    Enum.each(rails, &validate_cadences!/1)\n",
+      "replace": "",
+      "guarded_by": "test/lei/payments_test.exs",
+      "app": "apps/lowendinsight"
     }
   ]
 }
