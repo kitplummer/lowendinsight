@@ -13,12 +13,22 @@ defmodule Lei.Payments.HumanRail do
   other.
   """
 
-  @typedoc "A verified settlement, the same shape the machine side produces."
+  @typedoc """
+  A verified settlement.
+
+  Close to the machine side's but not identical: this one carries `org_id`,
+  because a webhook arrives with no request to infer it from, and has no
+  `payer`, because the person is already an org. Both carry `rail`, so either
+  can be handed straight to `Lei.Payments.credit_settlement/2`.
+  """
   @type settlement :: %{
-          credits: pos_integer(),
-          settlement_ref: String.t(),
-          usd_value_cents: non_neg_integer() | nil,
-          org_id: pos_integer()
+          required(:credits) => pos_integer(),
+          required(:rail) => String.t(),
+          required(:settlement_ref) => String.t(),
+          required(:org_id) => pos_integer(),
+          optional(:usd_value_cents) => non_neg_integer(),
+          optional(:jurisdiction) => String.t(),
+          optional(:settled_at) => String.t()
         }
 
   @doc "Short name, used in the ledger reason as `purchase:<name>`."

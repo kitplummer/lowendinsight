@@ -366,20 +366,26 @@ it is already there.
 faces, each a behaviour with adapters behind it:
 
 ```
-machine side                        human side
-  Lei.Payments.MachineRail            Lei.Payments.HumanRail
-    requirements/2  -> the 402 body     checkout/2    -> hosted checkout
-    verify/2        -> proof accepted   handle_event/1 -> webhook settled
-    settlement_ref/1                    settlement_ref/1
-      |                                   |
-      MPP adapter                         Stripe Billing adapter
-      x402 adapter                        (others)
+machine side                          human side
+  Lei.Payments.MachineRail              Lei.Payments.HumanRail
+    name/0                                name/0
+    requirements/2 -> the 402 body        checkout/3     -> hosted checkout
+    verify/2       -> a settlement        handle_event/1 -> a settlement
+      |                                     |
+      MPP adapter                           Stripe Billing adapter
+      x402 adapter                          (others)
       (others)
-               \                       /
-                Lei.Credits.grant/4
-                reason: "purchase:<rail>"
-                external_ref: settlement_ref
+               \                         /
+            Lei.Payments.credit_settlement/2
+                reason:       "purchase:<rail>"
+                external_ref: "<rail>:<settlement_ref>"
+                         |
+                  Lei.Credits.grant/4
 ```
+
+`settlement_ref` is a field on the settlement a rail returns, not a callback.
+It becomes `credit_entries.external_ref`, namespaced by rail so two rails
+cannot mint colliding references.
 
 Both sides terminate in the same ledger. A rail's only privileges are producing
 payment requirements, verifying a settlement, and naming it — the naming being
@@ -399,7 +405,7 @@ does not put a chain transaction on the request path.
 
 x402 second rather than never: it is vendor-neutral (Apache 2.0, x402
 Foundation) where MPP settlement runs through Stripe, and it has the larger
-installed base — over 100 million transactions on Base through Q1 2026 against
+installed base — 130 million transactions all time as of mid-2026 against
 a protocol six months old. An agent that speaks x402 and not MPP is a customer
 we would otherwise turn away, and the adapter boundary is what makes serving
 both cheap.
@@ -573,6 +579,10 @@ Amendment 1:
   <https://arxiv.org/abs/2605.11781>
 - *When HTTP 402 Meets the Blockchain: Risks on Emerging x402 Payments* —
   <https://arxiv.org/abs/2607.19545>
+- *A Formal Analysis of Agent Payment Protocols* —
+  <https://arxiv.org/abs/2609.00060>. Not yet read; may cover MPP directly,
+  which matters because MPP shares enough substrate with x402 not to
+  automatically escape the findings above.
 
 
 - [ADR-001: Cache-Tiered Pricing Model](001-pricing-model-cache-tiered-analysis.md)

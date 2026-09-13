@@ -10,6 +10,11 @@ defmodule Lei.Application do
   def start(_type, _args) do
     Lei.AgenticDetector.warn_deprecated_env_vars()
 
+    # Fail here rather than mid-payment. A rail whose name the ledger will not
+    # accept can verify a real settlement and then fail to record it, leaving
+    # money taken and nothing in an append-only ledger to find it by.
+    :ok = Lei.Payments.validate_rails!()
+
     port = Application.get_env(:lowendinsight, :http_port, 4000)
 
     base = [Lei.Repo, Lei.BatchCache, Lei.RateLimiter]

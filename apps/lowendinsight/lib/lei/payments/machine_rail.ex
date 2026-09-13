@@ -22,10 +22,16 @@ defmodule Lei.Payments.MachineRail do
   boundary.
   """
   @type settlement :: %{
-          credits: pos_integer(),
-          settlement_ref: String.t(),
-          usd_value_cents: non_neg_integer() | nil,
-          payer: String.t() | nil
+          required(:credits) => pos_integer(),
+          # Which rail settled this. Part of the map rather than passed
+          # alongside it, so a rail can hand its settlement straight to
+          # Lei.Payments.credit_settlement/2 without the caller restating it.
+          required(:rail) => String.t(),
+          required(:settlement_ref) => String.t(),
+          optional(:usd_value_cents) => non_neg_integer(),
+          optional(:jurisdiction) => String.t(),
+          optional(:payer) => String.t(),
+          optional(:settled_at) => String.t()
         }
 
   @doc "Short name, used in the ledger reason as `purchase:<name>`."
@@ -45,7 +51,8 @@ defmodule Lei.Payments.MachineRail do
 
   Must be safe to call twice with the same proof. Returning a settlement does
   not credit anything — `Lei.Payments.credit_settlement/2` does, and the unique
-  index on `settlement_ref` is what makes a replay harmless.
+  index on `credit_entries.external_ref`, which the settlement's
+  `settlement_ref` becomes, is what makes a replay harmless.
   """
   @callback verify(proof(), opts :: keyword()) ::
               {:ok, settlement()} | {:error, term()}

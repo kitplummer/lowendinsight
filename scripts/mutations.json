@@ -23,7 +23,7 @@
       "id": "auth-paths-omission",
       "bug": "Eight routes unreachable in production, including all health/metrics and the /v1/orgs family (#69)",
       "file": "apps/lowendinsight_get/lib/lowendinsight_get/endpoint.ex",
-      "find": "/v1/analyze/batch /v1/usage /v1/health /v1/orgs\n                 /healthz /readyz /metrics)",
+      "find": "/v1/analyze/batch /v1/usage /v1/credits /v1/health /v1/orgs\n                 /healthz /readyz /metrics)",
       "replace": "/v1/analyze/batch /v1/usage)",
       "guarded_by": "test/lowendinsight_get/ops_routing_test.exs",
       "app": "apps/lowendinsight_get"
@@ -218,20 +218,20 @@
       "app": "apps/lowendinsight_get"
     },
     {
-      "id": "find-binary-files-cwd",
-      "bug": "Files.find_binary_files/1 cd'd into the checkout it was scanning. cwd is global to the BEAM and AnalyzerModule runs analyses concurrently under Task.async_stream, so save-and-restore was racy by construction: one task captured another task's temporary checkout as its 'original' and restored into it after it had been deleted. Every later relative path in the node then failed (#108).",
-      "file": "apps/lowendinsight/lib/files.ex",
-      "find": "        case System.cmd(\"grep\", [\"-rIL\", \".\"], cd: path) do",
-      "replace": "        File.cd!(path)\n\n        case System.cmd(\"grep\", [\"-rIL\", \".\"]) do",
-      "guarded_by": "test/cwd_restoration_test.exs",
-      "app": "apps/lowendinsight"
-    },
-    {
       "id": "settlement-idempotency-boundary",
       "bug": "Every payment rail, on either side, credits the ledger through one function so there is a single idempotency boundary. Dropping the external_ref makes a replayed webhook or resubmitted payment proof credit twice -- duplicate settlement under concurrency being both a documented x402 attack class and this codebase's recurring failure.",
       "file": "apps/lowendinsight/lib/lei/payments.ex",
-      "find": "      external_ref: ref,",
+      "find": "      external_ref: \"#{rail}:#{ref}\",\n",
       "replace": "",
+      "guarded_by": "test/lei/payments_test.exs",
+      "app": "apps/lowendinsight"
+    },
+    {
+      "id": "settlement-ref-not-namespaced",
+      "bug": "external_ref is globally unique, so writing a rail's raw reference into it means two rails that ever mint the same string collapse into one another. Because {:error, :duplicate} is documented as an expected retry outcome, a caller following that contract treats a real second payment as an already-handled replay: money taken, no credits granted, and nothing in an append-only ledger to find it by.",
+      "file": "apps/lowendinsight/lib/lei/payments.ex",
+      "find": "      external_ref: \"#{rail}:#{ref}\",",
+      "replace": "      external_ref: ref,",
       "guarded_by": "test/lei/payments_test.exs",
       "app": "apps/lowendinsight"
     }
