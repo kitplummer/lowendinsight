@@ -54,6 +54,12 @@ defmodule Lei.Metrics do
       # outside: every delivery 400s and nothing else changes. These counters
       # are how monitoring sees it. "unsigned" is scanners hitting a public
       # URL and is deliberately not an error signal.
+      # One series, value 1, labelled with the mode the key is in. Derived from
+      # the key, so a half-flipped deploy shows the key's truth here.
+      "# HELP lei_stripe_mode Stripe mode of the configured secret key",
+      "# TYPE lei_stripe_mode gauge",
+      "lei_stripe_mode{mode=\"#{Lei.Stripe.Mode.current()}\"} 1",
+      "",
       "# HELP lei_stripe_webhook_total Stripe webhook verification outcomes since boot",
       "# TYPE lei_stripe_webhook_total counter",
       webhook_metrics(),

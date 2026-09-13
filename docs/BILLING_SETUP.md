@@ -270,6 +270,41 @@ update Fly, verify, and let the old key lapse rather than revoking it first.
 signing secrets created in test mode do not exist in live mode. Switching keys
 means replacing all four values, not just the secret key.
 
+### The mode switch, and what guards it (#137)
+
+There is no mode setting. **The mode is whatever `STRIPE_SECRET_KEY`'s prefix
+says** (`sk_`/`rk_` + `test_`/`live_`), because only API keys carry a mode --
+price IDs, product IDs and `whsec_` secrets look identical in both.
+
+| Fault | Caught | How it shows |
+|---|---|---|
+| live key outside production | boot | refuses to start; production is `LEI_DEPLOY_ENV = "production"` in `fly.toml` |
+| key slot holds `pk_`/`whsec_`/garbage | boot | refuses to start, naming the prefix only |
+| webhook slot holds a non-`whsec_` value | boot | refuses to start |
+| price IDs from the other mode | after boot | `/readyz` `checks.stripe = "mismatch"` → degraded |
+| price archived | after boot | `checks.stripe = "inactive"` |
+| key expired, revoked, or lacks price read | after boot | `checks.stripe = "unauthorized"` |
+| Stripe down | after boot | `checks.stripe = "unreachable"`, retried each minute |
+| webhook secret from the other endpoint | **no check can** | `lei_stripe_webhook_total{result="invalid"}` on the first delivery |
+
+Price checks run at boot and hourly, and never block boot: a Stripe outage
+degrades readiness rather than preventing a start.
+
+The serving mode is `stripe_mode` on `/readyz` and `lei_stripe_mode{mode=...}`
+on `/metrics`. The canary asserts it against the repository variable
+`STRIPE_EXPECTED_MODE` (defaults to `test` when unset). **Setting that variable
+to `live` is part of the cutover** -- until it is, a live key fails the deploy
+canary, and afterwards a test key does:
+
+```bash
+gh variable set STRIPE_EXPECTED_MODE --body live
+```
+
+The deploy canary fails on `mismatch`, `inactive`, `unauthorized` and
+`unconfigured`, and rolls back. It tolerates `pending` and `unreachable`, so a
+Stripe outage mid-deploy does not roll back a good release; the monitor still
+fails on them.
+
 ## 5. Verification, in test mode
 
 Run in order — each step depends on the previous one having worked.
@@ -331,8 +366,10 @@ meters, products, prices, webhook endpoints and signing secrets.
 
 1. Recreate **in live mode**: the `analysis_cost` meter, the product, both prices
    (including the graduated first tier), and the webhook endpoint
-2. Replace all four `STRIPE_*` secrets **together** — a live secret key paired
-   with a test price ID fails in a way that looks like a pricing bug
+2. Replace all four `STRIPE_*` secrets **together** in one `flyctl secrets
+   import`, and set `STRIPE_EXPECTED_MODE=live`. A half-flip now reads
+   `mismatch` on `/readyz` rather than failing at the first customer -- but only
+   a delivered webhook proves the signing secret (see section 4)
 3. Re-run **all** of section 5 against live keys, with a real card, then refund
 4. Watch the first real invoice line by line rather than assuming it matches
 

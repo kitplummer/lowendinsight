@@ -6,6 +6,10 @@ defmodule Lei.StripeBehaviour do
   @callback report_meter_event(String.t(), integer(), integer(), String.t()) ::
               {:ok, map()} | {:error, term()}
   @callback retrieve_subscription(String.t()) :: {:ok, map()} | {:error, term()}
+  # Errors carry the HTTP status, unlike the callbacks above: the caller tells
+  # "no such price" (404) from "bad key" (401) by it, and the bodies do not.
+  @callback retrieve_price(String.t()) ::
+              {:ok, map()} | {:error, {pos_integer(), map()}} | {:error, term()}
 end
 
 defmodule Lei.Stripe do
@@ -200,6 +204,32 @@ defmodule Lei.Stripe do
 
       {:error, reason} ->
         {:error, reason}
+    end
+  end
+
+  @impl true
+  def retrieve_price(price_id) do
+    case HTTPoison.get(
+           "https://api.stripe.com/v1/prices/#{URI.encode_www_form(price_id)}",
+           headers()
+         ) do
+      {:ok, %HTTPoison.Response{status_code: 200, body: resp_body}} ->
+        {:ok, Poison.decode!(resp_body)}
+
+      {:ok, %HTTPoison.Response{status_code: status, body: resp_body}} ->
+        {:error, {status, decode_or_raw(resp_body)}}
+
+      {:error, reason} ->
+        {:error, reason}
+    end
+  end
+
+  # A proxy or load balancer error page is not JSON, and must not turn a
+  # classifiable status into a crash.
+  defp decode_or_raw(body) do
+    case Poison.decode(body) do
+      {:ok, decoded} -> decoded
+      _ -> %{"raw" => body}
     end
   end
 

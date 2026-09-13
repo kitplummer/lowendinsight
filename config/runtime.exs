@@ -7,6 +7,11 @@ import Config
 # Runtime configuration — evaluated at boot time (not compile time).
 # All env-var-dependent config belongs here.
 
+# Where this is deployed, as distinct from how it was compiled: a release is
+# always MIX_ENV=prod, so only this tells production from staging. Set in
+# fly.toml. Lei.Stripe.Mode refuses a live Stripe key unless it is "production".
+config :lowendinsight, deploy_env: System.get_env("LEI_DEPLOY_ENV")
+
 if config_env() == :prod do
   config :lowendinsight_get, LowendinsightGet.Endpoint,
     port: String.to_integer(System.get_env("PORT") || "4444"),
