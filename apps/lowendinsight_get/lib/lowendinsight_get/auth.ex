@@ -100,34 +100,47 @@ defmodule LowendinsightGet.Auth do
   # everyone else gets.
   #
   # Lei.Auth enforces scopes for the routes it owns; this is the same rule for
-  # the routes it does not.
-  @admin_prefixes ["/v1/cache"]
+  # the routes it does not, including "or admin", so an admin key still works
+  # everywhere.
+  @scope_prefixes [{"/v1/cache", "cache"}]
 
   defp check_scope(%Plug.Conn{halted: true} = conn, _path), do: conn
 
   defp check_scope(conn, path) do
-    if Enum.any?(@admin_prefixes, &String.starts_with?(path, &1)) do
-      # A JWT is signed with the deployment's own secret, so holding one is
-      # already operator-level. API keys are handed out to customers, and an
-      # analyze-scoped key must not be able to read or rewrite the cache.
-      if conn.assigns[:auth_method] == :jwt or admin_key?(conn) do
+    case required_scope(path) do
+      nil ->
         conn
-      else
-        Logger.warning("#{path} requested without admin scope")
 
-        conn
-        |> put_resp_content_type("application/json")
-        |> send_resp(403, Poison.encode!(%{error: "insufficient scope", required: "admin"}))
-        |> halt()
-      end
-    else
-      conn
+      required ->
+        # A JWT is signed with the deployment's own secret, so holding one is
+        # already operator-level. API keys are handed out to customers, and an
+        # analyze-scoped key must not be able to read or rewrite the cache.
+        if conn.assigns[:auth_method] == :jwt or has_scope?(conn, required) do
+          conn
+        else
+          Logger.warning("#{path} requested without #{required} scope")
+
+          conn
+          |> put_resp_content_type("application/json")
+          |> send_resp(403, Poison.encode!(%{error: "insufficient scope", required: required}))
+          |> halt()
+        end
     end
   end
 
-  defp admin_key?(conn) do
+  defp required_scope(path) do
+    Enum.find_value(@scope_prefixes, fn {prefix, scope} ->
+      if String.starts_with?(path, prefix), do: scope
+    end)
+  end
+
+  # A narrow scope, or admin. The canary needs only to invalidate a cache
+  # entry, and issuing it an admin key to do that would also let it create
+  # orgs and mint further keys -- more authority in a CI secret than the job
+  # requires.
+  defp has_scope?(conn, required) do
     case conn.assigns[:current_api_key] do
-      %{scopes: scopes} when is_list(scopes) -> "admin" in scopes
+      %{scopes: scopes} when is_list(scopes) -> required in scopes or "admin" in scopes
       _ -> false
     end
   end

@@ -19,9 +19,10 @@ defmodule LowendinsightGet.CacheInvalidateTest do
       )
 
     {:ok, admin_key, _} = ApiKeys.create_api_key(org, "admin", ["admin"])
+    {:ok, cache_key, _} = ApiKeys.create_api_key(org, "cache", ["cache"])
     {:ok, plain_key, _} = ApiKeys.create_api_key(org, "plain", ["analyze"])
 
-    %{admin_key: admin_key, plain_key: plain_key}
+    %{admin_key: admin_key, cache_key: cache_key, plain_key: plain_key}
   end
 
   defp invalidate(key, payload) do
@@ -70,6 +71,36 @@ defmodule LowendinsightGet.CacheInvalidateTest do
       conn = invalidate(key, %{url: ""})
 
       assert conn.status == 400
+    end
+  end
+
+  describe "least privilege" do
+    test "a cache-scoped key can invalidate", %{cache_key: key} do
+      # The canary needs exactly this and nothing else. An admin key would also
+      # let it create orgs and mint further keys -- more authority in a CI
+      # secret than the job requires.
+      conn = invalidate(key, %{url: @url})
+
+      assert conn.status in [200, 503]
+      refute conn.status == 403
+    end
+
+    test "a cache-scoped key cannot create orgs", %{cache_key: key} do
+      conn =
+        conn(:post, "/v1/orgs", Poison.encode!(%{name: "should-not-exist"}))
+        |> put_req_header("content-type", "application/json")
+        |> put_req_header("authorization", "Bearer #{key}")
+        |> LowendinsightGet.Endpoint.call(@opts)
+
+      assert conn.status == 403
+    end
+
+    test "an admin key still works on cache routes", %{admin_key: key} do
+      # Narrowing must not lock out the operator credential.
+      conn = invalidate(key, %{url: @url})
+
+      assert conn.status in [200, 503]
+      refute conn.status == 403
     end
   end
 
