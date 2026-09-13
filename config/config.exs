@@ -121,7 +121,11 @@ config :lowendinsight_get, LowendinsightGet.Scheduler,
 # dependency. A failing optional check reports "degraded" (still 200) rather
 # than pulling the instance out of rotation.
 config :lowendinsight,
-  optional_health_checks: [redis: {LowendinsightGet.Health, :check_redis, []}]
+  optional_health_checks: [
+    redis: {LowendinsightGet.Health, :check_redis, []},
+    # Whether the configured price IDs exist in the Stripe key's mode.
+    stripe: {Lei.Stripe.ObjectCheck, :status, []}
+  ]
 
 # Rate limit buckets, per minute. free/pro key on the API key; the acp buckets
 # key on client IP, because ACP is unauthenticated by design (ADR-001).

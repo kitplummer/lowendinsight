@@ -215,6 +215,40 @@ else
 fi
 echo
 
+# --- payments mode ---------------------------------------------------------
+
+bold "stripe mode"
+
+# The mode is derived from the key the deployment actually holds, so this is
+# the only place a half-flipped cutover is visible without taking a payment.
+# STRIPE_EXPECTED_MODE is the workflows' statement of intent; flipping it is
+# part of the cutover, and forgetting to fails here loudly rather than quietly.
+READYZ=$(curl -s --max-time 15 "$BASE_URL/readyz")
+MODE=$(printf '%s' "$READYZ" | jq -r '.stripe_mode // "absent"' 2>/dev/null || echo "unparseable")
+STRIPE_CHECK=$(printf '%s' "$READYZ" | jq -r '.checks.stripe // "absent"' 2>/dev/null || echo "unparseable")
+
+if [ -n "${STRIPE_EXPECTED_MODE:-}" ]; then
+  [ "$MODE" = "$STRIPE_EXPECTED_MODE" ] \
+    && ok "serving in ${MODE} mode" \
+    || bad "serving in ${STRIPE_EXPECTED_MODE} mode" "readyz reports stripe_mode=${MODE}"
+else
+  # A manual run with no expectation still refuses a mode that is not a mode.
+  case "$MODE" in
+    test|live) ok "serving in a real mode (${MODE}; set STRIPE_EXPECTED_MODE to assert which)" ;;
+    *) bad "serving in a real mode" "readyz reports stripe_mode=${MODE}" ;;
+  esac
+fi
+
+# Configuration faults fail. "unreachable" and "pending" do not: a Stripe
+# outage during a deploy must not roll back a good release. Monitoring still
+# fails on them, because they make readiness degraded.
+case "$STRIPE_CHECK" in
+  ok) ok "configured prices exist in ${MODE} mode" ;;
+  pending|unreachable) ok "stripe objects not yet confirmed (${STRIPE_CHECK}); monitor will retry" ;;
+  *) bad "configured prices exist in ${MODE} mode" "readyz checks.stripe=${STRIPE_CHECK}" ;;
+esac
+echo
+
 # --- result ----------------------------------------------------------------
 
 bold "=== ${PASS} passed, ${FAIL} failed ==="

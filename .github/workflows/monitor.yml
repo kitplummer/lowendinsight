@@ -168,6 +168,8 @@ jobs:
       - name: Canary the web UI
         env:
           LEI_ADMIN_API_KEY: ${{ secrets.LEI_ADMIN_API_KEY }}
+          # Flipped to "live" at cutover (#141). Until then, a live key is wrong.
+          STRIPE_EXPECTED_MODE: ${{ vars.STRIPE_EXPECTED_MODE || 'test' }}
         run: scripts/canary.sh https://lowendinsight.dev
 
       # Warns rather than fails when the key is absent. The readiness check above

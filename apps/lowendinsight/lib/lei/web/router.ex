@@ -516,7 +516,12 @@ defmodule Lei.Web.Router do
   end
 
   get "/readyz" do
-    data = Lei.Health.readiness()
+    # The mode is derived from the key, so this is what is actually serving,
+    # not what someone intended. The canary asserts it.
+    data =
+      Lei.Health.readiness()
+      |> Map.put(:stripe_mode, Lei.Stripe.Mode.current())
+
     # "degraded" still serves traffic -- only a required dependency failing
     # ("error") should pull this instance out of rotation.
     status = if data.status == "error", do: 503, else: 200

@@ -15,6 +15,8 @@ processes = []
   release_command = "/opt/app/bin/lowendinsight_get eval 'LowendinsightGet.Release.migrate()'"
 
 [env]
+  # Lei.Stripe.Mode refuses a live Stripe key anywhere this is not "production".
+  LEI_DEPLOY_ENV = "production"
   ERL_AFLAGS = "-proto_dist inet6_tcp"
   PORT = "8080"
 

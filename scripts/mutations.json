@@ -320,8 +320,8 @@
       "id": "challenge-reaper-unsupervised",
       "bug": "purge_expired/1 existing is not the same as it running. Unanswered challenges are normal -- an agent asking the price and leaving -- and each is a row, so without a supervised sweep the table grows for as long as the service runs.",
       "file": "apps/lowendinsight/lib/lei/application.ex",
-      "find": ", Lei.Payments.ChallengeReaper]",
-      "replace": "]",
+      "find": "      Lei.Payments.ChallengeReaper,\n",
+      "replace": "",
       "guarded_by": "test/lei/payments/challenge_reaper_test.exs",
       "app": "apps/lowendinsight"
     },
@@ -332,6 +332,96 @@
       "find": "  payment_rails: [Lei.Payments.Rails.Mpp],\n",
       "replace": "  payment_rails: [],\n",
       "guarded_by": "test/lei/payments_test.exs",
+      "app": "apps/lowendinsight"
+    },
+    {
+      "id": "stripe-live-key-outside-production",
+      "bug": "A live Stripe key boots anywhere. A laptop or staging deploy holding a live key charges real cards, and nothing says so until a statement does (#137).",
+      "file": "apps/lowendinsight/lib/lei/stripe/mode.ex",
+      "find": "        unless production?(deploy_env) do",
+      "replace": "        unless true do",
+      "guarded_by": "test/lei/stripe/mode_test.exs",
+      "app": "apps/lowendinsight"
+    },
+    {
+      "id": "stripe-mode-from-declared-flag",
+      "bug": "Mode reported from something other than the key prefix: restricted live keys (rk_live_) read as test, so /readyz and the canary report sandbox while real money moves (#137).",
+      "file": "apps/lowendinsight/lib/lei/stripe/mode.ex",
+      "find": "  @live_prefixes [\"sk_live_\", \"rk_live_\"]",
+      "replace": "  @live_prefixes [\"sk_live_\"]",
+      "guarded_by": "test/lei/stripe/mode_test.exs",
+      "app": "apps/lowendinsight"
+    },
+    {
+      "id": "stripe-malformed-key-is-unconfigured",
+      "bug": "A publishable key or webhook secret in STRIPE_SECRET_KEY reads as 'billing off' rather than a mistake, boots, and fails at the first customer (#137).",
+      "file": "apps/lowendinsight/lib/lei/stripe/mode.ex",
+      "find": "      true -> :malformed\n",
+      "replace": "      true -> :unconfigured\n",
+      "guarded_by": "test/lei/stripe/mode_test.exs",
+      "app": "apps/lowendinsight"
+    },
+    {
+      "id": "stripe-webhook-secret-not-validated",
+      "bug": "An API key pasted into STRIPE_WEBHOOK_SECRET boots, and every webhook delivery then fails verification silently -- the pre-#62 failure (#137).",
+      "file": "apps/lowendinsight/lib/lei/stripe/mode.ex",
+      "find": "not String.starts_with?(webhook_secret, \"whsec_\")",
+      "replace": "false",
+      "guarded_by": "test/lei/stripe/mode_test.exs",
+      "app": "apps/lowendinsight"
+    },
+    {
+      "id": "stripe-mode-check-not-at-boot",
+      "bug": "Mode validation exists but is not called at boot, so every refusal it makes is unreachable in a running system (#137).",
+      "file": "apps/lowendinsight/lib/lei/application.ex",
+      "find": "    :ok = Lei.Stripe.Mode.validate!()\n",
+      "replace": "",
+      "guarded_by": "test/lei/stripe/mode_visibility_test.exs",
+      "app": "apps/lowendinsight"
+    },
+    {
+      "id": "stripe-missing-price-reads-unreachable",
+      "bug": "A price from the other mode (404, 'No such price') is classified as a transient outage: the canary lets it through and the half-flip ships (#137).",
+      "file": "apps/lowendinsight/lib/lei/stripe/object_check.ex",
+      "find": "      {:error, {404, _body}} -> \"mismatch\"\n",
+      "replace": "",
+      "guarded_by": "test/lei/stripe/object_check_test.exs",
+      "app": "apps/lowendinsight"
+    },
+    {
+      "id": "stripe-object-check-passes-unconfigured-production",
+      "bug": "Production with no Stripe key or no price IDs reports ok: the check passes by examining nothing (#137).",
+      "file": "apps/lowendinsight/lib/lei/stripe/object_check.ex",
+      "find": "        if Lei.Stripe.Mode.production?(deploy_env), do: \"unconfigured\", else: \"ok\"\n\n      _mode when",
+      "replace": "        \"ok\"\n\n      _mode when",
+      "guarded_by": "test/lei/stripe/object_check_test.exs",
+      "app": "apps/lowendinsight"
+    },
+    {
+      "id": "stripe-object-check-not-in-readiness",
+      "bug": "The object check runs but is not registered with readiness, so a mismatch is logged and never reaches /readyz or monitoring (#137).",
+      "file": "config/config.exs",
+      "find": "    stripe: {Lei.Stripe.ObjectCheck, :status, []}\n",
+      "replace": "",
+      "guarded_by": "test/lei/stripe/object_check_test.exs",
+      "app": "apps/lowendinsight"
+    },
+    {
+      "id": "stripe-mode-not-on-readyz",
+      "bug": "The serving mode is not exposed on /readyz, so the canary cannot assert it and a human cannot see it (#137).",
+      "file": "apps/lowendinsight/lib/lei/web/router.ex",
+      "find": "      |> Map.put(:stripe_mode, Lei.Stripe.Mode.current())\n",
+      "replace": "",
+      "guarded_by": "test/lei/stripe/mode_visibility_test.exs",
+      "app": "apps/lowendinsight"
+    },
+    {
+      "id": "stripe-object-check-unsupervised",
+      "bug": "ObjectCheck exists and is registered with readiness but never started: status/0 reads not_running forever, so readiness is degraded for a reason that says nothing about Stripe, and the price check never runs (#137).",
+      "file": "apps/lowendinsight/lib/lei/application.ex",
+      "find": "      Lei.Stripe.ObjectCheck\n",
+      "replace": "",
+      "guarded_by": "test/lei/stripe/object_check_test.exs",
       "app": "apps/lowendinsight"
     }
   ]
