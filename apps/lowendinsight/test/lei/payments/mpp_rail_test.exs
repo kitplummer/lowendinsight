@@ -78,6 +78,27 @@ defmodule Lei.Payments.Rails.MppTest do
       assert challenge.request["currency"] == "usd"
     end
 
+    test "the challenge names our Stripe profile, which SPTs are scoped to" do
+      # An agent's wallet mints a token for a specific seller profile, and the
+      # challenge is where it learns which. Without it no real client can
+      # produce a token this rail can charge (#143).
+      challenge = issue()
+
+      assert challenge.request["methodDetails"] == %{
+               "networkId" => "profile_test_lei",
+               "paymentMethodTypes" => ["card", "link"]
+             }
+    end
+
+    test "no challenge is issued without a Stripe profile" do
+      # A challenge no client can answer is a 402 that looks payable and is not.
+      previous = Application.get_env(:lowendinsight, :stripe_profile_id)
+      Application.delete_env(:lowendinsight, :stripe_profile_id)
+      on_exit(fn -> Application.put_env(:lowendinsight, :stripe_profile_id, previous) end)
+
+      assert {:error, :no_stripe_profile} = Mpp.requirements(15_000)
+    end
+
     test "a purchase too small to charge is refused rather than charged zero" do
       # Below a cent there is nothing a network can take, and a zero-amount
       # intent would settle for nothing and read as success.
@@ -96,10 +117,14 @@ defmodule Lei.Payments.Rails.MppTest do
     test "a good credential settles" do
       challenge = issue()
 
-      expect(Lei.StripeMock, :create_payment_intent, fn params ->
+      expect(Lei.StripeMock, :confirm_shared_payment_token, fn params ->
         assert params.amount == 1500
         assert params.currency == "usd"
-        assert params.payment_method == "spt_test_123"
+        # The token travels as a token. #131 passed it as payment_method, which
+        # Stripe answers with "No such PaymentMethod" -- and this test asserted
+        # exactly that call, so it passed (#143).
+        assert params.spt == "spt_test_123"
+        refute Map.has_key?(params, :payment_method)
         {:ok, intent()}
       end)
 
@@ -115,12 +140,28 @@ defmodule Lei.Payments.Rails.MppTest do
       assert settlement.payer == "acct_agent"
     end
 
+    test "the charge is idempotent per challenge and token" do
+      # A retry after a timeout must reach the PaymentIntent that already took
+      # the money. Without a key, Stripe creates a second one -- and an SPT is
+      # single-use, so that second attempt is refused as "deactivated" and the
+      # agent that paid is turned away. Observed against sandbox Stripe (#143).
+      challenge = issue()
+
+      expect(Lei.StripeMock, :confirm_shared_payment_token, 2, fn params ->
+        assert params.idempotency_key == "mpp_#{challenge.id}_spt_test_123"
+        {:ok, intent()}
+      end)
+
+      assert {:ok, _} = Mpp.verify(credential_for(challenge), challenge: challenge)
+      assert {:ok, _} = Mpp.verify(credential_for(challenge), challenge: challenge)
+    end
+
     test "the settlement reference is Stripe's, not ours" do
       # It becomes credit_entries.external_ref. Two of ours could name one
       # settlement, and the replay defence would not hold.
       challenge = issue()
 
-      expect(Lei.StripeMock, :create_payment_intent, fn _ ->
+      expect(Lei.StripeMock, :confirm_shared_payment_token, fn _ ->
         {:ok, intent(%{"id" => "pi_9XYZ"})}
       end)
 
@@ -132,7 +173,7 @@ defmodule Lei.Payments.Rails.MppTest do
       # The point of the shape: a rail hands its settlement straight to
       # Lei.Payments.credit_settlement/2 without the caller restating anything.
       challenge = issue()
-      expect(Lei.StripeMock, :create_payment_intent, fn _ -> {:ok, intent()} end)
+      expect(Lei.StripeMock, :confirm_shared_payment_token, fn _ -> {:ok, intent()} end)
 
       {:ok, settlement} = Mpp.verify(credential_for(challenge), challenge: challenge)
 
@@ -191,7 +232,7 @@ defmodule Lei.Payments.Rails.MppTest do
       # payment that later fails.
       challenge = issue()
 
-      expect(Lei.StripeMock, :create_payment_intent, fn _ ->
+      expect(Lei.StripeMock, :confirm_shared_payment_token, fn _ ->
         {:ok, intent(%{"status" => "processing"})}
       end)
 
@@ -199,10 +240,37 @@ defmodule Lei.Payments.Rails.MppTest do
                Mpp.verify(credential_for(challenge), challenge: challenge)
     end
 
+    test "an authorisation is not money" do
+      # ADR-002: credits are granted against settled money, never an
+      # authorisation. requires_capture means the funds are held, not taken,
+      # and nothing here captures them (#143).
+      challenge = issue()
+
+      expect(Lei.StripeMock, :confirm_shared_payment_token, fn _ ->
+        {:ok, intent(%{"status" => "requires_capture", "amount_received" => 0})}
+      end)
+
+      assert {:error, {:payment_not_settled, "requires_capture"}} =
+               Mpp.verify(credential_for(challenge), challenge: challenge)
+    end
+
+    test "a payment needing customer action is refused distinctly" do
+      # An agent cannot complete 3DS. Saying so is more use to it than a
+      # generic failure.
+      challenge = issue()
+
+      expect(Lei.StripeMock, :confirm_shared_payment_token, fn _ ->
+        {:ok, intent(%{"status" => "requires_action"})}
+      end)
+
+      assert {:error, :payment_requires_action} =
+               Mpp.verify(credential_for(challenge), challenge: challenge)
+    end
+
     test "a declined payment" do
       challenge = issue()
 
-      expect(Lei.StripeMock, :create_payment_intent, fn _ ->
+      expect(Lei.StripeMock, :confirm_shared_payment_token, fn _ ->
         {:error, %{"error" => %{"code" => "card_declined"}}}
       end)
 

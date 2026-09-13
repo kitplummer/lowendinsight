@@ -264,11 +264,12 @@ update Fly, verify, and let the old key lapse rather than revoking it first.
 | `STRIPE_WEBHOOK_SECRET` | yes | must match the registered endpoint |
 | `STRIPE_PRO_PRICE_ID` | yes | verify it points at a test-mode price |
 | `STRIPE_METERED_PRICE_ID` | yes | verify it is metered, priced per cent |
+| `STRIPE_PROFILE_ID` | **not yet** | `profile_test_…` in sandbox, `profile_…` live. Agents' Shared Payment Tokens are scoped to it; without it the MPP rail answers 402 with `payment: "unavailable"` and no challenge (#143) |
 | `LEI_BASE_URL` | no | defaults to `https://lowendinsight.dev` |
 
 **Test and live mode have separate objects.** Price IDs, webhook endpoints and
 signing secrets created in test mode do not exist in live mode. Switching keys
-means replacing all four values, not just the secret key.
+means replacing all five values, not just the secret key.
 
 ### The mode switch, and what guards it (#137)
 
@@ -281,6 +282,7 @@ price IDs, product IDs and `whsec_` secrets look identical in both.
 | live key outside production | boot | refuses to start; production is `LEI_DEPLOY_ENV = "production"` in `fly.toml` |
 | key slot holds `pk_`/`whsec_`/garbage | boot | refuses to start, naming the prefix only |
 | webhook slot holds a non-`whsec_` value | boot | refuses to start |
+| `STRIPE_PROFILE_ID` from the other mode (`profile_test_` vs `profile_`) | boot | refuses to start |
 | price IDs from the other mode | after boot | `/readyz` `checks.stripe = "mismatch"` → degraded |
 | price archived | after boot | `checks.stripe = "inactive"` |
 | key expired, revoked, or lacks price read | after boot | `checks.stripe = "unauthorized"` |
@@ -366,7 +368,7 @@ meters, products, prices, webhook endpoints and signing secrets.
 
 1. Recreate **in live mode**: the `analysis_cost` meter, the product, both prices
    (including the graduated first tier), and the webhook endpoint
-2. Replace all four `STRIPE_*` secrets **together** in one `flyctl secrets
+2. Replace all five `STRIPE_*` secrets **together** in one `flyctl secrets
    import`, and set `STRIPE_EXPECTED_MODE=live`. A half-flip now reads
    `mismatch` on `/readyz` rather than failing at the first customer -- but only
    a delivered webhook proves the signing secret (see section 4)

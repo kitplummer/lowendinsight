@@ -76,6 +76,7 @@ defmodule Lei.Stripe.Mode do
   def validate!(opts \\ []) do
     key = option(opts, :key, :stripe_secret_key)
     webhook_secret = option(opts, :webhook_secret, :stripe_webhook_secret)
+    profile = option(opts, :profile, :stripe_profile_id)
     deploy_env = option(opts, :deploy_env, :deploy_env)
 
     case of(key) do
@@ -113,7 +114,40 @@ defmodule Lei.Stripe.Mode do
       """
     end
 
+    validate_profile!(of(key), profile)
+
     :ok
+  end
+
+  # The one configured ID besides the key that carries a mode: sandbox profiles
+  # are profile_test_. A live key with a sandbox profile issues challenges no
+  # live wallet can mint a token for -- the half-flip again, one field over.
+  defp validate_profile!(_mode, profile) when profile in [nil, ""], do: :ok
+
+  defp validate_profile!(mode, profile) do
+    profile_mode =
+      cond do
+        String.starts_with?(profile, "profile_test_") -> :test
+        String.starts_with?(profile, "profile_") -> :live
+        true -> :malformed
+      end
+
+    cond do
+      profile_mode == :malformed ->
+        raise ArgumentError, """
+        STRIPE_PROFILE_ID is set but is not a Stripe profile ID \
+        (begins #{inspect(visible_prefix(profile))}). Expected profile_ or profile_test_.
+        """
+
+      mode in [:live, :test] and profile_mode != mode ->
+        raise ArgumentError, """
+        STRIPE_PROFILE_ID is a #{profile_mode} profile, but STRIPE_SECRET_KEY is a \
+        #{mode} key. Replace them together.
+        """
+
+      true ->
+        :ok
+    end
   end
 
   defp option(opts, name, config_key) do

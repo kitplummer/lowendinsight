@@ -73,6 +73,22 @@ defmodule Lei.Payments.Http do
             |> send_resp(503, Poison.encode!(%{error: "payment temporarily unavailable"}))
         end
 
+      {:error, :no_stripe_profile} ->
+        # The caller still needs credits; it just cannot buy them this way. A
+        # 500 would say the service is broken when it is declining a sale.
+        Logger.error("Payment challenge not issued: STRIPE_PROFILE_ID is not configured")
+
+        conn
+        |> put_resp_content_type("application/json")
+        |> send_resp(
+          402,
+          Poison.encode!(%{
+            error: "insufficient credits",
+            credits: credits,
+            payment: "unavailable"
+          })
+        )
+
       {:error, reason} ->
         Logger.error("Could not build payment requirements: #{inspect(reason)}")
 

@@ -2,9 +2,11 @@ defmodule Lei.Payments.Rails.Mpp do
   @moduledoc """
   The Machine Payments Protocol rail.
 
-  Settles through Stripe: the agent presents a Shared Payment Token, we create
-  a PaymentIntent against it, and Stripe offramps stablecoin or charges a card
-  into the same balance our other revenue lands in. That is why this is the
+  Settles through Stripe: the agent presents a Shared Payment Token, we confirm
+  a PaymentIntent with it, and Stripe charges the card or Link wallet behind it
+  into the same balance our other revenue lands in. Stablecoin is a different
+  MPP method (on-chain transfer to a deposit address) and is not this rail
+  (#144). That is why this is the
   first adapter -- it puts machine income through the system that already
   handles tax calculation and reporting, which ADR-002's accounting section
   named as the one open item that can create liability retroactively.
@@ -69,27 +71,53 @@ defmodule Lei.Payments.Rails.Mpp do
   def requirements(credits, opts \\ []) when is_integer(credits) and credits > 0 do
     cents = cents_for(credits)
 
-    if cents < 1 do
-      # Below a cent there is nothing a payment network can charge, and a
-      # zero-amount intent would settle for nothing and read as success.
-      {:error, {:below_minimum_chargeable, credits}}
-    else
-      {:ok,
-       Challenge.new(
-         realm: Keyword.get(opts, :realm, realm()),
-         method: "stripe",
-         intent: "charge",
-         expires: Keyword.get(opts, :expires, DateTime.add(DateTime.utc_now(), 300, :second)),
-         description: "#{credits} LowEndInsight credits",
-         request: %{
-           # Strings, because the request is canonicalised and compared
-           # byte-for-byte. A float rendering differently in two languages
-           # would refuse a legitimate payment.
-           "amount" => Integer.to_string(cents),
-           "currency" => "usd",
-           "credits" => credits
-         }
-       )}
+    cond do
+      cents < 1 ->
+        # Below a cent there is nothing a payment network can charge, and a
+        # zero-amount intent would settle for nothing and read as success.
+        {:error, {:below_minimum_chargeable, credits}}
+
+      is_nil(profile_id()) ->
+        # SPTs are minted for a seller profile named in the challenge. Without
+        # one, no client can produce a token this rail can charge, and the
+        # challenge would look payable and fail at the wallet.
+        {:error, :no_stripe_profile}
+
+      true ->
+        {:ok,
+         Challenge.new(
+           realm: Keyword.get(opts, :realm, realm()),
+           method: "stripe",
+           intent: "charge",
+           expires: Keyword.get(opts, :expires, DateTime.add(DateTime.utc_now(), 300, :second)),
+           description: "#{credits} LowEndInsight credits",
+           request: %{
+             # Strings, because the request is canonicalised and compared
+             # byte-for-byte. A float rendering differently in two languages
+             # would refuse a legitimate payment.
+             "amount" => Integer.to_string(cents),
+             "currency" => "usd",
+             "credits" => credits,
+             # The shape of Stripe's charge method (draft-stripe-charge-00, as
+             # the reference server mppx emits it). networkId is the profile the
+             # agent's wallet scopes its token to.
+             "methodDetails" => %{
+               "networkId" => profile_id(),
+               "paymentMethodTypes" => ["card", "link"]
+             }
+           }
+         )}
+    end
+  end
+
+  @doc """
+  The Stripe profile SPTs are granted to. `profile_test_...` in a sandbox,
+  `profile_...` live; `Lei.Stripe.Mode` refuses a pairing with the other mode's key.
+  """
+  def profile_id do
+    case Application.get_env(:lowendinsight, :stripe_profile_id) do
+      id when is_binary(id) and id != "" -> id
+      _ -> nil
     end
   end
 
@@ -142,13 +170,25 @@ defmodule Lei.Payments.Rails.Mpp do
   defp create_intent(issued, token) do
     amount = String.to_integer(issued.request["amount"])
 
-    case Lei.Stripe.impl().create_payment_intent(%{
+    case Lei.Stripe.impl().confirm_shared_payment_token(%{
            amount: amount,
            currency: issued.request["currency"],
-           payment_method: token
+           spt: token,
+           # Per challenge and token: a retry of this payment reaches the intent
+           # that already took the money; a different token is a different
+           # payment. The reference server keys it the same way.
+           idempotency_key: "mpp_#{issued.id}_#{token}",
+           metadata: %{"challenge_id" => issued.id, "credits" => issued.request["credits"]}
          }) do
-      {:ok, %{"status" => status} = intent} when status in ["succeeded", "requires_capture"] ->
+      # succeeded only. requires_capture is an authorisation -- funds held, not
+      # taken -- and ADR-002 grants credits against settled money, never that.
+      {:ok, %{"status" => "succeeded"} = intent} ->
         {:ok, intent}
+
+      {:ok, %{"status" => "requires_action"}} ->
+        # 3DS or similar. An agent cannot complete it, and saying so is more
+        # use to it than a generic refusal.
+        {:error, :payment_requires_action}
 
       {:ok, %{"status" => status}} ->
         # Anything not settled is not money. Treating "processing" as paid is
