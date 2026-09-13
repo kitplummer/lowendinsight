@@ -172,16 +172,17 @@
 
             <div class="box">
               <h2 class="title is-5">Try it</h2>
-              <form id="form" action="/url=" method="get" onsubmit="return validate_and_submit()">
+              <form id="form" action="/url=" method="get" onsubmit="return validate_and_submit(event)">
                 <div class="field has-addons">
                   <div class="control is-expanded">
-                    <input type="text" id="input-url" class="input" placeholder="https://github.com/org/repo" required>
+                    <input type="text" id="input-url" class="input" placeholder="https://github.com/org/repo" required oninput="remove_error()">
                   </div>
                   <div class="control">
-                    <button type="submit" class="button is-dark">Analyze</button>
+                    <button type="submit" id="analyze-button" class="button is-dark">Analyze</button>
                   </div>
                 </div>
               </form>
+              <span id="invalid-url" style="display: none; color: #cc0f35;">Invalid repo URL</span>
             </div>
 
             <div class="box">
