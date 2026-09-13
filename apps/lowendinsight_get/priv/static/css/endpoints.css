@@ -14,7 +14,7 @@ header {
 
 #footer {
 	height: 50px; 
-	background-color: #f0f0f0;
+	background-color: var(--footer-bg);
 	margin-top: auto; 
 }
 
@@ -51,7 +51,7 @@ a.is-family-code {
 }
 
 .button.is-warning {
-	background-color: #ffea75;
+	background-color: var(--accent-yellow);
 }
 
 #report-info-box.column {
@@ -60,7 +60,7 @@ a.is-family-code {
 }
 
 .report-info-box {
-	background-color: #eaeaea; 
+	background-color: var(--surface-alt); 
 	display: block; 
 	font-family: arial;
 	font-size: 15px;
@@ -71,7 +71,7 @@ a.is-family-code {
 
 .reportbox strong {
     font-family: copperplate;
-	color: #1C398D;
+	color: var(--link);
 	font-size: 16px;
 }
 
@@ -82,7 +82,7 @@ a.is-family-code {
 .sub {
 	margin: 27px 0px !important;
 	padding: 9px !important;
-	background-color: #333333;
+	background-color: var(--ink-strong);
 	display: block; 
 	border-radius: 9px;
 	white-space: nowrap;
@@ -112,76 +112,76 @@ a.is-family-code {
 div.box.tree, div.jsontree_value-wrapper {
 	width: max-content;
 	box-shadow: none;
-	background-color: #f9f9f9;
+	background-color: var(--ramp-01);
 	padding: 4px 4px 4px 0;
 }
 
 .table .json {
-	background-color: #f9f9f9;
+	background-color: var(--ramp-01);
 }
 
 .table .default_branch {
-	background-color: #f7f7f7;
+	background-color: var(--ramp-02);
 }
 
 .table .total_commits {
-	background-color: #f5f5f5;
+	background-color: var(--ramp-03);
 }
 
 .table .last_commit {
-	background-color: #f3f3f3;
+	background-color: var(--ramp-04);
 }
 
 .table .repo_size {
-	background-color: #f1f1f1;
+	background-color: var(--ramp-05);
 }
 
 .table .sbom_risk {
-	background-color: #efefef;
+	background-color: var(--ramp-06);
 }
 
 .table .commit_currency_risk {
-	background-color: #ededed;
+	background-color: var(--ramp-07);
 }
 
 .table .commit_currency {
-	background-color: #ebebeb;
+	background-color: var(--ramp-08);
 }
 
 .table .recent_commit_pct {
-	background-color: #e9e9e9;
+	background-color: var(--ramp-09);
 }
 
 .table .large_commit_risk {
-	background-color: #e7e7e7;
+	background-color: var(--ramp-10);
 }
 
 .table .fc_risk {
-	background-color: #e5e5e5;
+	background-color: var(--ramp-11);
 }
 
 .table .fccount {
-	background-color: #e3e3e3;
+	background-color: var(--ramp-12);
 }
 
 .table .contributor_risk {
-	background-color: #e1e1e1;
+	background-color: var(--ramp-13);
 }
 
 .table .ccount {
-	background-color: #dfdfdf;
+	background-color: var(--ramp-14);
 }
 
 .table .risk {
-	background-color: #dbdbdb;
+	background-color: var(--ramp-15);
 }
 
 .table .project {
-	background-color: #d3d3d3;
+	background-color: var(--border);
 }
 
 tr:hover div.box.tree, tr:hover div.jsontree_value-wrapper, tr:hover td {
-	background-color: #eeeeee !important;
+	background-color: var(--surface) !important;
 }
 
 tr.tablehead th {
@@ -190,13 +190,13 @@ tr.tablehead th {
 
 .table thead td {
 	vertical-align: middle;
-	border-bottom: 1px solid #b3b3b3;
+	border-bottom: 1px solid var(--muted);
 	overflow: visible;
 	overflow-x: scroll;
 }
 
 div p strong {
-	color: #1C398D;
+	color: var(--link);
 }
 
 .lowrisk, .mediumrisk {
@@ -212,7 +212,7 @@ div p strong {
 
 .criticalrisk {
 	font-weight: bold;
-	background-color: #DC143C !important;
+	background-color: var(--accent-crimson) !important;
 	color: white;
 	padding: 4px;
 }
@@ -253,7 +253,7 @@ a:link {
 }
 
 .tablehead {
-	background-color: #333333;
+	background-color: var(--ink-strong);
     color: white;
 }
 
@@ -280,7 +280,7 @@ th .tooltip {
 	position: fixed;
 	visibility: hidden;
 	width: 28vw;
-	background-color: #e6e6e6;
+	background-color: var(--hover);
 	color: black;
 	text-align: center;
 	padding: 5px 5px;
@@ -313,7 +313,7 @@ th .tooltip {
 }
 
 .dropdown-content {
-	border-bottom: 1px solid #333333;
+	border-bottom: 1px solid var(--ink-strong);
 	opacity: 1;
 }
 
@@ -334,17 +334,17 @@ th .tooltip {
 	margin-top: 2px;
 	padding-left: 17px;
 	-webkit-appearance: none;
-	box-shadow: 0 2px 2px 0 rgba(0, 0, 0, 0.16), 0 0 0 1px rgba(0, 0, 0, 0.08);
+	box-shadow: 0 2px 2px 0 var(--shadow-strong), 0 0 0 1px var(--shadow-soft);
 }
 
 .search:hover, .search:focus {
 	outline: none;
-	box-shadow: 0 3px 8px 0 rgba(0, 0, 0, 0.16), 0 0 0 1px rgba(0, 0, 0, 0.08);
+	box-shadow: 0 3px 8px 0 var(--shadow-strong), 0 0 0 1px var(--shadow-soft);
 }
 
 .svg {
-	fill:#151513; 
-	color:#fff; 
+	fill:var(--corner); 
+	color:var(--on-accent); 
 	position: absolute; 
 	top: 0; 
 	border: 0; 
@@ -358,14 +358,14 @@ th .tooltip {
 	font-size: 11px;
 	padding: 3px 5px;
 	margin: 0 4px 0 4px;
-	background-color: rgba(255, 0, 0, 0.925);
+	background-color: var(--accent-red);
 	border-radius: 4px;
 	width: max-content;
 	z-index: 2;
 }
 
 .error {
-	border: 2px solid #FA8072;
+	border: 2px solid var(--accent-salmon);
     position: relative;
     animation: shake .1s linear;
 	animation-iteration-count: 3;
