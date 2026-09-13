@@ -17,7 +17,7 @@ defmodule Lei.Application do
 
     port = Application.get_env(:lowendinsight, :http_port, 4000)
 
-    base = [Lei.Repo, Lei.BatchCache, Lei.RateLimiter]
+    base = [Lei.Repo, Lei.BatchCache, Lei.RateLimiter, Lei.Payments.ChallengeReaper]
 
     children =
       if Application.get_env(:lowendinsight, :start_http, false) do

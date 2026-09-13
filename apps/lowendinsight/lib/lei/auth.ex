@@ -39,6 +39,18 @@ defmodule Lei.Auth do
     end
   end
 
+  # An agent paying with MPP puts its credential in Authorization, per the
+  # Payment auth scheme. It is not a bearer token and there is no key to look
+  # up -- the payment is how the caller identifies itself, and the org comes
+  # from the challenge that payment answers.
+  #
+  # Passed through unauthenticated rather than rejected: without this clause
+  # the scheme falls off the end of authenticate/1 and a paying agent gets a
+  # 500 for presenting a valid credential.
+  defp authenticate({conn, "Payment " <> _credential}) do
+    assign(conn, :auth_method, :payment)
+  end
+
   defp authenticate({conn, "Bearer lei_" <> _rest = token}) do
     # Skip re-auth if upstream plug already authenticated this key
     if conn.assigns[:current_api_key] do

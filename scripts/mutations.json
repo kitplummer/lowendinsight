@@ -252,6 +252,78 @@
       "replace": "",
       "guarded_by": "test/lei/payments_test.exs",
       "app": "apps/lowendinsight"
+    },
+    {
+      "id": "mpp-substitution-id-only",
+      "bug": "Cross-resource substitution is the documented x402 flaw, and its root cause is signatures that carry no context about what they pay for. MPP's credential echoes the challenge so the server can check it. Comparing only the id lets a client echo the right id while restating the price, which is a valid payment for something cheaper.",
+      "file": "apps/lowendinsight/lib/lei/payments/mpp/credential.ex",
+      "find": "    echoed[\"id\"] == issued.id and\n      echoed[\"realm\"] == issued.realm and\n      echoed[\"method\"] == issued.method and\n      echoed[\"intent\"] == issued.intent and\n      request_matches?(echoed[\"request\"], issued.request)",
+      "replace": "    echoed[\"id\"] == issued.id",
+      "guarded_by": "test/lei/payments/mpp_protocol_test.exs",
+      "app": "apps/lowendinsight"
+    },
+    {
+      "id": "mpp-request-not-canonical",
+      "bug": "The credential echoes the challenge request and the comparison is byte-for-byte, so the encoding has to be JCS-canonical. Sorting pairs and then putting them back into a map does nothing -- the map re-orders them -- and Elixir maps of 32 keys or fewer iterate sorted anyway, so the mistake is invisible until a request has 33 keys. At that point the bytes stop matching what the payment network signed and a legitimate payment is refused.",
+      "file": "apps/lowendinsight/lib/lei/payments/mpp/challenge.ex",
+      "find": "      |> Enum.sort_by(&elem(&1, 0))\n",
+      "replace": "",
+      "guarded_by": "test/lei/payments/mpp_protocol_test.exs",
+      "app": "apps/lowendinsight"
+    },
+    {
+      "id": "mpp-credits-presenter-not-payer",
+      "bug": "A credential proves a payment happened; it does not prove who it was for. Crediting whoever presents one lets an intercepted credential top up the wrong org -- the payer's money, someone else's balance. The org is taken from the recorded challenge, never from the request.",
+      "file": "apps/lowendinsight/lib/lei/payments/http.ex",
+      "find": "         {:ok, _entry} <- credit(record.org_id, settlement) do",
+      "replace": "         {:ok, _entry} <- credit(Keyword.get(opts, :org_id, record.org_id), settlement) do",
+      "guarded_by": "test/lei/payments/mpp_http_test.exs",
+      "app": "apps/lowendinsight"
+    },
+    {
+      "id": "mpp-unsettled-payment-accepted",
+      "bug": "A PaymentIntent that is processing, requires_action or requires_payment_method is not money. Accepting anything but a settled status gives away the work for a payment that may still fail, and the ledger records credits nobody paid for.",
+      "file": "apps/lowendinsight/lib/lei/payments/rails/mpp.ex",
+      "find": "      {:ok, %{\"status\" => status} = intent} when status in [\"succeeded\", \"requires_capture\"] ->",
+      "replace": "      {:ok, %{\"status\" => _status} = intent} ->",
+      "guarded_by": "test/lei/payments/mpp_rail_test.exs",
+      "app": "apps/lowendinsight"
+    },
+    {
+      "id": "auth-rejects-payment-scheme",
+      "bug": "An agent paying with MPP puts its credential in Authorization, per the Payment auth scheme. Without a clause for it the value falls off the end of authenticate/1 and a paying agent gets a 500 for presenting a valid credential -- the one request it most needs to succeed.",
+      "file": "apps/lowendinsight/lib/lei/auth.ex",
+      "find": "  defp authenticate({conn, \"Payment \" <> _credential}) do\n    assign(conn, :auth_method, :payment)\n  end\n\n",
+      "replace": "",
+      "guarded_by": "test/lei/payments/mpp_journey_test.exs",
+      "app": "apps/lowendinsight"
+    },
+    {
+      "id": "payment-settle-unlimited",
+      "bug": "The settle path is unauthenticated by necessity and every attempt can reach Stripe, which makes it the half an attacker would use to grind through stolen tokens. Without a bucket it is an unbounded outbound-request amplifier pointed at our own payment processor.",
+      "file": "apps/lowendinsight/lib/lei/payments/http.ex",
+      "find": "    conn = Lei.Payments.RateLimit.check(conn, :payment_settle)\n",
+      "replace": "",
+      "guarded_by": "test/lei/payments/mpp_http_test.exs",
+      "app": "apps/lowendinsight"
+    },
+    {
+      "id": "paid-request-skips-quota",
+      "bug": "A wallet agent has no API key, so without billing context from the settled payment the quota check sees no org and is skipped entirely. The paid request is then served for the wrong reason -- not because it paid, but because nothing was checked -- and an unpaid one would be served identically.",
+      "file": "apps/lowendinsight/lib/lei/web/router.ex",
+      "find": "        payment_billing_context(conn)",
+      "replace": "        {nil, nil, nil}",
+      "guarded_by": "test/lei/payments/mpp_journey_test.exs",
+      "app": "apps/lowendinsight"
+    },
+    {
+      "id": "challenge-reaper-unsupervised",
+      "bug": "purge_expired/1 existing is not the same as it running. Unanswered challenges are normal -- an agent asking the price and leaving -- and each is a row, so without a supervised sweep the table grows for as long as the service runs.",
+      "file": "apps/lowendinsight/lib/lei/application.ex",
+      "find": ", Lei.Payments.ChallengeReaper]",
+      "replace": "]",
+      "guarded_by": "test/lei/payments/challenge_reaper_test.exs",
+      "app": "apps/lowendinsight"
     }
   ]
 }

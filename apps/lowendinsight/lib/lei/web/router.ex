@@ -284,6 +284,13 @@ defmodule Lei.Web.Router do
   # --- JSON API routes ---
 
   post "/v1/analyze/batch" do
+    # A payment presented on the request is honoured before the quota is
+    # checked, so a caller that was refused with a 402 gets served when it
+    # retries the same request with a credential. There is no separate endpoint
+    # to pay at, which is what lets an agent that has never been here before
+    # get from refusal to result on its own.
+    conn = maybe_settle_payment(conn)
+
     case validate_batch_request(conn.body_params) do
       {:ok, dependencies, opts} ->
         case maybe_check_quota(conn) do
@@ -321,15 +328,14 @@ defmodule Lei.Web.Router do
               upgrade_url: "https://lowendinsight.fly.dev/signup?tier=pro"
             })
 
-          # Also a 402, and deliberately so: this is the status x402 uses to
-          # say "pay and retry", and a wallet-identified caller is exactly the
-          # client that knows how to act on it. The payment requirements
-          # themselves arrive with x402 in #104.
+          # A 402 carrying real payment requirements, not just a balance. The
+          # caller retries the same request with Authorization: Payment, which
+          # is the whole point of MPP being an HTTP auth scheme -- one URL
+          # serves callers who have paid and callers who have not.
           {:error, :insufficient_credits, info} ->
-            json_resp(conn, 402, %{
-              error: "insufficient_credits",
-              balance: info.balance
-            })
+            {org_id, _, _} = extract_billing_context(conn)
+
+            Lei.Payments.Http.challenge(conn, org_id, top_up_credits(info))
         end
 
       {:error, message} ->
@@ -652,12 +658,74 @@ defmodule Lei.Web.Router do
   defp extract_billing_context(conn) do
     case conn.assigns[:current_api_key] do
       nil ->
-        {nil, nil, nil}
+        # A wallet-identified agent has no API key -- the payment is how it
+        # identifies itself. Without this the quota check sees no org and is
+        # skipped entirely, so a paying agent would be served for the wrong
+        # reason: not because it paid, but because nothing was checked.
+        payment_billing_context(conn)
 
       api_key ->
         {api_key.org.id, api_key.id, api_key.org.tier}
     end
   end
+
+  defp payment_billing_context(conn) do
+    case conn.assigns[:payment_org_id] do
+      nil ->
+        {nil, nil, nil}
+
+      org_id ->
+        case Lei.Repo.get(Lei.Org, org_id) do
+          nil -> {nil, nil, nil}
+          org -> {org.id, nil, org.tier}
+        end
+    end
+  end
+
+  # What to ask for when a caller cannot pay.
+  #
+  # A block rather than the exact shortfall: settling costs something on every
+  # rail, so charging for one analysis at a time would spend more on collection
+  # than the analysis is worth. 15,000 credits is $15, matching the Pro tier's
+  # monthly credit so the two prices do not have to be explained separately.
+  #
+  # A negative balance is added back, or an org that went into debt would be
+  # topped up to less than zero and immediately refused again.
+  defp top_up_credits(%{balance: balance}) when is_integer(balance) and balance < 0 do
+    default_top_up() - balance
+  end
+
+  defp top_up_credits(_info), do: default_top_up()
+
+  defp default_top_up do
+    Application.get_env(:lowendinsight, :default_top_up_credits, 15_000)
+  end
+
+  # Honours a payment presented on an ordinary request. There is no separate
+  # endpoint to pay at: the caller retries what it originally asked for, with a
+  # credential attached.
+  defp maybe_settle_payment(conn) do
+    case Lei.Payments.Http.settle(conn) do
+      {:ok, conn, settlement} ->
+        # The org comes from the challenge the payment answered, which is the
+        # only thing that knows who paid. Carrying it forward is what lets the
+        # quota check run against a funded org rather than no org at all.
+        conn
+        |> assign(:payment_org_id, settlement_org_id(conn))
+        |> assign(:payment_settlement, settlement)
+
+      {:rate_limited, conn} ->
+        conn
+
+      :no_credential ->
+        conn
+
+      {:error, _reason} ->
+        conn
+    end
+  end
+
+  defp settlement_org_id(conn), do: conn.assigns[:settled_org_id]
 
   defp maybe_check_quota(conn) do
     case extract_billing_context(conn) do
