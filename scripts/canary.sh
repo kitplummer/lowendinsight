@@ -96,6 +96,13 @@ else
 fi
 echo
 
+# Browsers request /favicon.ico from the root regardless of what the page says,
+# so no link tag points at it and the scan above can never cover it.
+FAVICON=$(curl -s -o /dev/null -w '%{http_code}' --max-time 15 "$BASE_URL/favicon.ico")
+[ "$FAVICON" = "200" ] && ok "/favicon.ico serves" \
+  || bad "/favicon.ico serves" "status ${FAVICON}"
+echo
+
 # --- validation ------------------------------------------------------------
 
 bold "url validation"
