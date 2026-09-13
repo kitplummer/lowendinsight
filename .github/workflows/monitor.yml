@@ -161,6 +161,15 @@ jobs:
             exit 1
           fi
 
+      # Between deploys, nothing else exercises the journey the site exists
+      # for. Not strict here: without an admin key the analysis check can be
+      # satisfied by a cached report, and the canary says so rather than
+      # quietly reporting a weaker result as a pass.
+      - name: Canary the web UI
+        env:
+          LEI_ADMIN_API_KEY: ${{ secrets.LEI_ADMIN_API_KEY }}
+        run: scripts/canary.sh https://lowendinsight.dev
+
       # Warns rather than fails when the key is absent. The readiness check above
       # is the primary signal and has already run; failing here every 15 minutes
       # until someone sets a secret would be alert fatigue on day one, and an

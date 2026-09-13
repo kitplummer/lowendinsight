@@ -235,6 +235,96 @@ curl -H "Authorization: Bearer $LEI_ADMIN_TOKEN" https://lowendinsight.dev/admin
 open "https://lowendinsight.dev/admin?token=$LEI_ADMIN_TOKEN"
 ```
 
+### Deploy canary
+
+`scripts/canary.sh` exercises the journeys the site exists for -- the analyze
+form, url validation, trending, the manual, and every local link on the main
+page -- against a real deployment. It runs in the deploy gate, where a failure
+rolls the release back, and in `monitor.yml` every 15 minutes.
+
+It exists because `GET /url=` hung forever in production while every layer
+beneath it was green. The analysis shelled out to `grep` with no file operand,
+which searches the working directory under GNU grep and reads stdin under
+BusyBox -- and the runtime image is Alpine. It completed in under a second
+locally and never returned in production.
+
+Two properties are load-bearing:
+
+**It runs against a deployment.** A suite on a CI runner has GNU grep and tests
+an environment that bug cannot exist in.
+
+**It defeats the cache.** `/url=` reads Redis before analysing, with a 30-day
+TTL, so a canary analysing the same repository every deploy misses once, goes
+green, and then hits cache forever -- staying green while the analysis is
+completely broken. It invalidates the entry first, and treats a sub-second
+response without invalidation as a failure rather than a pass.
+
+#### The canary's credential
+
+| | |
+|---|---|
+| GitHub secret | `LEI_ADMIN_API_KEY` |
+| Org | `lei-ops` |
+| Key name | `deploy-canary` |
+| Scope needed | `cache` |
+
+`cache` scope permits the `/v1/cache` family and nothing else. An `admin` key
+also works, but grants far more than the job needs -- it can create orgs and
+issue further keys, which is more authority than belongs in a CI secret.
+
+To issue or rotate it, run this **in your own terminal**, not through a tool
+that echoes output. The key is displayed once and stored hashed; if the second
+step fails, issue a new one rather than trying to recover it.
+
+```bash
+cat > /tmp/mkkey.exs <<'EOF'
+{:ok, org} = Lei.ApiKeys.find_or_create_org("lei-ops", tier: "free", status: "active")
+{:ok, raw, key} = Lei.ApiKeys.create_api_key(org, "deploy-canary", ["cache"])
+IO.puts(raw)
+IO.puts("key_id=#{key.id} org_id=#{org.id}")
+EOF
+
+P=$(base64 -w0 < /tmp/mkkey.exs)
+
+flyctl ssh console -a lowendinsight \
+  -C "/opt/app/bin/lowendinsight_get rpc \"Code.eval_string(Base.decode64!(\\\"$P\\\")) |> elem(0) |> then(fn _ -> :ok end)\"" \
+  > /tmp/keyout.txt 2>&1
+
+# key_id and org_id for the record; the key itself stays out of the terminal
+grep -v 'lei_' /tmp/keyout.txt
+
+grep -o 'lei_[A-Za-z0-9_-]*' /tmp/keyout.txt | gh secret set LEI_ADMIN_API_KEY
+shred -u /tmp/keyout.txt /tmp/mkkey.exs
+```
+
+To revoke an old key, list the org's keys and revoke by id:
+
+```elixir
+import Ecto.Query
+Lei.Repo.all(from(k in Lei.ApiKey, where: k.org_id == <org_id> and k.active == true,
+  select: %{id: k.id, name: k.name, scopes: k.scopes, inserted_at: k.inserted_at}))
+
+Lei.ApiKeys.revoke_key(<key_id>)
+```
+
+`find_or_create_org/2` is safe here because this is an authenticated operator
+action. It is **not** safe on an unauthenticated path that goes on to issue
+credentials -- see the warning on that function, and #89.
+
+#### Scopes on endpoint-served routes
+
+`LowendinsightGet.Auth` authenticates `/v1` requests and enforces scopes for
+routes this endpoint serves itself. `Lei.Auth` does the same for routes
+forwarded to `Lei.Web.Router`. Both accept the specific scope **or** `admin`.
+
+A valid JWT is signed with the deployment's own `jwt_secret` and is treated as
+operator-level, so it satisfies any scope. API keys are issued to customers and
+must carry the scope.
+
+Before this existed, no `/v1/cache` route checked scope in either place: any key
+that could call the API could export every cached report, or import over them
+and change the answers everyone else received.
+
 ### Metrics
 
 Cache statistics available at `GET /v1/cache/stats`:

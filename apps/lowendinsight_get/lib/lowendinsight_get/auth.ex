@@ -35,7 +35,11 @@ defmodule LowendinsightGet.Auth do
     case Joken.verify(jwt, signer()) do
       {:ok, _} ->
         Logger.debug("Valid Token, proceed")
-        conn
+        # Marked explicitly so the scope check can tell a signed operator token
+        # apart from an API key, rather than inferring it from the absence of
+        # an assign -- which would also be true of a request that was never
+        # authenticated at all.
+        Plug.Conn.assign(conn, :auth_method, :jwt)
 
       {:error, err} ->
         send_401(conn, %{error: err})
@@ -82,9 +86,62 @@ defmodule LowendinsightGet.Auth do
         conn
         |> get_auth_header
         |> authenticate
+        |> check_scope(path)
 
       true ->
         conn
+    end
+  end
+
+  # Routes served by this endpoint rather than forwarded to Lei.Web.Router did
+  # not have their scopes checked at all -- this plug authenticated and stopped
+  # there, and none of the handlers checked either. Any key that could call the
+  # API could export the whole cache, or import over it and change the answers
+  # everyone else gets.
+  #
+  # Lei.Auth enforces scopes for the routes it owns; this is the same rule for
+  # the routes it does not, including "or admin", so an admin key still works
+  # everywhere.
+  @scope_prefixes [{"/v1/cache", "cache"}]
+
+  defp check_scope(%Plug.Conn{halted: true} = conn, _path), do: conn
+
+  defp check_scope(conn, path) do
+    case required_scope(path) do
+      nil ->
+        conn
+
+      required ->
+        # A JWT is signed with the deployment's own secret, so holding one is
+        # already operator-level. API keys are handed out to customers, and an
+        # analyze-scoped key must not be able to read or rewrite the cache.
+        if conn.assigns[:auth_method] == :jwt or has_scope?(conn, required) do
+          conn
+        else
+          Logger.warning("#{path} requested without #{required} scope")
+
+          conn
+          |> put_resp_content_type("application/json")
+          |> send_resp(403, Poison.encode!(%{error: "insufficient scope", required: required}))
+          |> halt()
+        end
+    end
+  end
+
+  defp required_scope(path) do
+    Enum.find_value(@scope_prefixes, fn {prefix, scope} ->
+      if String.starts_with?(path, prefix), do: scope
+    end)
+  end
+
+  # A narrow scope, or admin. The canary needs only to invalidate a cache
+  # entry, and issuing it an admin key to do that would also let it create
+  # orgs and mint further keys -- more authority in a CI secret than the job
+  # requires.
+  defp has_scope?(conn, required) do
+    case conn.assigns[:current_api_key] do
+      %{scopes: scopes} when is_list(scopes) -> required in scopes or "admin" in scopes
+      _ -> false
     end
   end
 end

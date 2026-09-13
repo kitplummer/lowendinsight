@@ -117,6 +117,32 @@ defmodule LowendinsightGet.Datastore do
   end
 
   @doc """
+  Removes a cached report, so the next request for it does the real work.
+
+  Exists for the deploy canary. A canary that analyses the same repository
+  every deploy misses the cache once, goes green, and then hits the cache
+  forever -- reporting success while the analysis path is completely broken.
+  That is the failure this whole project keeps shipping, so the check built to
+  catch it must not be built that way.
+
+  Returns the number of keys removed, which is 0 when nothing was cached. Both
+  are fine; the caller wants the key absent, not proof it was present.
+  """
+  def delete_from_cache(url) do
+    key = cache_key(url)
+
+    case Redix.command(conn(), ["DEL", key]) do
+      {:ok, count} ->
+        Logger.info("invalidated cache #{key} (url: #{url})")
+        {:ok, count}
+
+      {:error, reason} = error ->
+        Logger.warning("Failed to invalidate cache #{key}: #{inspect(reason)}")
+        error
+    end
+  end
+
+  @doc """
   get_from_cache/2: takes in a url and age in days, queries the datastore
   using the structured cache key. Returns {:ok, report, :hit} on cache hit,
   {:error, message, :miss} on cache miss. Redis TTL handles expiry, but

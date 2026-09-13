@@ -173,6 +173,15 @@
       "app": "apps/lowendinsight"
     },
     {
+      "id": "cache-routes-unscoped",
+      "bug": "No /v1/cache route enforced any scope and LowendinsightGet.Auth did not either -- it authenticated and stopped. Any API key that could call the API could export every cached report, or import over them and change the answers everyone else received.",
+      "file": "apps/lowendinsight_get/lib/lowendinsight_get/auth.ex",
+      "find": "        if conn.assigns[:auth_method] == :jwt or has_scope?(conn, required) do",
+      "replace": "        if true do",
+      "guarded_by": "test/lowendinsight_get/cache_invalidate_test.exs",
+      "app": "apps/lowendinsight_get"
+    },
+    {
       "id": "landing-page-missing-script-ids",
       "bug": "The landing page's Try it form lacked the analyze-button and invalid-url elements endpoints.js reaches by id. disable_button did null.classList.add, and since validate_and_submit calls preventDefault first, the throw left the form never submitting -- clicking Analyze did nothing, with the reason visible only in the browser console. Server-side the template rendered, the asset returned 200, and the route worked when called directly.",
       "file": "apps/lowendinsight_get/priv/templates/analyze.html.eex",
