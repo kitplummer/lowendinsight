@@ -64,6 +64,31 @@ need() {
 need mix
 need psql
 
+# Refuse to run alongside another mix invocation on this project.
+#
+# Two mix commands in the same umbrella contend on the build lock and the test
+# databases. Backgrounding preflight while running mix test in another shell
+# produced a suite failure and a run that emitted no summary at all -- both
+# self-inflicted, and both indistinguishable from a real order-dependent bug
+# until half an hour had gone into chasing one.
+#
+# A result you have to interpret is worse than no result.
+#
+# Matches the BEAM process that actually holds the lock, not any shell whose
+# command line happens to contain the words. A looser pattern matched this
+# script's own wrapper and would have fired every time -- a check that always
+# fires is as useless as one that never does.
+OTHERS=$(pgrep -af "beam\.smp.*bin/mix (test|compile|run|ecto)" 2>/dev/null || true)
+
+if [ -n "$OTHERS" ]; then
+  red "Another mix process is running against this project:"
+  sed 's/^/    /' <<<"$OTHERS"
+  echo
+  red "Preflight shares a build lock and test databases with it, so the result"
+  red "would not mean anything. Wait for it to finish, or stop it."
+  exit 1
+fi
+
 # --- stages ---------------------------------------------------------------
 
 check_format() {

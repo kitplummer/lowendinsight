@@ -47,7 +47,7 @@
           <h1 class="title">
             <a href="https://lowendinsight.fly.dev" target="_blank">LowEndInsight</a>
           </h1>
-          <form id="form" class="input-field" action="/url=" method="get" onsubmit="validate_and_submit()">
+          <form id="form" class="input-field" action="/url=" method="get" onsubmit="return validate_and_submit(event)">
             <input type="text" id="input-url" class="search" placeholder="Enter public git repo URL" required oninput="remove_error()">
             <button type="submit" id="analyze-button" class="button is-dark is-family-code">Analyze</button>
           </form>

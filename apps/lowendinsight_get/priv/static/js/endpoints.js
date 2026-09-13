@@ -1,26 +1,57 @@
+// Every helper below tolerates a missing element.
+//
+// They were written against the report page's markup, which has an
+// analyze-button and an invalid-url span. The landing page's form has neither,
+// so disable_button threw on null.classList -- and because
+// validate_and_submit calls preventDefault first, the throw left the form
+// never submitting. Clicking Analyze did nothing at all, with the reason
+// visible only in the browser console.
+//
+// The missing ids are now in the template, so this is belt and braces: a page
+// that omits an optional element should lose that element's behaviour, not its
+// ability to submit.
+function el(id){
+    return document.getElementById(id);
+}
+
 function disable_button(){
-    var button = document.getElementById("analyze-button");
+    var button = el("analyze-button");
+    if (!button) return;
     button.classList.add("is-loading");
     button.setAttribute("disabled", true);
 }
 
 function get_encoded_url(){
-    var input = document.getElementById("input-url");
-    var url = input.value;
-    return encodeURIComponent(url);
+    var input = el("input-url");
+    return input ? encodeURIComponent(input.value) : "";
 }
 
 function display_error() {
-    document.getElementById("analyze-button").classList.remove("is-loading");
-    document.getElementById("input-url").classList.add("error");
-    document.getElementById("invalid-url").style.display = "block";
+    var button = el("analyze-button");
+    if (button) {
+        button.classList.remove("is-loading");
+        button.removeAttribute("disabled");
+    }
+
+    var input = el("input-url");
+    if (input) input.classList.add("error");
+
+    var message = el("invalid-url");
+    if (message) message.style.display = "block";
 }
 
 function remove_error(){
-    document.getElementById("input-url").classList.remove("error");
-    document.getElementById("invalid-url").style.display = "none";
-    document.getElementById("analyze-button").disabled = false;
-    document.getElementById("analyze-button").classList.remove("is-loading");
+    var input = el("input-url");
+    if (input) input.classList.remove("error");
+
+    var message = el("invalid-url");
+    if (message) message.style.display = "none";
+
+    var button = el("analyze-button");
+    if (button) {
+        button.disabled = false;
+        button.classList.remove("is-loading");
+    }
 }
 
 async function validate_url(encoded_url){
@@ -41,11 +72,18 @@ async function validate_url(encoded_url){
     return is_valid_repo;
 }
 
-async function validate_and_submit(){
-    event.preventDefault();
-    event.stopPropagation();
+async function validate_and_submit(event){
+    // The event was previously read off the window global rather than taken as
+    // a parameter. That works in most browsers and is not something to rely on
+    // for the page's only interactive control.
+    var evt = event || window.event;
+    if (evt) {
+        evt.preventDefault();
+        evt.stopPropagation();
+    }
 
-    var form = document.getElementById("form");
+    var form = el("form");
+    if (!form) return false;
     disable_button();
 
     var encoded_url = get_encoded_url();
@@ -57,6 +95,8 @@ async function validate_and_submit(){
     } else {
         display_error();
     }
+
+    return false;
 }
 
 function languages_button_event(){
