@@ -207,6 +207,15 @@
       "replace": "  :root {\n    --tag-ink: #1f2430;",
       "guarded_by": "test/lowendinsight_get/theme_test.exs",
       "app": "apps/lowendinsight_get"
+    },
+    {
+      "id": "layout-missing-favicon",
+      "bug": "The signup, login and dashboard pages render through a layout in the other app's directory, so a coverage check globbing this app's templates never saw it and they shipped without favicon links. The check now renders the real routes, so removing the links fails rather than going unnoticed.",
+      "file": "apps/lowendinsight/priv/templates/layout.html.eex",
+      "find": "  <link rel=\"icon\" href=\"/favicon.ico\" sizes=\"any\">\n  <link rel=\"icon\" type=\"image/png\" sizes=\"32x32\" href=\"/images/favicon-32.png\">\n  <link rel=\"icon\" type=\"image/png\" sizes=\"16x16\" href=\"/images/favicon-16.png\">\n  <link rel=\"apple-touch-icon\" sizes=\"180x180\" href=\"/images/apple-touch-icon.png\">\n",
+      "replace": "",
+      "guarded_by": "test/lowendinsight_get/theme_test.exs",
+      "app": "apps/lowendinsight_get"
     }
   ]
 }
