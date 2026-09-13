@@ -9,10 +9,23 @@
   <meta charset="UTF-8">
   <title>LowEndInsight API Documentation</title>
   <link rel="stylesheet" type="text/css" href="https://unpkg.com/swagger-ui-dist@5/swagger-ui.css">
+  <link rel="icon" href="/favicon.ico" sizes="any">
+  <link rel="icon" type="image/png" sizes="32x32" href="/images/favicon-32.png">
+  <link rel="icon" type="image/png" sizes="16x16" href="/images/favicon-16.png">
+  <link rel="apple-touch-icon" sizes="180x180" href="/images/apple-touch-icon.png">
+  <link rel="stylesheet" href="/css/theme.css">
+  <script>
+    (function () {
+      try {
+        var t = localStorage.getItem("lei-theme");
+        if (t) document.documentElement.setAttribute("data-theme", t);
+      } catch (e) {}
+    })();
+  </script>
   <style>
     html { box-sizing: border-box; overflow-y: scroll; }
     *, *:before, *:after { box-sizing: inherit; }
-    body { margin: 0; background: #fafafa; }
+    body { margin: 0; background: var(--bg); }
   </style>
 </head>
 <body>
@@ -30,5 +43,7 @@
       layout: "BaseLayout"
     });
   </script>
+  <button id="theme-toggle" class="theme-toggle" type="button">Dark mode</button>
+  <script src="/js/theme.js" type="text/javascript"></script>
 </body>
 </html>

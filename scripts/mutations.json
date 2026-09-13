@@ -207,6 +207,15 @@
       "replace": "  :root {\n    --tag-ink: #1f2430;",
       "guarded_by": "test/lowendinsight_get/theme_test.exs",
       "app": "apps/lowendinsight_get"
+    },
+    {
+      "id": "doc-page-unthemed",
+      "bug": "/doc is served from a static file rather than a template, so a coverage check that globs *.html.eex never sees it -- and it shipped unthemed while the tests passed. The check now asks the site what it serves, so removing the stylesheet from the static page fails rather than going unnoticed.",
+      "file": "apps/lowendinsight_get/priv/static/index.html",
+      "find": "  <link rel=\"stylesheet\" href=\"/css/theme.css\">\n",
+      "replace": "",
+      "guarded_by": "test/lowendinsight_get/theme_test.exs",
+      "app": "apps/lowendinsight_get"
     }
   ]
 }

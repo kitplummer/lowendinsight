@@ -1,6 +1,8 @@
 defmodule LowendinsightGet.ThemeTest do
   use ExUnit.Case, async: true
 
+  import Plug.Test
+
   @moduledoc """
   Dark mode is one set of tokens shared by every page. These check the parts
   that are easy to get subtly wrong and hard to notice: a page that misses the
@@ -22,57 +24,73 @@ defmodule LowendinsightGet.ThemeTest do
   end
 
   describe "coverage" do
-    test "the scan finds the templates at all" do
-      # A wildcard resolving to nothing would make every assertion below pass
-      # while checking nothing.
-      assert length(@get_templates) >= 4
-      assert length(@lei_templates) >= 6
-      assert length(documents()) >= 5
+    # Derived from what the site actually serves, not from a directory glob.
+    #
+    # The first version of these tests enumerated *.html.eex and passed while
+    # /doc shipped unthemed -- it is a static file, not a template -- and while
+    # the signup and login pages shipped without favicon links, because their
+    # layout lives in the other app's directory. Both gaps reached production.
+    @html_routes ["/", "/doc", "/signup", "/login"]
+
+    defp render(path) do
+      conn(:get, path)
+      |> LowendinsightGet.Endpoint.call(LowendinsightGet.Endpoint.init([]))
     end
 
-    test "every full page links the theme stylesheet" do
-      missing =
-        documents()
-        |> Enum.reject(&(read(&1) =~ "/css/theme.css"))
-        |> Enum.map(&Path.basename/1)
+    test "the routes under test actually return HTML" do
+      # If these stopped returning pages, every assertion below would pass by
+      # examining nothing.
+      for path <- @html_routes do
+        conn = render(path)
+
+        assert conn.status == 200, "#{path} returned #{conn.status}"
+        assert conn.resp_body =~ ~r/<html/i, "#{path} did not return a document"
+      end
+    end
+
+    test "every served page links the theme stylesheet" do
+      missing = Enum.reject(@html_routes, &(render(&1).resp_body =~ "/css/theme.css"))
 
       assert missing == [],
              "these pages render without the theme and will stay light: #{inspect(missing)}"
     end
 
-    test "every full page applies the stored theme before paint" do
+    test "every served page applies the stored theme before paint" do
       # A deferred script runs after first paint, so the page renders light and
       # then flips. The flash is worse than no dark mode.
-      missing =
-        documents()
-        |> Enum.reject(&(read(&1) =~ "lei-theme"))
-        |> Enum.map(&Path.basename/1)
+      missing = Enum.reject(@html_routes, &(render(&1).resp_body =~ "lei-theme"))
 
       assert missing == [], "these pages will flash the wrong theme: #{inspect(missing)}"
     end
 
-    test "every full page carries the toggle" do
-      missing =
-        documents()
-        |> Enum.reject(&String.contains?(read(&1), "id=\"theme-toggle\""))
-        |> Enum.map(&Path.basename/1)
+    test "every served page carries the toggle" do
+      missing = Enum.reject(@html_routes, &(render(&1).resp_body =~ "theme-toggle"))
 
       assert missing == [], "no way to switch theme on: #{inspect(missing)}"
+    end
+
+    test "every served page carries the favicon links" do
+      missing = Enum.reject(@html_routes, &(render(&1).resp_body =~ "rel=\"icon\""))
+
+      assert missing == [], "these pages show a generic tab icon: #{inspect(missing)}"
     end
 
     test "no template carries a raw colour literal" do
       # Colours live in one place. A literal in a template is a colour that
       # cannot follow the theme.
+      sources =
+        Path.wildcard("priv/templates/*.html.eex") ++
+          Path.wildcard("../lowendinsight/priv/templates/*.html.eex") ++
+          ["priv/static/index.html"]
+
       offenders =
-        for p <- @get_templates ++ @lei_templates,
+        for p <- sources,
             body = read(p),
-            # Ignore hrefs and anything inside a <script>, where a # is a
-            # fragment or a string rather than a colour.
             literals = Regex.scan(~r/:\s*(#[0-9a-fA-F]{3,6})\b/, body),
             literals != [],
             do: {Path.basename(p), Enum.map(literals, fn [_, c] -> c end)}
 
-      assert offenders == [], "raw colours in templates: #{inspect(offenders)}"
+      assert offenders == [], "raw colours: #{inspect(offenders)}"
     end
   end
 
