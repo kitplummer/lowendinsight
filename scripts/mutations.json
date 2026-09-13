@@ -198,6 +198,15 @@
       "replace": "",
       "guarded_by": "test/lowendinsight_get/favicon_test.exs",
       "app": "apps/lowendinsight_get"
+    },
+    {
+      "id": "theme-light-override",
+      "bug": "The dark media query is guarded with :not([data-theme=\"light\"]) so an explicit light choice survives a dark system setting. Without the guard the toggle only works in one direction: a user on a dark system who picks light gets dark back, with no way to say otherwise.",
+      "file": "apps/lowendinsight_get/priv/static/css/theme.css",
+      "find": "  :root:not([data-theme=\"light\"]) {\n    --tag-ink: #1f2430;",
+      "replace": "  :root {\n    --tag-ink: #1f2430;",
+      "guarded_by": "test/lowendinsight_get/theme_test.exs",
+      "app": "apps/lowendinsight_get"
     }
   ]
 }

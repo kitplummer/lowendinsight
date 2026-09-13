@@ -1,0 +1,282 @@
+/* Theme tokens.
+ *
+ * Every colour in the site resolves through one of these. endpoints.css holds
+ * no literals at all -- they were extracted mechanically, and the dark values
+ * derived from the light ones rather than picked by hand: greys invert on a
+ * compressed curve so white lands on a soft charcoal instead of pitch black,
+ * and accents keep their hue while gaining lightness, because a mid-tone that
+ * reads as vivid on white reads as muddy on dark.
+ *
+ * Three layers, in this order:
+ *
+ *   :root                        the light palette, always defined
+ *   prefers-color-scheme: dark   the system preference
+ *   [data-theme="..."]           an explicit choice, which wins over both
+ *
+ * The media query is guarded with :not([data-theme="light"]) so that choosing
+ * light explicitly is not overridden by a dark system setting. Without that
+ * guard the toggle only works in one direction.
+ */
+
+:root {
+  --tag-ink: #ffffff;
+  --tag-ink-warm: #1f2430;
+  --bg: #f5f5f5;
+  --surface-card: #ffffff;
+  --text: #1f2430;
+  --text-muted: #5b6472;
+  --border-subtle: #dcdfe4;
+  --code-bg: #f0f0f0;
+  --code-text: #c0392b;
+  --pre-bg: #282c34;
+  --pre-text: #abb2bf;
+  --tag-green: #2e8149;
+  --tag-orange: #d9761f;
+  --tag-red: #d13252;
+  --shadow-strong: rgba(0, 0, 0, 0.16);
+  --shadow-soft: rgba(0, 0, 0, 0.08);
+  --accent-red: rgba(255, 0, 0, 0.925);
+  --footer-bg: #f0f0f0;
+  --accent-yellow: #ffea75;
+  --surface-alt: #eaeaea;
+  --link: #1C398D;
+  --ink-strong: #333333;
+  --ramp-01: #f9f9f9;
+  --ramp-02: #f7f7f7;
+  --ramp-03: #f5f5f5;
+  --ramp-04: #f3f3f3;
+  --ramp-05: #f1f1f1;
+  --ramp-06: #efefef;
+  --ramp-07: #ededed;
+  --ramp-08: #ebebeb;
+  --ramp-09: #e9e9e9;
+  --ramp-10: #e7e7e7;
+  --ramp-11: #e5e5e5;
+  --ramp-12: #e3e3e3;
+  --ramp-13: #e1e1e1;
+  --ramp-14: #dfdfdf;
+  --ramp-15: #dbdbdb;
+  --border: #d3d3d3;
+  --surface: #eeeeee;
+  --muted: #b3b3b3;
+  --accent-crimson: #DC143C;
+  --hover: #e6e6e6;
+  --corner: #151513;
+  --on-accent: #fff;
+  --accent-salmon: #FA8072;
+
+  color-scheme: light;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --tag-ink: #1f2430;
+    --tag-ink-warm: #1f2430;
+    --bg: #14161a;
+    --surface-card: #1c1f26;
+    --text: #e6e9ef;
+    --text-muted: #9aa4b2;
+    --border-subtle: #2c313b;
+    --code-bg: #22262e;
+    --code-text: #ff9e8a;
+    --pre-bg: #1a1d23;
+    --pre-text: #c3cad6;
+    --tag-green: #4ec97a;
+    --tag-orange: #ffa94d;
+    --tag-red: #ff6b81;
+    --shadow-strong: rgba(0, 0, 0, 0.55);
+    --shadow-soft: rgba(255, 255, 255, 0.06);
+    --accent-red: rgba(255, 107, 129, 0.95);
+    --footer-bg: #1b1b1b;
+    --accent-yellow: #f4e27b;
+    --surface-alt: #1c1c1c;
+    --link: #6b87d6;
+    --ink-strong: #4c4c4c;
+    --ramp-01: #191919;
+    --ramp-02: #191919;
+    --ramp-03: #1a1a1a;
+    --ramp-04: #1a1a1a;
+    --ramp-05: #1b1b1b;
+    --ramp-06: #1b1b1b;
+    --ramp-07: #1c1c1c;
+    --ramp-08: #1c1c1c;
+    --ramp-09: #1d1d1d;
+    --ramp-10: #1d1d1d;
+    --ramp-11: #1e1e1e;
+    --ramp-12: #1e1e1e;
+    --ramp-13: #1f1f1f;
+    --ramp-14: #1f1f1f;
+    --ramp-15: #202020;
+    --border: #222222;
+    --surface: #1b1b1b;
+    --muted: #2b2b2b;
+    --accent-crimson: #e1506d;
+    --hover: #1d1d1d;
+    --corner: #585850;
+    --on-accent: #171717;
+    --accent-salmon: #f08b7f;
+
+    color-scheme: dark;
+  }
+}
+
+:root[data-theme="dark"] {
+  --tag-ink: #1f2430;
+  --tag-ink-warm: #1f2430;
+  --bg: #14161a;
+  --surface-card: #1c1f26;
+  --text: #e6e9ef;
+  --text-muted: #9aa4b2;
+  --border-subtle: #2c313b;
+  --code-bg: #22262e;
+  --code-text: #ff9e8a;
+  --pre-bg: #1a1d23;
+  --pre-text: #c3cad6;
+  --tag-green: #4ec97a;
+  --tag-orange: #ffa94d;
+  --tag-red: #ff6b81;
+  --shadow-strong: rgba(0, 0, 0, 0.55);
+  --shadow-soft: rgba(255, 255, 255, 0.06);
+  --accent-red: rgba(255, 107, 129, 0.95);
+  --footer-bg: #1b1b1b;
+  --accent-yellow: #f4e27b;
+  --surface-alt: #1c1c1c;
+  --link: #6b87d6;
+  --ink-strong: #4c4c4c;
+  --ramp-01: #191919;
+  --ramp-02: #191919;
+  --ramp-03: #1a1a1a;
+  --ramp-04: #1a1a1a;
+  --ramp-05: #1b1b1b;
+  --ramp-06: #1b1b1b;
+  --ramp-07: #1c1c1c;
+  --ramp-08: #1c1c1c;
+  --ramp-09: #1d1d1d;
+  --ramp-10: #1d1d1d;
+  --ramp-11: #1e1e1e;
+  --ramp-12: #1e1e1e;
+  --ramp-13: #1f1f1f;
+  --ramp-14: #1f1f1f;
+  --ramp-15: #202020;
+  --border: #222222;
+  --surface: #1b1b1b;
+  --muted: #2b2b2b;
+  --accent-crimson: #e1506d;
+  --hover: #1d1d1d;
+  --corner: #585850;
+  --on-accent: #171717;
+  --accent-salmon: #f08b7f;
+
+  color-scheme: dark;
+}
+
+/* Base surfaces. Bulma paints its own light backgrounds, so these have to be
+ * stated rather than inherited -- an unstyled body shows Bulma's white behind
+ * a dark page. */
+html,
+body {
+  background-color: var(--bg);
+  color: var(--text);
+}
+
+.hero,
+.hero-body,
+.section {
+  background-color: transparent;
+  color: var(--text);
+}
+
+.box,
+.card {
+  background-color: var(--surface-card);
+  color: var(--text);
+  border: 1px solid var(--border-subtle);
+}
+
+.title,
+.subtitle,
+strong,
+th {
+  color: var(--text);
+}
+
+.content,
+p,
+li,
+td {
+  color: var(--text);
+}
+
+a {
+  color: var(--link);
+}
+
+.input,
+.textarea,
+.select select {
+  background-color: var(--surface-card);
+  border-color: var(--border-subtle);
+  color: var(--text);
+}
+
+.input::placeholder {
+  color: var(--text-muted);
+}
+
+.table {
+  background-color: transparent;
+  color: var(--text);
+}
+
+.table th,
+.table td {
+  border-color: var(--border-subtle);
+}
+
+.footer {
+  background-color: var(--footer-bg);
+  color: var(--text);
+}
+
+pre {
+  background: var(--pre-bg);
+  color: var(--pre-text);
+}
+
+code {
+  background: var(--code-bg);
+  color: var(--code-text);
+}
+
+pre code {
+  color: inherit;
+  background: none;
+}
+
+/* Risk levels have to stay distinguishable in both themes -- they are the
+ * meaning of the report, not decoration. */
+.tag-green { background: var(--tag-green); color: var(--tag-ink); }
+.tag-orange { background: var(--tag-orange); color: var(--tag-ink-warm); }
+.tag-red { background: var(--tag-red); color: var(--tag-ink); }
+
+/* The toggle sits in the corner of every page and is the only control that
+ * must work before anything else has loaded. */
+.theme-toggle {
+  position: fixed;
+  right: 1rem;
+  bottom: 1rem;
+  z-index: 40;
+  border: 1px solid var(--border-subtle);
+  background: var(--surface-card);
+  color: var(--text);
+  border-radius: 999px;
+  padding: 0.45rem 0.85rem;
+  cursor: pointer;
+  font-size: 0.85rem;
+  line-height: 1;
+  box-shadow: 0 2px 6px var(--shadow-soft);
+}
+
+.theme-toggle:hover {
+  border-color: var(--link);
+}
