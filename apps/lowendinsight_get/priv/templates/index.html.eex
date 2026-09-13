@@ -3,10 +3,25 @@
   <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
+    <link rel="icon" href="/favicon.ico" sizes="any">
+    <link rel="icon" type="image/png" sizes="32x32" href="/images/favicon-32.png">
+    <link rel="icon" type="image/png" sizes="16x16" href="/images/favicon-16.png">
+    <link rel="apple-touch-icon" sizes="180x180" href="/images/apple-touch-icon.png">
     <title>LowEndInsight</title>
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bulma@0.8.0/css/bulma.min.css">
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/json-tree-viewer@0.0.2/libs/jsonTree/jsonTree.css">
     <link rel="stylesheet" href = "../css/endpoints.css">
+    <link rel="stylesheet" href="/css/theme.css">
+    <script>
+      // Inline and synchronous on purpose: a deferred script runs after first
+      // paint, and the flash of the wrong theme is the thing being avoided.
+      (function () {
+        try {
+          var t = localStorage.getItem("lei-theme");
+          if (t) document.documentElement.setAttribute("data-theme", t);
+        } catch (e) {}
+      })();
+    </script>
     <script src="https://cdn.jsdelivr.net/npm/json-tree-viewer@0.0.2/libs/jsonTree/jsonTree.min.js"></script>
     <script type="text/javascript" defer src="https://use.fontawesome.com/releases/v5.3.1/js/all.js"></script>
     <a href="https://github.com/kitplummer/lowendinsight" target="_blank" class="github-corner" aria-label="View source on GitHub">
@@ -78,11 +93,15 @@
         <div class="column"></div>
       </div>
   </section>
-  </body>
+      <button id="theme-toggle" class="theme-toggle" type="button">Dark mode</button>
+    <script src="/js/theme.js" type="text/javascript"></script>
+</body>
   <footer id="footer" class="footer">
     <div class="content has-text-centered">
-      <img id="gtri" src="../images/gtri.png">
-      <p style="font-size: 0.75rem; color: #999;">v<%= version %></p>
+      <p>LowEndInsight is developed and operated by <a href="https://revolveteam.com"><strong>(r)evolve</strong></a>.</p>
+      <p style="font-size: 0.85rem;">Originally created as research at
+        <a href="https://gtri.gatech.edu">GTRI</a> &mdash; BSD 3-Clause License</p>
+      <p style="font-size: 0.75rem; color: var(--text-muted);">v<%= version %></p>
     </div>
   </footer>
 </html>

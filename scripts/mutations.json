@@ -83,12 +83,12 @@
       "app": "apps/lowendinsight"
     },
     {
-      "id": "find-binary-files-cwd",
-      "bug": "Files.find_binary_files/1 cd'd into the checkout it was scanning. cwd is global to the BEAM and AnalyzerModule runs analyses concurrently under Task.async_stream, so save-and-restore was racy by construction: one task captured another task's temporary checkout as its 'original' and restored into it after it had been deleted. Every later relative path in the node then failed (#108).",
+      "id": "find-binary-files-external-process",
+      "bug": "GET /url= hung forever in production. find_binary_files shelled out to `grep -rIL .` with no file operand: GNU grep searches the working directory, BusyBox grep -- what the Alpine runtime image provides -- reads stdin, and System.cmd holds the child's stdin open forever. No assertion about grep's behaviour can catch this on a machine with GNU grep, so the guard is the absence of the external process: the test runs with PATH emptied.",
       "file": "apps/lowendinsight/lib/files.ex",
-      "find": "        case System.cmd(\"grep\", [\"-rIL\", \".\"], cd: path) do",
-      "replace": "        File.cd!(path)\n\n        case System.cmd(\"grep\", [\"-rIL\", \".\"]) do",
-      "guarded_by": "test/cwd_restoration_test.exs",
+      "find": "        |> Stream.filter(&binary?/1)",
+      "replace": "        |> Stream.filter(fn f -> match?({_, 0}, System.cmd(\"grep\", [\"-qI\", \".\", f])) end)",
+      "guarded_by": "test/binary_detection_test.exs",
       "app": "apps/lowendinsight"
     },
     {
@@ -116,6 +116,114 @@
       "find": "             :ok <- debit_credits(usage, cache_hits, cache_misses) do",
       "replace": "             :ok <- :ok do",
       "guarded_by": "test/lei/credit_debit_test.exs",
+      "app": "apps/lowendinsight"
+    },
+    {
+      "id": "wallet-org-takeover",
+      "bug": "A wallet address is public, so provisioning that returns an existing org for a presented address hands an attacker a credential for someone else's funded org -- #89's bug in a new costume. provision/2 must never return an existing org; only the caller, having proved control, may decide that.",
+      "file": "apps/lowendinsight/lib/lei/wallets.ex",
+      "find": "        if unique_violation?(errors) do\n          {:error, :wallet_taken}",
+      "replace": "        if unique_violation?(errors) do\n          {:ok, find_by_address(normalised)}",
+      "guarded_by": "test/lei/wallets_test.exs",
+      "app": "apps/lowendinsight"
+    },
+    {
+      "id": "wallet-free-tier-grant",
+      "bug": "A wallet costs nothing to create, so any per-wallet free allowance is a per-attacker free allowance. Giving wallet orgs the default free-tier limit reopens the farming vector ADR-002 closes by granting none.",
+      "file": "apps/lowendinsight/lib/lei/wallets.ex",
+      "find": "    |> Ecto.Changeset.put_change(:free_tier_analyses_limit, 0)\n",
+      "replace": "",
+      "guarded_by": "test/lei/wallets_test.exs",
+      "app": "apps/lowendinsight"
+    },
+    {
+      "id": "wallet-credit-gate",
+      "bug": "A wallet org's only gate is its credit balance, checked before the analysis runs. Falling through to the tier check would serve a zero-balance agent for free, and ADR-002 allows balances to go negative precisely because refusal has to happen before the work.",
+      "file": "apps/lowendinsight/lib/lei/usage_tracker.ex",
+      "find": "      %Org{wallet_address: wallet} = org when is_binary(wallet) and wallet != \"\" ->\n        check_credit_balance(org)\n\n",
+      "replace": "",
+      "guarded_by": "test/lei/wallets_test.exs",
+      "app": "apps/lowendinsight"
+    },
+    {
+      "id": "reconciliation-empty-ledger",
+      "bug": "The boundary for 'pre-ledger' usage must fail towards reporting. Excusing every row when no boundary can be derived means an un-debited system reports clean having reconciled nothing -- the failure this module exists to catch, written into it. Separately, the boundary is the first debit and not the migration timestamp: the credit_entries table existed sixteen hours before anything wrote to it in production, and seven usage rows recorded in between were reported as drift.",
+      "file": "apps/lowendinsight/lib/lei/reconciliation.ex",
+      "find": "  defp pre_ledger?(_row, nil), do: false",
+      "replace": "  defp pre_ledger?(_row, nil), do: true",
+      "guarded_by": "test/lei/reconciliation_test.exs",
+      "app": "apps/lowendinsight"
+    },
+    {
+      "id": "credits-endpoint-scoping",
+      "bug": "A balance is money. /v1/credits derives org_id from the authenticated API key and nothing else; taking it from a query parameter would let any key read any org's ledger.",
+      "file": "apps/lowendinsight/lib/lei/web/router.ex",
+      "find": "          balance: Lei.Credits.balance(org_id),",
+      "replace": "          balance: Lei.Credits.balance(conn.params[\"org_id\"] || org_id),",
+      "guarded_by": "test/lei/web/credits_endpoint_test.exs",
+      "app": "apps/lowendinsight"
+    },
+    {
+      "id": "meter-report-unrecorded",
+      "bug": "The Stripe meter call happens outside the usage transaction and its result was discarded -- so a failed call meant usage consumed, ledger debited, customer never billed, with nothing written down. Under-billing that errs against us, and invisible. Dropping the failure record restores that blind spot.",
+      "file": "apps/lowendinsight/lib/lei/usage_tracker.ex",
+      "find": "              record_meter_report(org_id, usage, identifier, units, \"failed\", inspect(reason))\n",
+      "replace": "",
+      "guarded_by": "test/lei/meter_reporting_test.exs",
+      "app": "apps/lowendinsight"
+    },
+    {
+      "id": "cache-routes-unscoped",
+      "bug": "No /v1/cache route enforced any scope and LowendinsightGet.Auth did not either -- it authenticated and stopped. Any API key that could call the API could export every cached report, or import over them and change the answers everyone else received.",
+      "file": "apps/lowendinsight_get/lib/lowendinsight_get/auth.ex",
+      "find": "        if conn.assigns[:auth_method] == :jwt or has_scope?(conn, required) do",
+      "replace": "        if true do",
+      "guarded_by": "test/lowendinsight_get/cache_invalidate_test.exs",
+      "app": "apps/lowendinsight_get"
+    },
+    {
+      "id": "landing-page-missing-script-ids",
+      "bug": "The landing page's Try it form lacked the analyze-button and invalid-url elements endpoints.js reaches by id. disable_button did null.classList.add, and since validate_and_submit calls preventDefault first, the throw left the form never submitting -- clicking Analyze did nothing, with the reason visible only in the browser console. Server-side the template rendered, the asset returned 200, and the route worked when called directly.",
+      "file": "apps/lowendinsight_get/priv/templates/analyze.html.eex",
+      "find": "id=\"analyze-button\" ",
+      "replace": "",
+      "guarded_by": "test/lowendinsight_get/page_script_contract_test.exs",
+      "app": "apps/lowendinsight_get"
+    },
+    {
+      "id": "favicon-root-mount",
+      "bug": "Browsers request /favicon.ico from the root whether or not a link tag points at it. Plug.Static is mounted at /images, /js and /css, none of which cover the root, so without a dedicated mount the request 404s on every page load and no page-scanning check can notice -- nothing links to it.",
+      "file": "apps/lowendinsight_get/lib/lowendinsight_get/endpoint.ex",
+      "find": "  plug(Plug.Static,\n    from: {:lowendinsight_get, \"priv/static/images\"},\n    at: \"/\",\n    only: ~w(favicon.ico)\n  )\n",
+      "replace": "",
+      "guarded_by": "test/lowendinsight_get/favicon_test.exs",
+      "app": "apps/lowendinsight_get"
+    },
+    {
+      "id": "theme-light-override",
+      "bug": "The dark media query is guarded with :not([data-theme=\"light\"]) so an explicit light choice survives a dark system setting. Without the guard the toggle only works in one direction: a user on a dark system who picks light gets dark back, with no way to say otherwise.",
+      "file": "apps/lowendinsight_get/priv/static/css/theme.css",
+      "find": "  :root:not([data-theme=\"light\"]) {\n    --tag-ink: #1f2430;",
+      "replace": "  :root {\n    --tag-ink: #1f2430;",
+      "guarded_by": "test/lowendinsight_get/theme_test.exs",
+      "app": "apps/lowendinsight_get"
+    },
+    {
+      "id": "layout-missing-favicon",
+      "bug": "The signup, login and dashboard pages render through a layout in the other app's directory, so a coverage check globbing this app's templates never saw it and they shipped without favicon links. The check now renders the real routes, so removing the links fails rather than going unnoticed.",
+      "file": "apps/lowendinsight/priv/templates/layout.html.eex",
+      "find": "  <link rel=\"icon\" href=\"/favicon.ico\" sizes=\"any\">\n  <link rel=\"icon\" type=\"image/png\" sizes=\"32x32\" href=\"/images/favicon-32.png\">\n  <link rel=\"icon\" type=\"image/png\" sizes=\"16x16\" href=\"/images/favicon-16.png\">\n  <link rel=\"apple-touch-icon\" sizes=\"180x180\" href=\"/images/apple-touch-icon.png\">\n",
+      "replace": "",
+      "guarded_by": "test/lowendinsight_get/theme_test.exs",
+      "app": "apps/lowendinsight_get"
+    },
+    {
+      "id": "find-binary-files-cwd",
+      "bug": "Files.find_binary_files/1 cd'd into the checkout it was scanning. cwd is global to the BEAM and AnalyzerModule runs analyses concurrently under Task.async_stream, so save-and-restore was racy by construction: one task captured another task's temporary checkout as its 'original' and restored into it after it had been deleted. Every later relative path in the node then failed (#108).",
+      "file": "apps/lowendinsight/lib/files.ex",
+      "find": "        case System.cmd(\"grep\", [\"-rIL\", \".\"], cd: path) do",
+      "replace": "        File.cd!(path)\n\n        case System.cmd(\"grep\", [\"-rIL\", \".\"]) do",
+      "guarded_by": "test/cwd_restoration_test.exs",
       "app": "apps/lowendinsight"
     },
     {

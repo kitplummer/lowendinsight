@@ -113,7 +113,10 @@ defmodule LowendinsightGet.OpsRoutingTest do
     # The original defect: routes existed in Lei.Web.Router but were never
     # forwarded, so they hit the endpoint's own catch-all.
     test "no ops route falls through to the endpoint catch-all" do
-      for path <- ["/healthz", "/readyz", "/metrics", "/v1/health"] do
+      # /v1/credits is here because a route that exists in Lei.Web.Router but
+      # is missing from @auth_paths returns 404 in production while every test
+      # of the route itself passes -- #69 shipped eight of those at once.
+      for path <- ["/healthz", "/readyz", "/metrics", "/v1/health", "/v1/credits"] do
         conn = get(path)
 
         refute conn.status == 404,

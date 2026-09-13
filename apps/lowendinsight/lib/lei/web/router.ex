@@ -320,12 +320,58 @@ defmodule Lei.Web.Router do
               limit: info.limit,
               upgrade_url: "https://lowendinsight.fly.dev/signup?tier=pro"
             })
+
+          # Also a 402, and deliberately so: this is the status x402 uses to
+          # say "pay and retry", and a wallet-identified caller is exactly the
+          # client that knows how to act on it. The payment requirements
+          # themselves arrive with x402 in #104.
+          {:error, :insufficient_credits, info} ->
+            json_resp(conn, 402, %{
+              error: "insufficient_credits",
+              balance: info.balance
+            })
         end
 
       {:error, message} ->
         conn
         |> put_resp_content_type("application/json")
         |> send_resp(400, Poison.encode!(%{error: message}))
+    end
+  end
+
+  get "/v1/credits" do
+    # Scoped to the authenticated org by construction: org_id comes from the
+    # API key, never from a parameter. There is no way to ask for another org's
+    # ledger through this route, which is the point -- a balance is money.
+    case extract_billing_context(conn) do
+      {nil, _, _} ->
+        json_resp(conn, 401, %{error: "API key required for credits endpoint"})
+
+      {org_id, _, _tier} ->
+        entries =
+          org_id
+          |> Lei.Credits.entries(limit: 50)
+          |> Enum.map(fn entry ->
+            %{
+              delta: entry.delta,
+              reason: entry.reason,
+              # external_ref is deliberately omitted: it is a Stripe payment
+              # intent or an on-chain transaction hash, and the balance does
+              # not need it to be explicable.
+              at: NaiveDateTime.to_iso8601(entry.inserted_at)
+            }
+          end)
+
+        json_resp(conn, 200, %{
+          balance: Lei.Credits.balance(org_id),
+          # Stated rather than assumed by the caller. One credit is $0.001.
+          credit_value_usd: "0.001",
+          pricing: %{
+            cache_hit: Lei.Credits.credits_per_cache_hit(),
+            cache_miss: Lei.Credits.credits_per_cache_miss()
+          },
+          entries: entries
+        })
     end
   end
 
@@ -625,6 +671,7 @@ defmodule Lei.Web.Router do
         case Lei.UsageTracker.check_free_tier_quota(org_id) do
           {:ok, _remaining} -> {:ok, :within_quota}
           {:error, :quota_exceeded, info} -> {:error, :quota_exceeded, info}
+          {:error, :insufficient_credits, info} -> {:error, :insufficient_credits, info}
           {:error, _} -> {:ok, :unknown}
         end
     end

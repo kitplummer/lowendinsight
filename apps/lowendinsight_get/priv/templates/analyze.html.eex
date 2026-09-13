@@ -3,17 +3,32 @@
   <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
+    <link rel="icon" href="/favicon.ico" sizes="any">
+    <link rel="icon" type="image/png" sizes="32x32" href="/images/favicon-32.png">
+    <link rel="icon" type="image/png" sizes="16x16" href="/images/favicon-16.png">
+    <link rel="apple-touch-icon" sizes="180x180" href="/images/apple-touch-icon.png">
     <title>LowEndInsight - OSS Supply Chain Risk Analysis</title>
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bulma@0.9.4/css/bulma.min.css">
+    <link rel="stylesheet" href="/css/theme.css">
+    <script>
+      // Inline and synchronous on purpose: a deferred script runs after first
+      // paint, and the flash of the wrong theme is the thing being avoided.
+      (function () {
+        try {
+          var t = localStorage.getItem("lei-theme");
+          if (t) document.documentElement.setAttribute("data-theme", t);
+        } catch (e) {}
+      })();
+    </script>
     <script type="text/javascript" defer src="https://use.fontawesome.com/releases/v5.3.1/js/all.js"></script>
     <style>
-      body { background: #f5f5f5; }
+      body { background: var(--bg); }
       .hero-body { padding-bottom: 1rem; }
-      pre { background: #282c34; color: #abb2bf; border-radius: 6px; padding: 1.25rem; overflow-x: auto; }
-      .tag-green { background: #48c774; color: white; }
-      .tag-orange { background: #ff9f43; color: white; }
-      .tag-red { background: #f14668; color: white; }
-      code { color: #e06c75; background: #f0f0f0; padding: 0.15em 0.4em; border-radius: 3px; font-size: 0.9em; }
+      pre { background: var(--pre-bg); color: var(--pre-text); border-radius: 6px; padding: 1.25rem; overflow-x: auto; }
+      
+      
+      
+      code { color: var(--code-text); background: var(--code-bg); padding: 0.15em 0.4em; border-radius: 3px; font-size: 0.9em; }
       pre code { color: inherit; background: none; padding: 0; }
       .endpoint { font-family: monospace; font-weight: bold; }
     </style>
@@ -172,16 +187,17 @@
 
             <div class="box">
               <h2 class="title is-5">Try it</h2>
-              <form id="form" action="/url=" method="get" onsubmit="return validate_and_submit()">
+              <form id="form" action="/url=" method="get" onsubmit="return validate_and_submit(event)">
                 <div class="field has-addons">
                   <div class="control is-expanded">
-                    <input type="text" id="input-url" class="input" placeholder="https://github.com/org/repo" required>
+                    <input type="text" id="input-url" class="input" placeholder="https://github.com/org/repo" required oninput="remove_error()">
                   </div>
                   <div class="control">
-                    <button type="submit" class="button is-dark">Analyze</button>
+                    <button type="submit" id="analyze-button" class="button is-dark">Analyze</button>
                   </div>
                 </div>
               </form>
+              <span id="invalid-url" style="display: none; color: var(--accent-red);">Invalid repo URL</span>
             </div>
 
             <div class="box">
@@ -202,11 +218,15 @@
 
     <footer class="footer" style="padding: 1.5rem;">
       <div class="content has-text-centered">
-        <p>LowEndInsight &mdash; originally by <a href="https://gtri.gatech.edu">GTRI</a> &mdash; BSD 3-Clause License</p>
-        <p style="font-size: 0.75rem; color: #999;">v<%= version %></p>
+        <p>LowEndInsight is developed and operated by <a href="https://revolveteam.com"><strong>(r)evolve</strong></a>.</p>
+        <p style="font-size: 0.85rem;">Originally created as research at
+          <a href="https://gtri.gatech.edu">GTRI</a> &mdash; BSD 3-Clause License</p>
+        <p style="font-size: 0.75rem; color: var(--text-muted);">v<%= version %></p>
       </div>
     </footer>
 
     <script src="/js/endpoints.js" type="text/javascript"></script>
-  </body>
+      <button id="theme-toggle" class="theme-toggle" type="button">Dark mode</button>
+    <script src="/js/theme.js" type="text/javascript"></script>
+</body>
 </html>

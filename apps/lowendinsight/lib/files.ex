@@ -27,37 +27,74 @@ defmodule Lowendinsight.Files do
             )
         ) :: %{binary_files: list, binary_files_count: non_neg_integer}
   def find_binary_files(path) do
-    # Deliberately does not change directory. The working directory is global
-    # to the BEAM node, and analyses run concurrently under Task.async_stream
-    # in AnalyzerModule, so save-and-restore cannot be made correct: one task
-    # captures the cwd while another is inside its checkout, the first task
-    # finishes and deletes that checkout, and the second restores into a
-    # directory that no longer exists. From then on every relative path in the
-    # node fails with "could not get current working directory".
+    # Implemented in Elixir rather than by shelling out to grep, because
+    # shelling out was broken in production in two separate ways.
     #
-    # System.cmd's :cd option sets the directory of the spawned process only,
-    # which is what was actually wanted. Every other function in this module
-    # already takes the path explicitly; this one was the exception.
+    # The command was `grep -rIL .` with no file operand. GNU grep defaults to
+    # searching the working directory; BusyBox grep -- which is what an Alpine
+    # runtime image provides, and ours has no grep package -- reads **stdin**
+    # instead. System.cmd holds the child's stdin open and never writes to it,
+    # so grep blocked forever and every analysis hung after the clone. That is
+    # why GET /url= never returned in production while completing in under a
+    # second locally against GNU grep.
+    #
+    # Fixing the operand alone would not have been enough: BusyBox accepts -I
+    # but does not implement GNU's binary-file semantics, so `grep -rIL . .`
+    # reports nothing for a directory containing a binary file. The function
+    # would have stopped hanging and started quietly returning [].
+    #
+    # The NUL-byte-in-the-first-8KB heuristic below is the same one git and
+    # grep use to classify a file as binary.
     binary_files =
       if File.dir?(path) do
-        case System.cmd("grep", ["-rIL", "."], cd: path) do
-          {files, 0} ->
-            files
-            |> String.split("\n")
-            |> Enum.reject(&(String.contains?(&1, ".git/") || &1 == ""))
-            |> Enum.sort()
-
-          # grep exits 1 when it matches nothing, and 2 on an unreadable tree.
-          # Neither is an error worth propagating: there are no binary files to
-          # report either way, which is what the empty list already meant.
-          _ ->
-            []
-        end
+        path
+        |> Path.join("**")
+        |> Path.wildcard(match_dot: true)
+        |> Stream.reject(&git_internal?(&1, path))
+        |> Stream.filter(&File.regular?/1)
+        |> Stream.filter(&binary?/1)
+        |> Stream.map(&relative_to(&1, path))
+        |> Enum.sort()
       else
         []
       end
 
     %{binary_files: binary_files, binary_files_count: Enum.count(binary_files)}
+  end
+
+  @binary_sniff_bytes 8000
+
+  defp binary?(file) do
+    case File.open(file, [:read, :binary]) do
+      {:ok, io} ->
+        try do
+          case IO.binread(io, @binary_sniff_bytes) do
+            data when is_binary(data) -> String.contains?(data, <<0>>)
+            # :eof for an empty file, which is not binary.
+            _ -> false
+          end
+        after
+          File.close(io)
+        end
+
+      # Unreadable is not the same as binary, and one bad file must not fail
+      # the analysis of a whole repository.
+      {:error, _reason} ->
+        false
+    end
+  end
+
+  defp git_internal?(file, path) do
+    relative = relative_to(file, path)
+
+    relative == ".git" or String.starts_with?(relative, ".git/") or
+      String.contains?(relative, "/.git/")
+  end
+
+  defp relative_to(file, path) do
+    file
+    |> Path.relative_to(path)
+    |> String.trim_leading("./")
   end
 
   @spec get_total_file_count(binary) :: %{total_file_count: non_neg_integer}

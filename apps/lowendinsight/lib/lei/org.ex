@@ -13,6 +13,7 @@ defmodule Lei.Org do
     field(:monthly_credit_cents, :decimal, default: Decimal.new(0))
     field(:free_tier_analyses_used, :integer, default: 0)
     field(:free_tier_analyses_limit, :integer, default: 200)
+    field(:wallet_address, :string)
     has_many(:api_keys, Lei.ApiKey)
     timestamps()
   end
@@ -44,6 +45,51 @@ defmodule Lei.Org do
     ])
     |> validate_inclusion(:status, @valid_statuses)
   end
+
+  @doc """
+  Changeset for an org identified by a wallet rather than by a person.
+
+  The address is normalised to lowercase: EVM addresses are hex and
+  case-insensitive, and checksummed forms differ only in case. Storing them as
+  presented would let the same wallet hold two orgs, which is the thing the
+  unique index exists to prevent.
+  """
+  def wallet_changeset(org, attrs) do
+    org
+    |> cast(attrs, [:name, :tier, :status, :wallet_address])
+    |> update_change(:wallet_address, &normalise_wallet/1)
+    |> validate_required([:wallet_address])
+    |> validate_format(:wallet_address, ~r/^0x[0-9a-f]{40}$/,
+      message: "must be a 0x-prefixed 40-character hex address"
+    )
+    |> validate_inclusion(:tier, @valid_tiers)
+    |> validate_inclusion(:status, @valid_statuses)
+    |> put_wallet_slug()
+    |> unique_constraint(:slug)
+    |> unique_constraint(:wallet_address)
+  end
+
+  # Wallet orgs get a slug in a namespace ordinary signup cannot produce.
+  #
+  # generate_slug/1 maps a name into [a-z0-9-], so deriving a wallet org's slug
+  # from its name would let anyone reserve "wallet-0x<someone else's address>"
+  # through the normal signup form and block that wallet from ever being
+  # provisioned. Not takeover, but a cheap denial of service against a specific
+  # address. A dot cannot survive slugify, so this namespace is unreachable
+  # from there.
+  defp put_wallet_slug(changeset) do
+    case get_field(changeset, :wallet_address) do
+      address when is_binary(address) and address != "" ->
+        put_change(changeset, :slug, "w." <> address)
+
+      _ ->
+        changeset
+    end
+  end
+
+  def normalise_wallet(nil), do: nil
+  def normalise_wallet(address) when is_binary(address), do: String.downcase(String.trim(address))
+  def normalise_wallet(other), do: other
 
   def billing_changeset(org, attrs) do
     org

@@ -17,7 +17,7 @@ defmodule LowendinsightGet.Endpoint do
   # to this endpoint's own routes and 404s, so a route added to Lei.Web.Router
   # is unreachable in production until its prefix appears here.
   @auth_paths ~w(/signup /login /dashboard /keys /logout /static /recover /webhooks
-                 /v1/analyze/batch /v1/usage /v1/health /v1/orgs
+                 /v1/analyze/batch /v1/usage /v1/credits /v1/health /v1/orgs
                  /healthz /readyz /metrics)
 
   plug(LowendinsightGet.Auth)
@@ -26,6 +26,15 @@ defmodule LowendinsightGet.Endpoint do
   plug(Plug.Static, from: {:lowendinsight_get, "priv/static/images"}, at: "/images")
   plug(Plug.Static, from: {:lowendinsight_get, "priv/static/js"}, at: "/js")
   plug(Plug.Static, from: {:lowendinsight_get, "priv/static/css"}, at: "/css")
+
+  # Browsers request /favicon.ico from the root whether or not a link tag says
+  # to, so the root path has to work on its own. `only` keeps this from serving
+  # the rest of priv/static from /.
+  plug(Plug.Static,
+    from: {:lowendinsight_get, "priv/static/images"},
+    at: "/",
+    only: ~w(favicon.ico)
+  )
 
   # RawBodyReader stashes the unparsed body in conn.private[:raw_body]. This is
   # the first Plug.Parsers in the pipeline, so it has to be the one to capture
@@ -344,6 +353,30 @@ defmodule LowendinsightGet.Endpoint do
   end
 
   # GET /v1/cache/stats - Get cache statistics.
+  # POST /v1/cache/invalidate - drop a cached report so the next request for it
+  # does the real analysis. Admin scope, enforced in LowendinsightGet.Auth.
+  post "/v1/cache/invalidate" do
+    case conn.body_params["url"] do
+      url when is_binary(url) and url != "" ->
+        case LowendinsightGet.Datastore.delete_from_cache(url) do
+          {:ok, removed} ->
+            conn
+            |> put_resp_content_type(@content_type)
+            |> send_resp(200, Poison.encode!(%{url: url, removed: removed}))
+
+          {:error, reason} ->
+            conn
+            |> put_resp_content_type(@content_type)
+            |> send_resp(503, Poison.encode!(%{error: "cache unavailable: #{inspect(reason)}"}))
+        end
+
+      _ ->
+        conn
+        |> put_resp_content_type(@content_type)
+        |> send_resp(400, Poison.encode!(%{error: "missing required field: url"}))
+    end
+  end
+
   get "/v1/cache/stats" do
     stats = LowendinsightGet.Datastore.cache_stats()
 

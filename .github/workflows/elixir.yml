@@ -27,6 +27,24 @@ jobs:
       run: mix format --check-formatted
     - name: Compile with warnings as errors
       run: mix compile --force --warnings-as-errors
+    - uses: actions/setup-node@v4
+      with:
+        node-version: 20
+    # The page's only interactive control is driven by this file, and a syntax
+    # error in it is invisible server-side: the template renders, the asset
+    # returns 200, and the button silently stops working. There is no Elixir
+    # equivalent of mix compile for it.
+    - name: Check static JavaScript parses
+      run: |
+        shopt -s nullglob
+        files=(apps/*/priv/static/js/*.js)
+        if [ ${#files[@]} -eq 0 ]; then
+          echo "::error::No static JavaScript found — this check is scanning nothing."
+          exit 1
+        fi
+        for f in "${files[@]}"; do
+          node --check "$f" && echo "  ok $f"
+        done
 
   # Production backups broke when credit_entries was merged: the migration
   # created a table the backup role could not read, and pg_dump failed. The
