@@ -32,6 +32,15 @@ defmodule LowendinsightGet.ThemeTest do
     # layout lives in the other app's directory. Both gaps reached production.
     @html_routes ["/", "/doc", "/signup", "/login"]
 
+    # /doc is deliberately light. Swagger UI loads its own CSS from a CDN and
+    # will not follow the tokens, so theming the frame around it would give a
+    # dark page wrapped about a light API explorer. Listed here rather than
+    # dropped from @html_routes, so the exception is visible and the favicon
+    # and document checks still cover it.
+    @unthemed ["/doc"]
+
+    defp themed_routes, do: @html_routes -- @unthemed
+
     defp render(path) do
       conn(:get, path)
       |> LowendinsightGet.Endpoint.call(LowendinsightGet.Endpoint.init([]))
@@ -49,7 +58,7 @@ defmodule LowendinsightGet.ThemeTest do
     end
 
     test "every served page links the theme stylesheet" do
-      missing = Enum.reject(@html_routes, &(render(&1).resp_body =~ "/css/theme.css"))
+      missing = Enum.reject(themed_routes(), &(render(&1).resp_body =~ "/css/theme.css"))
 
       assert missing == [],
              "these pages render without the theme and will stay light: #{inspect(missing)}"
@@ -58,13 +67,13 @@ defmodule LowendinsightGet.ThemeTest do
     test "every served page applies the stored theme before paint" do
       # A deferred script runs after first paint, so the page renders light and
       # then flips. The flash is worse than no dark mode.
-      missing = Enum.reject(@html_routes, &(render(&1).resp_body =~ "lei-theme"))
+      missing = Enum.reject(themed_routes(), &(render(&1).resp_body =~ "lei-theme"))
 
       assert missing == [], "these pages will flash the wrong theme: #{inspect(missing)}"
     end
 
     test "every served page carries the toggle" do
-      missing = Enum.reject(@html_routes, &(render(&1).resp_body =~ "theme-toggle"))
+      missing = Enum.reject(themed_routes(), &(render(&1).resp_body =~ "theme-toggle"))
 
       assert missing == [], "no way to switch theme on: #{inspect(missing)}"
     end
@@ -75,13 +84,23 @@ defmodule LowendinsightGet.ThemeTest do
       assert missing == [], "these pages show a generic tab icon: #{inspect(missing)}"
     end
 
+    test "the unthemed exception is real, not a stale entry" do
+      # If /doc ever gains the theme, this list should shrink rather than sit
+      # here excusing a page that no longer needs excusing.
+      for path <- @unthemed do
+        refute render(path).resp_body =~ "/css/theme.css",
+               "#{path} is in @unthemed but now links the theme -- remove it from the list"
+      end
+    end
+
     test "no template carries a raw colour literal" do
       # Colours live in one place. A literal in a template is a colour that
       # cannot follow the theme.
+      # priv/static/index.html is excluded on purpose: it is the unthemed /doc
+      # page, loads no tokens, and a var() there would resolve to nothing.
       sources =
         Path.wildcard("priv/templates/*.html.eex") ++
-          Path.wildcard("../lowendinsight/priv/templates/*.html.eex") ++
-          ["priv/static/index.html"]
+          Path.wildcard("../lowendinsight/priv/templates/*.html.eex")
 
       offenders =
         for p <- sources,
