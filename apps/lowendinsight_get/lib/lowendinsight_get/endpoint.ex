@@ -27,6 +27,15 @@ defmodule LowendinsightGet.Endpoint do
   plug(Plug.Static, from: {:lowendinsight_get, "priv/static/js"}, at: "/js")
   plug(Plug.Static, from: {:lowendinsight_get, "priv/static/css"}, at: "/css")
 
+  # Browsers request /favicon.ico from the root whether or not a link tag says
+  # to, so the root path has to work on its own. `only` keeps this from serving
+  # the rest of priv/static from /.
+  plug(Plug.Static,
+    from: {:lowendinsight_get, "priv/static/images"},
+    at: "/",
+    only: ~w(favicon.ico)
+  )
+
   # RawBodyReader stashes the unparsed body in conn.private[:raw_body]. This is
   # the first Plug.Parsers in the pipeline, so it has to be the one to capture
   # it -- the ACP HMAC check and the Stripe webhook signature check both read
