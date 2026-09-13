@@ -13,7 +13,7 @@ defmodule Lei.Stripe.ModeVisibilityTest do
     Ecto.Adapters.SQL.Sandbox.mode(Lei.Repo, {:shared, self()})
 
     saved =
-      for k <- [:stripe_secret_key, :stripe_webhook_secret, :deploy_env],
+      for k <- [:stripe_secret_key, :stripe_webhook_secret, :stripe_profile_id, :deploy_env],
           do: {k, Application.fetch_env(:lowendinsight, k)}
 
     on_exit(fn ->
@@ -73,8 +73,16 @@ defmodule Lei.Stripe.ModeVisibilityTest do
       assert_raise ArgumentError, ~r/live Stripe key/, &Lei.Application.boot_checks!/0
     end
 
+    test "refuse a sandbox profile beside a live key" do
+      put_key("sk_live_")
+      Application.put_env(:lowendinsight, :deploy_env, "production")
+      Application.put_env(:lowendinsight, :stripe_profile_id, "profile_test_lei")
+      assert_raise ArgumentError, ~r/STRIPE_PROFILE_ID/, &Lei.Application.boot_checks!/0
+    end
+
     test "accept a live key when deployed to production" do
       put_key("sk_live_")
+      Application.put_env(:lowendinsight, :stripe_profile_id, "profile_lei")
       Application.put_env(:lowendinsight, :deploy_env, "production")
       assert :ok = Lei.Application.boot_checks!()
     end

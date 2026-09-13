@@ -134,7 +134,7 @@ defmodule Lei.Payments.JourneyTest do
       [header] = get_resp_header(conn, "www-authenticate")
       {:ok, challenge} = Challenge.from_header(header)
 
-      expect(Lei.StripeMock, :create_payment_intent, fn _ -> {:ok, intent()} end)
+      expect(Lei.StripeMock, :confirm_shared_payment_token, fn _ -> {:ok, intent()} end)
 
       paid = analyze_with_payment(key, credential_for(challenge))
 
@@ -167,7 +167,7 @@ defmodule Lei.Payments.JourneyTest do
       [header] = get_resp_header(conn, "www-authenticate")
       {:ok, challenge} = Challenge.from_header(header)
 
-      expect(Lei.StripeMock, :create_payment_intent, fn _ -> {:ok, intent()} end)
+      expect(Lei.StripeMock, :confirm_shared_payment_token, fn _ -> {:ok, intent()} end)
 
       paid = analyze_with_payment(key, credential_for(challenge))
 
@@ -186,7 +186,7 @@ defmodule Lei.Payments.JourneyTest do
       {:ok, challenge} = Challenge.from_header(header)
       credential = credential_for(challenge)
 
-      expect(Lei.StripeMock, :create_payment_intent, 2, fn _ -> {:ok, intent()} end)
+      expect(Lei.StripeMock, :confirm_shared_payment_token, 2, fn _ -> {:ok, intent()} end)
 
       analyze_with_payment(key, credential)
       analyze_with_payment(key, credential)

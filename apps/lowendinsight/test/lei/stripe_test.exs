@@ -1,6 +1,48 @@
 defmodule Lei.StripeTest do
   use ExUnit.Case, async: true
 
+  describe "shared_payment_token_request/1" do
+    # The defect in #143 lived here, below the Mox boundary every rail test
+    # stops at. These assert the bytes Stripe receives. The shape was checked
+    # against sandbox Stripe: payment_method=spt_... is "No such PaymentMethod",
+    # payment_method_data[shared_payment_granted_token] succeeds.
+    defp spt_request do
+      Lei.Stripe.shared_payment_token_request(%{
+        amount: 1500,
+        currency: "usd",
+        spt: "spt_abc",
+        idempotency_key: "mpp_ch1_spt_abc",
+        metadata: %{"challenge_id" => "ch1"}
+      })
+    end
+
+    test "passes the token as a shared payment granted token, not a payment method" do
+      {body, _headers} = spt_request()
+      form = URI.decode_query(body)
+
+      assert form["payment_method_data[shared_payment_granted_token]"] == "spt_abc"
+      refute Map.has_key?(form, "payment_method")
+    end
+
+    test "confirms immediately, without redirects an agent cannot follow" do
+      {body, _headers} = spt_request()
+      form = URI.decode_query(body)
+
+      assert form["amount"] == "1500"
+      assert form["currency"] == "usd"
+      assert form["confirm"] == "true"
+      assert form["automatic_payment_methods[enabled]"] == "true"
+      assert form["automatic_payment_methods[allow_redirects]"] == "never"
+      refute Map.has_key?(form, "return_url")
+      assert form["metadata[challenge_id]"] == "ch1"
+    end
+
+    test "carries the idempotency key as a header" do
+      {_body, headers} = spt_request()
+      assert {"Idempotency-Key", "mpp_ch1_spt_abc"} in headers
+    end
+  end
+
   describe "construct_webhook_event/3" do
     test "verifies valid signature" do
       payload = ~s({"type":"checkout.session.completed","data":{"object":{}}})

@@ -284,7 +284,7 @@
       "id": "mpp-unsettled-payment-accepted",
       "bug": "A PaymentIntent that is processing, requires_action or requires_payment_method is not money. Accepting anything but a settled status gives away the work for a payment that may still fail, and the ledger records credits nobody paid for.",
       "file": "apps/lowendinsight/lib/lei/payments/rails/mpp.ex",
-      "find": "      {:ok, %{\"status\" => status} = intent} when status in [\"succeeded\", \"requires_capture\"] ->",
+      "find": "      {:ok, %{\"status\" => \"succeeded\"} = intent} ->",
       "replace": "      {:ok, %{\"status\" => _status} = intent} ->",
       "guarded_by": "test/lei/payments/mpp_rail_test.exs",
       "app": "apps/lowendinsight"
@@ -356,8 +356,8 @@
       "id": "stripe-malformed-key-is-unconfigured",
       "bug": "A publishable key or webhook secret in STRIPE_SECRET_KEY reads as 'billing off' rather than a mistake, boots, and fails at the first customer (#137).",
       "file": "apps/lowendinsight/lib/lei/stripe/mode.ex",
-      "find": "      true -> :malformed\n",
-      "replace": "      true -> :unconfigured\n",
+      "find": "      String.starts_with?(key, @test_prefixes) -> :test\n      true -> :malformed\n",
+      "replace": "      String.starts_with?(key, @test_prefixes) -> :test\n      true -> :unconfigured\n",
       "guarded_by": "test/lei/stripe/mode_test.exs",
       "app": "apps/lowendinsight"
     },
@@ -422,6 +422,60 @@
       "find": "      Lei.Stripe.ObjectCheck\n",
       "replace": "",
       "guarded_by": "test/lei/stripe/object_check_test.exs",
+      "app": "apps/lowendinsight"
+    },
+    {
+      "id": "spt-sent-as-payment-method",
+      "bug": "The Shared Payment Token is sent as payment_method. Stripe answers 'No such PaymentMethod' and every real card payment over MPP fails; the rail tests mocked this boundary and asserted the wrong call (#143).",
+      "file": "apps/lowendinsight/lib/lei/stripe.ex",
+      "find": "        \"payment_method_data[shared_payment_granted_token]\" => params.spt,",
+      "replace": "        \"payment_method\" => params.spt,",
+      "guarded_by": "test/lei/stripe_test.exs",
+      "app": "apps/lowendinsight"
+    },
+    {
+      "id": "spt-no-idempotency-key",
+      "bug": "No Idempotency-Key on the SPT charge. An SPT is single-use, so an agent retrying after a timeout gets a second intent refused as 'deactivated' -- turned away after paying (observed in sandbox, #143).",
+      "file": "apps/lowendinsight/lib/lei/payments/rails/mpp.ex",
+      "find": "           idempotency_key: \"mpp_#{issued.id}_#{token}\",",
+      "replace": "           idempotency_key: \"mpp_#{System.unique_integer()}\",",
+      "guarded_by": "test/lei/payments/mpp_rail_test.exs",
+      "app": "apps/lowendinsight"
+    },
+    {
+      "id": "mpp-authorisation-counts-as-payment",
+      "bug": "requires_capture accepted as settled. That is an authorisation, funds held not taken; ADR-002 grants credits against settled money only (#143).",
+      "file": "apps/lowendinsight/lib/lei/payments/rails/mpp.ex",
+      "find": "      {:ok, %{\"status\" => \"succeeded\"} = intent} ->",
+      "replace": "      {:ok, %{\"status\" => status} = intent} when status in [\"succeeded\", \"requires_capture\"] ->",
+      "guarded_by": "test/lei/payments/mpp_rail_test.exs",
+      "app": "apps/lowendinsight"
+    },
+    {
+      "id": "mpp-challenge-without-network-id",
+      "bug": "The challenge does not name the Stripe profile, so no agent wallet can mint a token scoped to us and the 402 is unpayable (#143).",
+      "file": "apps/lowendinsight/lib/lei/payments/rails/mpp.ex",
+      "find": "             \"networkId\" => profile_id(),\n",
+      "replace": "",
+      "guarded_by": "test/lei/payments/mpp_rail_test.exs",
+      "app": "apps/lowendinsight"
+    },
+    {
+      "id": "mpp-challenge-issued-without-profile",
+      "bug": "A challenge is issued with no Stripe profile configured: it looks payable and fails at the wallet (#143).",
+      "file": "apps/lowendinsight/lib/lei/payments/rails/mpp.ex",
+      "find": "      is_nil(profile_id()) ->",
+      "replace": "      false ->",
+      "guarded_by": "test/lei/payments/mpp_rail_test.exs",
+      "app": "apps/lowendinsight"
+    },
+    {
+      "id": "stripe-profile-mode-not-checked",
+      "bug": "A sandbox profile boots beside a live key: challenges name a profile no live wallet can pay (#143, extends #137).",
+      "file": "apps/lowendinsight/lib/lei/stripe/mode.ex",
+      "find": "      mode in [:live, :test] and profile_mode != mode ->",
+      "replace": "      false ->",
+      "guarded_by": "test/lei/stripe/mode_test.exs",
       "app": "apps/lowendinsight"
     }
   ]

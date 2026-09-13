@@ -89,6 +89,24 @@ defmodule Lei.Payments.HttpTest do
       assert is_binary(body["challenge_id"])
     end
 
+    test "without a Stripe profile, a 402 carries no challenge", %{org: org} do
+      # The caller still needs credits; it just cannot buy them this way. A
+      # challenge here would look payable and fail at the wallet (#143). A 500
+      # would say the service is broken when it is refusing a sale.
+      previous = Application.get_env(:lowendinsight, :stripe_profile_id)
+      Application.delete_env(:lowendinsight, :stripe_profile_id)
+      on_exit(fn -> Application.put_env(:lowendinsight, :stripe_profile_id, previous) end)
+
+      conn = Http.challenge(conn(:get, "/v1/analyze"), org.id, 15_000)
+
+      assert conn.status == 402
+      assert get_resp_header(conn, "www-authenticate") == []
+      body = Poison.decode!(conn.resp_body)
+      assert body["error"] == "insufficient credits"
+      assert body["payment"] == "unavailable"
+      assert body["credits"] == 15_000
+    end
+
     test "records the challenge against the org it was issued to", %{org: org} do
       # A credential proves a payment happened, not who it was for.
       {_conn, challenge} = issue_challenge(org)
@@ -104,7 +122,7 @@ defmodule Lei.Payments.HttpTest do
   describe "settling" do
     test "a paid retry credits the org and returns a receipt", %{org: org} do
       {_conn, challenge} = issue_challenge(org)
-      expect(Lei.StripeMock, :create_payment_intent, fn _ -> {:ok, intent()} end)
+      expect(Lei.StripeMock, :confirm_shared_payment_token, fn _ -> {:ok, intent()} end)
 
       assert {:ok, conn, settlement} = Http.settle(with_credential(credential_header(challenge)))
 
@@ -119,7 +137,7 @@ defmodule Lei.Payments.HttpTest do
 
     test "marks the challenge settled", %{org: org} do
       {_conn, challenge} = issue_challenge(org)
-      expect(Lei.StripeMock, :create_payment_intent, fn _ -> {:ok, intent()} end)
+      expect(Lei.StripeMock, :confirm_shared_payment_token, fn _ -> {:ok, intent()} end)
 
       {:ok, _conn, _} = Http.settle(with_credential(credential_header(challenge)))
 
@@ -135,7 +153,7 @@ defmodule Lei.Payments.HttpTest do
         )
 
       {_conn, challenge} = issue_challenge(org)
-      expect(Lei.StripeMock, :create_payment_intent, fn _ -> {:ok, intent()} end)
+      expect(Lei.StripeMock, :confirm_shared_payment_token, fn _ -> {:ok, intent()} end)
 
       {:ok, _conn, _} = Http.settle(with_credential(credential_header(challenge)))
 
@@ -153,7 +171,7 @@ defmodule Lei.Payments.HttpTest do
         )
 
       {_conn, challenge} = issue_challenge(org)
-      expect(Lei.StripeMock, :create_payment_intent, fn _ -> {:ok, intent()} end)
+      expect(Lei.StripeMock, :confirm_shared_payment_token, fn _ -> {:ok, intent()} end)
 
       {:ok, _conn, _} =
         Http.settle(with_credential(credential_header(challenge)), org_id: other.id)
@@ -170,7 +188,7 @@ defmodule Lei.Payments.HttpTest do
       {_conn, challenge} = issue_challenge(org)
       header = credential_header(challenge)
 
-      expect(Lei.StripeMock, :create_payment_intent, 2, fn _ -> {:ok, intent()} end)
+      expect(Lei.StripeMock, :confirm_shared_payment_token, 2, fn _ -> {:ok, intent()} end)
 
       assert {:ok, _, _} = Http.settle(with_credential(header))
       assert {:ok, _, _} = Http.settle(with_credential(header))
@@ -212,7 +230,7 @@ defmodule Lei.Payments.HttpTest do
     test "an unpaid payment grants nothing", %{org: org} do
       {_conn, challenge} = issue_challenge(org)
 
-      expect(Lei.StripeMock, :create_payment_intent, fn _ ->
+      expect(Lei.StripeMock, :confirm_shared_payment_token, fn _ ->
         {:ok, intent(%{"status" => "processing"})}
       end)
 
@@ -262,7 +280,7 @@ defmodule Lei.Payments.HttpTest do
       header = credential_header(challenge)
 
       # The bucket allows two, so the third is the one refused.
-      expect(Lei.StripeMock, :create_payment_intent, 2, fn _ -> {:ok, intent()} end)
+      expect(Lei.StripeMock, :confirm_shared_payment_token, 2, fn _ -> {:ok, intent()} end)
 
       assert {:ok, _, _} = Http.settle(with_credential(header))
       assert {:ok, _, _} = Http.settle(with_credential(header))
@@ -305,7 +323,7 @@ defmodule Lei.Payments.HttpTest do
 
     test "settled challenges survive the purge", %{org: org} do
       {_conn, challenge} = issue_challenge(org)
-      expect(Lei.StripeMock, :create_payment_intent, fn _ -> {:ok, intent()} end)
+      expect(Lei.StripeMock, :confirm_shared_payment_token, fn _ -> {:ok, intent()} end)
       {:ok, _, _} = Http.settle(with_credential(credential_header(challenge)))
 
       ChallengeStore.purge_expired(DateTime.add(DateTime.utc_now(), 3600, :second))

@@ -44,6 +44,7 @@ defmodule Lei.Stripe.ModeTest do
                Mode.validate!(
                  key: key("sk_live_"),
                  webhook_secret: key("whsec_"),
+                 profile: nil,
                  deploy_env: "production"
                )
     end
@@ -67,7 +68,12 @@ defmodule Lei.Stripe.ModeTest do
       for env <- [nil, "staging", "Production", ""] do
         error =
           assert_raise ArgumentError, fn ->
-            Mode.validate!(key: key("rk_live_"), webhook_secret: nil, deploy_env: env)
+            Mode.validate!(
+              key: key("rk_live_"),
+              webhook_secret: nil,
+              profile: nil,
+              deploy_env: env
+            )
           end
 
         assert error.message =~ "live Stripe key"
@@ -92,6 +98,40 @@ defmodule Lei.Stripe.ModeTest do
 
       assert error.message =~ "STRIPE_WEBHOOK_SECRET"
       assert error.message =~ ~s(begins "sk_test_")
+    end
+
+    test "a profile must be in the key's mode" do
+      error =
+        assert_raise ArgumentError, fn ->
+          Mode.validate!(
+            key: key("sk_live_"),
+            profile: "profile_test_abc",
+            deploy_env: "production"
+          )
+        end
+
+      assert error.message =~ "test profile"
+      assert error.message =~ "live key"
+
+      assert_raise ArgumentError, ~r/live profile/, fn ->
+        Mode.validate!(key: key("rk_test_"), profile: "profile_abc", deploy_env: nil)
+      end
+
+      assert :ok =
+               Mode.validate!(key: key("sk_test_"), profile: "profile_test_abc", deploy_env: nil)
+
+      assert :ok =
+               Mode.validate!(
+                 key: key("sk_live_"),
+                 profile: "profile_abc",
+                 deploy_env: "production"
+               )
+    end
+
+    test "a malformed profile is refused" do
+      assert_raise ArgumentError, ~r/not a Stripe profile ID/, fn ->
+        Mode.validate!(key: key("sk_test_"), profile: "acct_123", deploy_env: nil)
+      end
     end
 
     test "refusal messages never carry the secret part" do

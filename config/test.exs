@@ -63,6 +63,9 @@ config :lowendinsight,
 # No bearer token or signing secret = auth checks skipped in test
 config :lowendinsight,
   stripe_module: Lei.StripeMock,
+  # Not a real profile. Present so challenges are issued; tests that need it
+  # absent delete it.
+  stripe_profile_id: "profile_test_lei",
   acp_bearer_token: nil,
   acp_signing_secret: nil
 

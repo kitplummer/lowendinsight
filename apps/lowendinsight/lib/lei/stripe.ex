@@ -3,6 +3,8 @@ defmodule Lei.StripeBehaviour do
   @callback construct_webhook_event(String.t(), String.t(), String.t()) ::
               {:ok, map()} | {:error, term()}
   @callback create_payment_intent(map()) :: {:ok, map()} | {:error, term()}
+  @callback confirm_shared_payment_token(map()) ::
+              {:ok, map()} | {:error, {pos_integer(), map()}} | {:error, term()}
   @callback report_meter_event(String.t(), integer(), integer(), String.t()) ::
               {:ok, map()} | {:error, term()}
   @callback retrieve_subscription(String.t()) :: {:ok, map()} | {:error, term()}
@@ -205,6 +207,70 @@ defmodule Lei.Stripe do
       {:error, reason} ->
         {:error, reason}
     end
+  end
+
+  @doc """
+  Charges an agent's Shared Payment Token, confirming immediately.
+
+  Separate from `create_payment_intent/1` because the token is not a payment
+  method, and passing it as one fails: Stripe answers `payment_method=spt_...`
+  with "No such PaymentMethod". That is what #131 shipped, under tests that
+  mocked this boundary and so asserted the wrong call faithfully (#143).
+  """
+  @impl true
+  def confirm_shared_payment_token(params) do
+    {body, extra_headers} = shared_payment_token_request(params)
+
+    case HTTPoison.post(
+           "https://api.stripe.com/v1/payment_intents",
+           body,
+           headers() ++ extra_headers
+         ) do
+      {:ok, %HTTPoison.Response{status_code: 200, body: resp_body}} ->
+        {:ok, Poison.decode!(resp_body)}
+
+      {:ok, %HTTPoison.Response{status_code: status, body: resp_body}} ->
+        {:error, {status, decode_or_raw(resp_body)}}
+
+      {:error, reason} ->
+        {:error, reason}
+    end
+  end
+
+  @doc """
+  The request `confirm_shared_payment_token/1` sends, as `{form_body, headers}`.
+
+  Public so the exact bytes are testable; this is where the defect was.
+
+    * `payment_method_data[shared_payment_granted_token]` -- the documented
+      parameter. Confirmed against sandbox: succeeds synchronously
+    * redirects disallowed -- an agent cannot complete a redirect, so a method
+      needing one should fail here rather than sit in `requires_action`
+    * no `return_url` -- only meaningful with redirects
+    * `Idempotency-Key` -- an SPT is single-use. Retrying without the key
+      creates a second intent, which Stripe refuses as "deactivated", so an
+      agent retrying after a timeout is refused after paying. With the key
+      the retry returns the intent that took the money
+  """
+  def shared_payment_token_request(params) do
+    metadata =
+      for {k, v} <- Map.get(params, :metadata, %{}), into: %{} do
+        {"metadata[#{k}]", to_string(v)}
+      end
+
+    body =
+      %{
+        "amount" => to_string(params.amount),
+        "currency" => params.currency,
+        "payment_method_data[shared_payment_granted_token]" => params.spt,
+        "confirm" => "true",
+        "automatic_payment_methods[enabled]" => "true",
+        "automatic_payment_methods[allow_redirects]" => "never"
+      }
+      |> Map.merge(metadata)
+      |> URI.encode_query()
+
+    {body, [{"Idempotency-Key", params.idempotency_key}]}
   end
 
   @impl true
