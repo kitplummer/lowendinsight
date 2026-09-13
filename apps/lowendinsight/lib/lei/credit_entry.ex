@@ -19,6 +19,9 @@ defmodule Lei.CreditEntry do
     purchase:mpp
     purchase:x402
     debit:analysis
+    reversal:stripe
+    reversal:mpp
+    reversal:x402
     adjustment:manual
     expiry
   )

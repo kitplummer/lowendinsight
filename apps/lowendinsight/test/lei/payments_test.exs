@@ -200,6 +200,130 @@ defmodule Lei.PaymentsTest do
     end
   end
 
+  describe "a settlement records what actually happened" do
+    test "keeps what was paid separate from what it was worth and what we granted", %{org: org} do
+      # Three different numbers. Keeping only the USD value loses the ability
+      # to reconcile against the rail's own records.
+      {:ok, entry} =
+        Payments.credit_settlement(org.id, %{
+          credits: 15_000,
+          rail: "mpp",
+          settlement_ref: "mpp_asset",
+          usd_value_cents: 1498,
+          asset: "USDC",
+          amount: "14.980000"
+        })
+
+      assert entry.delta == 15_000
+      assert entry.usd_value_cents == 1498
+      assert entry.metadata["asset"] == "USDC"
+      assert entry.metadata["amount"] == "14.980000"
+    end
+
+    test "relates settlements that came from one authorisation", %{org: org} do
+      # MPP authorises a limit once and settles repeatedly against it, so a
+      # session produces many settlements. Without this they are unrelatable.
+      for n <- 1..3 do
+        {:ok, _} =
+          Payments.credit_settlement(org.id, %{
+            credits: 500,
+            rail: "mpp",
+            settlement_ref: "stream-#{n}",
+            authorization_ref: "auth-session-1"
+          })
+      end
+
+      entries = Credits.entries(org.id)
+
+      assert length(entries) == 3
+      assert Enum.all?(entries, &(&1.metadata["authorization_ref"] == "auth-session-1"))
+      assert Credits.balance(org.id) == 1500
+    end
+  end
+
+  describe "reversals" do
+    test "a refund takes the credits back", %{org: org} do
+      {:ok, _} = Payments.credit_settlement(org.id, settlement("pi_refundable"))
+      assert Credits.balance(org.id) == 15_000
+
+      {:ok, entry} =
+        Payments.reverse_settlement(org.id, %{
+          credits: 15_000,
+          rail: "mpp",
+          settlement_ref: "re_1"
+        })
+
+      assert entry.delta == -15_000
+      assert entry.reason == "reversal:mpp"
+      assert Credits.balance(org.id) == 0
+    end
+
+    test "the purchase it reverses stays in the ledger", %{org: org} do
+      # Append-only: the reversal is a new entry, not an edit. "How did this
+      # balance get here" stays answerable.
+      {:ok, _} = Payments.credit_settlement(org.id, settlement("pi_kept"))
+
+      {:ok, _} =
+        Payments.reverse_settlement(org.id, %{
+          credits: 15_000,
+          rail: "mpp",
+          settlement_ref: "re_kept",
+          reverses: "pi_kept"
+        })
+
+      reasons = Credits.entries(org.id) |> Enum.map(& &1.reason) |> Enum.sort()
+
+      assert reasons == ["purchase:mpp", "reversal:mpp"]
+
+      assert Enum.find(Credits.entries(org.id), &(&1.reason == "reversal:mpp")).metadata[
+               "reverses"
+             ] ==
+               "pi_kept"
+    end
+
+    test "a reversal carrying the original payment's id does not collide with it", %{org: org} do
+      # Rails often identify a refund by the payment it reverses. Without the
+      # second namespace the refund would be refused as a duplicate of the
+      # purchase, and the money would go back with no record of it.
+      {:ok, _} = Payments.credit_settlement(org.id, %{settlement("same-id") | rail: "stripe"})
+
+      assert {:ok, _} =
+               Payments.reverse_settlement(org.id, %{
+                 credits: 15_000,
+                 rail: "stripe",
+                 settlement_ref: "same-id"
+               })
+
+      assert Credits.balance(org.id) == 0
+    end
+
+    test "a replayed reversal only reverses once", %{org: org} do
+      {:ok, _} = Payments.credit_settlement(org.id, settlement("pi_once"))
+
+      reversal = %{credits: 15_000, rail: "mpp", settlement_ref: "re_once"}
+
+      assert {:ok, _} = Payments.reverse_settlement(org.id, reversal)
+      assert {:error, :duplicate} = Payments.reverse_settlement(org.id, reversal)
+      assert Credits.balance(org.id) == 0
+    end
+
+    test "a reversal may take the balance negative", %{org: org} do
+      # An org that spent its credits and then charged back has a real debt.
+      # Refusing to record it loses the fact rather than preventing it.
+      {:ok, _} = Payments.credit_settlement(org.id, %{settlement("pi_spent") | credits: 100})
+      {:ok, _} = Credits.debit(org.id, 100, "debit:analysis")
+
+      {:ok, _} =
+        Payments.reverse_settlement(org.id, %{
+          credits: 100,
+          rail: "mpp",
+          settlement_ref: "re_negative"
+        })
+
+      assert Credits.balance(org.id) == -100
+    end
+  end
+
   describe "rail names are checked before money moves" do
     defmodule GoodRail do
       @behaviour Lei.Payments.MachineRail

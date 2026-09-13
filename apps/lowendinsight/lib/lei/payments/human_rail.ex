@@ -28,7 +28,10 @@ defmodule Lei.Payments.HumanRail do
           required(:org_id) => pos_integer(),
           optional(:usd_value_cents) => non_neg_integer(),
           optional(:jurisdiction) => String.t(),
-          optional(:settled_at) => String.t()
+          optional(:settled_at) => String.t(),
+          optional(:authorization_ref) => String.t(),
+          optional(:asset) => String.t(),
+          optional(:amount) => String.t()
         }
 
   @doc "Short name, used in the ledger reason as `purchase:<name>`."

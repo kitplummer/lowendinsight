@@ -122,6 +122,35 @@ defmodule Lei.Payments do
     )
   end
 
+  @doc """
+  Takes credits back when a rail reverses a settlement.
+
+  Refunds, chargebacks and cancelled authorisations all happen, on every rail.
+  The ledger is append-only, so a reversal is a new negative entry rather than
+  an edit -- "how did this balance get here" stays answerable, and the original
+  purchase stays visible alongside what undid it.
+
+  Deliberately allowed to take a balance negative. An org that spent credits
+  and then charged back has a real debt, and refusing to record it would lose
+  the fact rather than prevent it.
+
+  Idempotent on the same reversal reference, by the same unique index that
+  protects the purchase.
+  """
+  def reverse_settlement(org_id, %{credits: credits, rail: rail, settlement_ref: ref} = reversal)
+      when is_integer(credits) and credits > 0 and is_binary(ref) do
+    Credits.debit(org_id, credits, "reversal:#{rail}",
+      # Namespaced twice: by rail, and as a reversal. A refund often carries
+      # the id of the payment it reverses, so without the second namespace a
+      # refund and its original purchase would collide on external_ref and the
+      # refund would be silently swallowed as a duplicate.
+      external_ref: "#{rail}:reversal:#{ref}",
+      metadata:
+        settlement_metadata(reversal)
+        |> Map.put("reverses", Map.get(reversal, :reverses, ref))
+    )
+  end
+
   # A settlement was recording less than a debit does -- the debit path writes
   # four metadata fields. For the entry an audit would actually need to trace
   # back to a payer, that is backwards.
@@ -129,6 +158,14 @@ defmodule Lei.Payments do
     %{"rail" => settlement.rail, "rail_ref" => settlement.settlement_ref}
     |> maybe_put("payer", Map.get(settlement, :payer))
     |> maybe_put("settled_at", Map.get(settlement, :settled_at))
+    # Relates settlements that came from one authorisation, which MPP's
+    # streaming cadence produces many of.
+    |> maybe_put("authorization_ref", Map.get(settlement, :authorization_ref))
+    # What was actually paid, which is neither the credits granted nor the USD
+    # value -- three different numbers, and only this one reconciles against
+    # the rail's own records.
+    |> maybe_put("asset", Map.get(settlement, :asset))
+    |> maybe_put("amount", Map.get(settlement, :amount))
   end
 
   defp maybe_put(map, _key, nil), do: map

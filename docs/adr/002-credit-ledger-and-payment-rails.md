@@ -397,6 +397,37 @@ already invalidated one of our decisions. The structure that survives being
 wrong again is the one where a rail is a module, not a set of assumptions spread
 through the request path.
 
+### What the rail interface has to be able to express
+
+Supporting several rails means the interface has to fit shapes we have not
+built yet. Three came out of testing it against rails we would plausibly want,
+and all three were cheap to add now and awkward later.
+
+**Credits are granted against settled money, never against an authorisation.**
+MPP's streaming cadence authorises a limit once and then settles repeatedly
+against it, so one authorisation produces many settlements rather than one.
+Granting on the authorisation would put an unbacked balance in a ledger whose
+entire purpose is that the balance is explicable. Settlements carry an
+`authorization_ref` so the ones belonging to a session can be related; without
+it, reconciling against a rail's own record of that session is guesswork.
+
+**What was paid is not what it was worth is not what we granted.** Three
+numbers: 15,000 credits, $14.98 of value, 14.980000 USDC. Only the last
+reconciles against the rail. Settlements carry `asset` and `amount` as strings,
+because money in a float is money that drifts.
+
+**Money comes back.** Refunds, chargebacks and cancelled authorisations happen
+on every rail. The ledger is append-only, so a reversal is a new negative entry
+rather than an edit -- the original purchase stays visible next to what undid
+it. Reversal references are namespaced twice, by rail and as reversals, because
+a rail often identifies a refund by the payment it reverses; sharing a
+namespace would mean the refund was refused as a duplicate of the purchase and
+the money went back with no record of it.
+
+A reversal may take a balance negative. An org that spent its credits and then
+charged back has a real debt, and refusing to record it loses the fact rather
+than preventing it.
+
 **Decision: MPP is the first machine adapter. x402 is the second.**
 
 MPP first because it removes the accounting blocker that currently prevents
@@ -447,9 +478,13 @@ first adapter.
   and SPT pricing needs confirming; 2.9% + 30¢ on a $0.005 cache hit would be
   absurd, which strongly implies different terms for machine payments that
   should be read rather than assumed.
-- The x402 attack papers have been read via abstracts and summaries. Before
-  building the x402 adapter they should be read in full, since several findings
-  are about SDK behaviour an implementer inherits.
+- The x402 attack papers have been read via abstracts and summaries, and
+  arXiv:2609.00060 not at all. This is deliberately not a gate on proceeding.
+  The findings inform which rails are worth enabling and how an adapter should
+  be written; they do not bear on whether the boundary above is right, and a
+  rail is a module precisely so that being wrong about one is survivable. They
+  should be read before the x402 adapter ships, not before the abstraction is
+  settled.
 - Whether Tempo settlement introduces a dependency worth caring about, given
   Stripe offramps to the normal balance automatically.
 

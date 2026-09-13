@@ -234,6 +234,15 @@
       "replace": "      external_ref: ref,",
       "guarded_by": "test/lei/payments_test.exs",
       "app": "apps/lowendinsight"
+    },
+    {
+      "id": "reversal-ref-collides-with-purchase",
+      "bug": "Rails commonly identify a refund by the payment it reverses. Sharing the purchase's namespace means the reversal collides with its own original on external_ref and is refused as a duplicate -- the money goes back and nothing in the ledger records it.",
+      "file": "apps/lowendinsight/lib/lei/payments.ex",
+      "find": "      external_ref: \"#{rail}:reversal:#{ref}\",",
+      "replace": "      external_ref: \"#{rail}:#{ref}\",",
+      "guarded_by": "test/lei/payments_test.exs",
+      "app": "apps/lowendinsight"
     }
   ]
 }
