@@ -37,6 +37,23 @@ defmodule Lei.Payments.HumanRail do
   @doc "Short name, used in the ledger reason as `purchase:<name>`."
   @callback name() :: String.t()
 
+  @doc """
+  The cadences this rail supports.
+
+  A person buys a block or subscribes; nobody streams micropayments by hand, so
+  `:streaming` is not a shape this side offers. One-shot is common to both
+  sides -- it is streaming that is machine-only, not one-shot that is.
+  """
+  @callback cadences() :: [Lei.Payments.MachineRail.cadence()]
+
+  @doc """
+  The smallest purchase worth making on this rail, in credits, or `nil`.
+
+  Card fees carry a fixed 30c, which is 6000% of a single cache hit and 4.9% of
+  a $15 block. Anything sold over cards has a floor.
+  """
+  @callback minimum_purchase_credits() :: pos_integer() | nil
+
   @doc "A URL to send a person to in order to buy `credits`."
   @callback checkout(org_id :: pos_integer(), credits :: pos_integer(), opts :: keyword()) ::
               {:ok, String.t()} | {:error, term()}

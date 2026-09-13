@@ -80,7 +80,40 @@ defmodule Lei.Payments do
       """
     end
 
+    Enum.each(rails, &validate_cadences!/1)
+
     :ok
+  end
+
+  @cadences [:one_shot, :recurring, :streaming]
+
+  def cadences, do: @cadences
+
+  defp validate_cadences!(rail) do
+    declared = rail.cadences()
+
+    cond do
+      declared == [] ->
+        raise ArgumentError,
+              "#{inspect(rail)} declares no cadences, so nothing can ever be bought through it."
+
+      (bad = declared -- @cadences) != [] ->
+        raise ArgumentError,
+              "#{inspect(rail)} declares unknown cadences #{inspect(bad)}. Known: #{inspect(@cadences)}"
+
+      # A rail that streams settles per interaction, so a minimum purchase is a
+      # contradiction: there is nothing to take a minimum of.
+      :streaming in declared and rail.minimum_purchase_credits() != nil ->
+        raise ArgumentError, """
+        #{inspect(rail)} declares :streaming and a minimum purchase of         #{rail.minimum_purchase_credits()} credits.
+
+        Streaming settles per interaction, so there is no purchase to apply a
+        minimum to. Either the rail sells blocks or it streams.
+        """
+
+      true ->
+        :ok
+    end
   end
 
   defp configured_rails do

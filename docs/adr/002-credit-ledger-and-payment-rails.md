@@ -428,6 +428,32 @@ A reversal may take a balance negative. An org that spent its credits and then
 charged back has a real debt, and refusing to record it loses the fact rather
 than preventing it.
 
+**Cadence belongs to the rail, not to the side.**
+
+One-shot happens on both sides -- an agent buying a block and a person buying
+one are the same shape. Streaming is the machine-only cadence, and only where a
+rail settles without a per-interaction cost. Recurring is mostly human, though
+nothing forbids a machine subscribing.
+
+What limits a cadence is fee structure, and the fixed component is what
+decides it:
+
+| | per settlement | viable per request? |
+|---|---|---|
+| card, via Stripe | 2.9% + $0.30 | no -- 6000% of one cache hit |
+| x402 on Base | $0.001-0.005 gas | no -- up to 100% of one cache hit |
+| MPP on Tempo | none per interaction | yes |
+
+A $1 purchase loses a third of itself to card fees; a $15 one loses 4.9%. So
+cards sell blocks or a membership and never a request, x402 sells blocks, and
+only a rail that settles for nothing per interaction can stream.
+
+Rails therefore declare `cadences/0` and `minimum_purchase_credits/0`, and both
+are checked at boot. A rail declaring no cadence cannot sell anything; a rail
+declaring both `:streaming` and a minimum purchase has one of them wrong, and
+which one changes how it should be built. Finding either out at the first
+payment means finding it out from a customer.
+
 **Decision: MPP is the first machine adapter. x402 is the second.**
 
 MPP first because it removes the accounting blocker that currently prevents

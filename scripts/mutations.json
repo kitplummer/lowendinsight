@@ -243,6 +243,15 @@
       "replace": "      external_ref: \"#{rail}:#{ref}\",",
       "guarded_by": "test/lei/payments_test.exs",
       "app": "apps/lowendinsight"
+    },
+    {
+      "id": "cadence-unchecked",
+      "bug": "Rails declare which cadences they support and what they cost to collect through. Unchecked, a rail that declares none can never sell anything, and one declaring both :streaming and a minimum purchase has a contradiction -- streaming settles per interaction, so there is no purchase to apply a minimum to. Either is discovered at the first payment, which means discovered from a customer.",
+      "file": "apps/lowendinsight/lib/lei/payments.ex",
+      "find": "    Enum.each(rails, &validate_cadences!/1)\n",
+      "replace": "",
+      "guarded_by": "test/lei/payments_test.exs",
+      "app": "apps/lowendinsight"
     }
   ]
 }

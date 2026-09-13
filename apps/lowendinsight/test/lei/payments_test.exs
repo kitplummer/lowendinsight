@@ -328,6 +328,8 @@ defmodule Lei.PaymentsTest do
     defmodule GoodRail do
       @behaviour Lei.Payments.MachineRail
       def name, do: "mpp"
+      def cadences, do: [:one_shot, :streaming]
+      def minimum_purchase_credits, do: nil
       def requirements(_credits, _opts), do: {:ok, %{}}
       def verify(_proof, _opts), do: {:error, :not_implemented}
     end
@@ -335,6 +337,35 @@ defmodule Lei.PaymentsTest do
     defmodule TypoRail do
       @behaviour Lei.Payments.MachineRail
       def name, do: "mmp"
+      def cadences, do: [:one_shot]
+      def minimum_purchase_credits, do: 15_000
+      def requirements(_credits, _opts), do: {:ok, %{}}
+      def verify(_proof, _opts), do: {:error, :not_implemented}
+    end
+
+    defmodule SilentRail do
+      @behaviour Lei.Payments.MachineRail
+      def name, do: "x402"
+      def cadences, do: []
+      def minimum_purchase_credits, do: nil
+      def requirements(_credits, _opts), do: {:ok, %{}}
+      def verify(_proof, _opts), do: {:error, :not_implemented}
+    end
+
+    defmodule ContradictoryRail do
+      @behaviour Lei.Payments.MachineRail
+      def name, do: "x402"
+      def cadences, do: [:streaming]
+      def minimum_purchase_credits, do: 15_000
+      def requirements(_credits, _opts), do: {:ok, %{}}
+      def verify(_proof, _opts), do: {:error, :not_implemented}
+    end
+
+    defmodule NonsenseRail do
+      @behaviour Lei.Payments.MachineRail
+      def name, do: "x402"
+      def cadences, do: [:one_shot, :hourly]
+      def minimum_purchase_credits, do: nil
       def requirements(_credits, _opts), do: {:ok, %{}}
       def verify(_proof, _opts), do: {:error, :not_implemented}
     end
@@ -362,6 +393,41 @@ defmodule Lei.PaymentsTest do
 
     test "no configured rails is not an error" do
       assert :ok = Payments.validate_rails!([])
+    end
+
+    test "a rail that declares no cadence is refused" do
+      # Nothing could ever be bought through it, and finding that out at the
+      # first payment means finding it out from a customer.
+      assert_raise ArgumentError, ~r/no cadences/, fn ->
+        Payments.validate_rails!([SilentRail])
+      end
+    end
+
+    test "an unknown cadence is refused" do
+      assert_raise ArgumentError, ~r/hourly/, fn ->
+        Payments.validate_rails!([NonsenseRail])
+      end
+    end
+
+    test "streaming with a minimum purchase is a contradiction" do
+      # Streaming settles per interaction, so there is no purchase for a
+      # minimum to apply to. A rail claiming both has one of them wrong, and
+      # which one changes how it should be built.
+      assert_raise ArgumentError, ~r/:streaming and a minimum purchase/, fn ->
+        Payments.validate_rails!([ContradictoryRail])
+      end
+    end
+
+    test "a block-selling rail may state a floor" do
+      # Card fees carry a fixed 30c: 6000% of one cache hit, 4.9% of a $15
+      # block. The floor is the rail's economics, stated where code can read it.
+      assert :ok = Payments.validate_rails!([GoodRail])
+      assert GoodRail.minimum_purchase_credits() == nil
+      assert TypoRail.minimum_purchase_credits() == 15_000
+    end
+
+    test "the cadences are the three MPP names, not an open set" do
+      assert Payments.cadences() == [:one_shot, :recurring, :streaming]
     end
   end
 

@@ -48,8 +48,48 @@ defmodule Lei.Payments.MachineRail do
           optional(:amount) => String.t()
         }
 
+  @typedoc """
+  How a rail can settle.
+
+    * `:one_shot`  - a single payment for a block of credits
+    * `:recurring` - a subscription
+    * `:streaming` - many settlements against one authorisation
+
+  Not a property of the machine or human side: one-shot happens on both.
+  Streaming is machine-only, and only where a rail settles without a
+  per-interaction cost -- MPP on Tempo does; x402 pays gas each time.
+  """
+  @type cadence :: :one_shot | :recurring | :streaming
+
   @doc "Short name, used in the ledger reason as `purchase:<name>`."
   @callback name() :: String.t()
+
+  @doc """
+  The cadences this rail supports.
+
+  Nothing could previously ask a rail whether it can settle per request or must
+  sell a block, so the answer lived in whoever remembered it. It is a property
+  of the rail's economics, and the economics are unforgiving:
+
+      one cache hit        $0.005
+      card fee             2.9% + $0.30   -> 6000% overhead on a single hit
+      Base gas             $0.001-0.005   -> up to 100% on a single hit
+      MPP on Tempo         no per-interaction settlement
+
+  So a card rail sells blocks or a membership and never a request; an x402 rail
+  sells blocks; an MPP rail on a stablecoin can stream.
+  """
+  @callback cadences() :: [cadence()]
+
+  @doc """
+  The smallest purchase worth making on this rail, in credits, or `nil` when
+  any size works.
+
+  The fixed part of a fee is what forces this. At 2.9% + $0.30, a $1 purchase
+  loses a third of itself to collecting it and a $15 purchase loses 4.9%. A
+  rail that returns `nil` here is claiming its fees are proportional.
+  """
+  @callback minimum_purchase_credits() :: pos_integer() | nil
 
   @doc """
   What to put in a 402 for a caller that owes `credits`.
