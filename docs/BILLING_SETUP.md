@@ -265,11 +265,42 @@ update Fly, verify, and let the old key lapse rather than revoking it first.
 | `STRIPE_PRO_PRICE_ID` | yes | verify it points at a test-mode price |
 | `STRIPE_METERED_PRICE_ID` | yes | verify it is metered, priced per cent |
 | `STRIPE_PROFILE_ID` | **not yet** | `profile_test_…` in sandbox, `profile_…` live. Agents' Shared Payment Tokens are scoped to it; without it the MPP rail answers 402 with `payment: "unavailable"` and no challenge (#143) |
+| `TEMPO_DEPOSIT_ADDRESS` | **not yet** | a Stripe crypto deposit address on Tempo, created with the same key (below). Without it, or until Stripe confirms it belongs to the key's account, 402s offer no stablecoin challenge (#144) |
 | `LEI_BASE_URL` | no | defaults to `https://lowendinsight.dev` |
 
 **Test and live mode have separate objects.** Price IDs, webhook endpoints and
 signing secrets created in test mode do not exist in live mode. Switching keys
 means replacing all five values, not just the secret key.
+
+### Stablecoin deposit address (#144)
+
+One address per mode, created with that mode's key. The endpoint is a preview API, so it needs the preview version header:
+
+```bash
+# Run where STRIPE_SECRET_KEY is the key for the mode you are configuring.
+# List first -- an address may already exist.
+curl -G https://api.stripe.com/v1/crypto/deposit_addresses \
+  -u "$STRIPE_SECRET_KEY:" -H "Stripe-Version: 2026-07-29.preview" -d network=tempo
+
+curl https://api.stripe.com/v1/crypto/deposit_addresses \
+  -u "$STRIPE_SECRET_KEY:" -H "Stripe-Version: 2026-07-29.preview" -d network=tempo
+```
+
+The sandbox address is `0x5ff8d73e8bccd3701c9aef78389f3b9771172b5c` (`cda_1UFN8E36n3SNNomb2KUhVIWG`). An address isn't a secret, but it switches with the key, so it goes in with the other `STRIPE_*` values:
+
+```bash
+printf 'TEMPO_DEPOSIT_ADDRESS=0x5ff8d73e8bccd3701c9aef78389f3b9771172b5c\n' | flyctl secrets import -a lowendinsight
+```
+
+How a stablecoin payment is verified (behaviour observed in sandbox against real testnet transfers):
+
+1. The challenge carries a random memo, our address, the token, and the exact amount
+2. The agent transfers on Tempo and presents the transaction hash
+3. We read the receipt over Tempo JSON-RPC: `TransferWithMemo`, right token, our address, this memo, exact amount. This is **attribution**; hashes are public
+4. Stripe `transaction_verification` PaymentIntent: `processing`, then `succeeded` in about 5s. Stripe checks recipient and amount itself, and refuses to track one transfer twice
+5. Credits on `succeeded` only. Still `processing` after 20s → 402, and the agent retries the same credential
+
+Minimum is **$0.50**. Stripe rejects smaller crypto PaymentIntents, although its docs say 0.01 USDC.
 
 ### The mode switch, and what guards it (#137)
 
@@ -287,6 +318,7 @@ price IDs, product IDs and `whsec_` secrets look identical in both.
 | price archived | after boot | `checks.stripe = "inactive"` |
 | key expired, revoked, or lacks price read | after boot | `checks.stripe = "unauthorized"` |
 | Stripe down | after boot | `checks.stripe = "unreachable"`, retried each minute |
+| `TEMPO_DEPOSIT_ADDRESS` not in the key's account (e.g. a sandbox address beside a live key) | after boot | `checks.stripe = "mismatch"`, **and no stablecoin challenge is issued**. Mainnet funds sent to a sandbox address are unrecoverable |
 | webhook secret from the other endpoint | **no check can** | `lei_stripe_webhook_total{result="invalid"}` on the first delivery |
 
 Price checks run at boot and hourly, and never block boot: a Stripe outage
@@ -368,7 +400,7 @@ meters, products, prices, webhook endpoints and signing secrets.
 
 1. Recreate **in live mode**: the `analysis_cost` meter, the product, both prices
    (including the graduated first tier), and the webhook endpoint
-2. Replace all five `STRIPE_*` secrets **together** in one `flyctl secrets
+2. Replace all five `STRIPE_*` secrets and `TEMPO_DEPOSIT_ADDRESS` **together** in one `flyctl secrets
    import`, and set `STRIPE_EXPECTED_MODE=live`. A half-flip now reads
    `mismatch` on `/readyz` rather than failing at the first customer -- but only
    a delivered webhook proves the signing secret (see section 4)

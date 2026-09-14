@@ -52,6 +52,52 @@ defmodule Lei.Stripe.ObjectCheck do
   end
 
   @doc """
+  Whether Stripe has confirmed, with the configured key, that `address` is one of
+  our deposit addresses. False whenever that is not positively known -- not yet
+  checked, checker not running, Stripe unreachable -- because the cost of a
+  wrong "yes" is an agent's money sent where Stripe will not credit it.
+  """
+  def deposit_address_confirmed?(address, server \\ __MODULE__) when is_binary(address) do
+    GenServer.call(server, {:deposit_confirmed?, String.downcase(address)}, 1_000)
+  catch
+    :exit, _ -> false
+  end
+
+  @doc """
+  Whether a configured Tempo deposit address belongs to the key's account.
+
+  Deposit addresses carry no mode, like prices, and the same trick applies:
+  list the account's addresses with the configured key. A sandbox address is
+  absent from a live account's list.
+  """
+  def check_deposit_address(key, address, deploy_env, stripe_module) do
+    case {Lei.Stripe.Mode.of(key), address} do
+      {_, nil} ->
+        # Stablecoin is optional. No address means no tempo challenges, which
+        # the rail already reports; it is not a Stripe misconfiguration.
+        "ok"
+
+      {:malformed, _} ->
+        "malformed"
+
+      {:unconfigured, _} ->
+        if Lei.Stripe.Mode.production?(deploy_env), do: "unconfigured", else: "ok"
+
+      {_mode, address} ->
+        case stripe_module.list_deposit_addresses("tempo") do
+          {:ok, addresses} ->
+            if String.downcase(address) in addresses, do: "ok", else: "mismatch"
+
+          {:error, {status, _}} when status in [401, 403] ->
+            "unauthorized"
+
+          _ ->
+            "unreachable"
+        end
+    end
+  end
+
+  @doc """
   Runs the check once, synchronously. Pure apart from the Stripe calls, which
   go through `stripe_module`.
   """
@@ -77,7 +123,16 @@ defmodule Lei.Stripe.ObjectCheck do
   end
 
   # Order matters: the most actionable failure wins when prices disagree.
-  @severity ["unauthorized", "mismatch", "inactive", "unreachable", "ok"]
+  @severity [
+    "malformed",
+    "unconfigured",
+    "unauthorized",
+    "mismatch",
+    "inactive",
+    "unreachable",
+    "pending",
+    "ok"
+  ]
 
   defp worst(results) do
     Enum.find(@severity, "ok", &(&1 in results))
@@ -103,6 +158,7 @@ defmodule Lei.Stripe.ObjectCheck do
   def init(opts) do
     state = %{
       result: "pending",
+      deposit: {nil, "pending"},
       config: Keyword.get(opts, :config, &config/0),
       recheck_ms: Keyword.get(opts, :recheck_ms, @recheck_ms),
       retry_ms: Keyword.get(opts, :retry_ms, @retry_ms)
@@ -113,30 +169,50 @@ defmodule Lei.Stripe.ObjectCheck do
   end
 
   @impl true
-  def handle_call(:status, _from, state), do: {:reply, state.result, state}
+  def handle_call(:status, _from, state) do
+    {_address, deposit} = state.deposit
+    {:reply, worst([state.result, deposit]), state}
+  end
+
+  def handle_call({:deposit_confirmed?, address}, _from, state) do
+    {:reply, state.deposit == {address, "ok"}, state}
+  end
 
   @impl true
   def handle_info(:check, state) do
-    {key, price_ids, deploy_env, stripe_module} = state.config.()
+    {key, price_ids, deploy_env, stripe_module, address} = state.config.()
 
     # Stripe is called from inside this process, so a slow Stripe holds up
     # status/0 callers only until their 1s timeout, never the probe itself.
-    result =
-      try do
-        check(key, price_ids, deploy_env, stripe_module)
-      rescue
-        e ->
-          Logger.warning("Stripe object check raised: #{Exception.message(e)}")
-          "unreachable"
-      end
+    result = safely(fn -> check(key, price_ids, deploy_env, stripe_module) end)
+
+    deposit =
+      {address && String.downcase(address),
+       safely(fn -> check_deposit_address(key, address, deploy_env, stripe_module) end)}
+
+    {_, deposit_result} = deposit
+
+    if deposit_result not in ["ok", elem(state.deposit, 1)] do
+      Logger.error("Stripe deposit address check: #{deposit_result}")
+    end
 
     if result != "ok" and result != state.result do
       Logger.error("Stripe object check: #{result} (mode #{Lei.Stripe.Mode.of(key)})")
     end
 
-    delay = if result == "unreachable", do: state.retry_ms, else: state.recheck_ms
+    delay =
+      if "unreachable" in [result, deposit_result], do: state.retry_ms, else: state.recheck_ms
+
     Process.send_after(self(), :check, delay)
-    {:noreply, %{state | result: result}}
+    {:noreply, %{state | result: result, deposit: deposit}}
+  end
+
+  defp safely(fun) do
+    fun.()
+  rescue
+    e ->
+      Logger.warning("Stripe object check raised: #{Exception.message(e)}")
+      "unreachable"
   end
 
   defp config do
@@ -147,7 +223,8 @@ defmodule Lei.Stripe.ObjectCheck do
         Application.get_env(:lowendinsight, :stripe_metered_price_id)
       ],
       Application.get_env(:lowendinsight, :deploy_env),
-      Lei.Stripe.impl()
+      Lei.Stripe.impl(),
+      Application.get_env(:lowendinsight, :tempo_deposit_address)
     }
   end
 end

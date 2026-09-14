@@ -10,6 +10,14 @@ defmodule Lei.StripeBehaviour do
   @callback retrieve_subscription(String.t()) :: {:ok, map()} | {:error, term()}
   # Errors carry the HTTP status, unlike the callbacks above: the caller tells
   # "no such price" (404) from "bad key" (401) by it, and the bodies do not.
+  # Crypto deposit addresses and transaction verification are preview APIs:
+  # the pinned version rejects them as unknown parameters (observed, #144).
+  @callback create_crypto_verification_intent(map()) ::
+              {:ok, map()} | {:error, {pos_integer(), map()}} | {:error, term()}
+  @callback retrieve_payment_intent(String.t()) ::
+              {:ok, map()} | {:error, {pos_integer(), map()}} | {:error, term()}
+  @callback list_deposit_addresses(String.t()) ::
+              {:ok, [String.t()]} | {:error, {pos_integer(), map()}} | {:error, term()}
   @callback retrieve_price(String.t()) ::
               {:ok, map()} | {:error, {pos_integer(), map()}} | {:error, term()}
 end
@@ -34,13 +42,17 @@ defmodule Lei.Stripe do
 
   def meter_event_name, do: @meter_event_name
 
-  defp headers do
+  # Only for the preview endpoints below. Everything else stays on the pinned
+  # version so a preview's changes cannot reach the rest of the integration.
+  @stripe_preview_version "2026-07-29.preview"
+
+  defp headers(version \\ @stripe_version) do
     api_key = Application.get_env(:lowendinsight, :stripe_secret_key)
 
     [
       {"Authorization", "Bearer #{api_key}"},
       {"Content-Type", "application/x-www-form-urlencoded"},
-      {"Stripe-Version", @stripe_version}
+      {"Stripe-Version", version}
     ]
   end
 
@@ -272,6 +284,96 @@ defmodule Lei.Stripe do
 
     {body, [{"Idempotency-Key", params.idempotency_key}]}
   end
+
+  @doc """
+  Asks Stripe to verify an on-chain transfer to one of our deposit addresses.
+
+  Asynchronous: the intent is created `processing` whatever the hash, and a
+  real transfer moves to `succeeded` or `requires_payment_method` within
+  seconds. Stripe checks the transfer paid one of our addresses the claimed
+  amount -- a transfer elsewhere declines `invalid_payment_information`, a
+  wrong amount `invalid_amount`. A hash that does not exist stays `processing`
+  (all observed in sandbox, #144).
+  """
+  @impl true
+  def create_crypto_verification_intent(params) do
+    {body, extra_headers} = crypto_verification_request(params)
+
+    post_form("/v1/payment_intents", body, headers(@stripe_preview_version) ++ extra_headers)
+  end
+
+  @doc "The request `create_crypto_verification_intent/1` sends, as `{form_body, headers}`."
+  def crypto_verification_request(params) do
+    metadata =
+      for {k, v} <- Map.get(params, :metadata, %{}), into: %{} do
+        {"metadata[#{k}]", to_string(v)}
+      end
+
+    body =
+      %{
+        "amount" => to_string(params.amount),
+        "currency" => "usd",
+        "confirm" => "true",
+        "payment_method_types[]" => "crypto",
+        "payment_method_data[type]" => "crypto",
+        "payment_method_options[crypto][mode]" => "transaction_verification",
+        "payment_method_options[crypto][transaction_verification_options][network]" =>
+          params.network,
+        "payment_method_options[crypto][transaction_verification_options][transaction_hash]" =>
+          params.transaction_hash
+      }
+      |> Map.merge(metadata)
+      |> URI.encode_query()
+
+    {body, [{"Idempotency-Key", params.idempotency_key}]}
+  end
+
+  @impl true
+  def retrieve_payment_intent(id) do
+    get_json(
+      "/v1/payment_intents/#{URI.encode_www_form(id)}?expand[]=latest_charge",
+      headers(@stripe_preview_version)
+    )
+  end
+
+  @impl true
+  def list_deposit_addresses(network) do
+    case get_json(
+           "/v1/crypto/deposit_addresses?network=#{URI.encode_www_form(network)}&limit=100",
+           headers(@stripe_preview_version)
+         ) do
+      {:ok, %{"data" => data}} when is_list(data) ->
+        {:ok, Enum.map(data, &String.downcase(&1["address"] || ""))}
+
+      {:ok, _} ->
+        {:error, :unexpected_response}
+
+      error ->
+        error
+    end
+  end
+
+  defp post_form(path, body, headers) do
+    "https://api.stripe.com"
+    |> Kernel.<>(path)
+    |> HTTPoison.post(body, headers, recv_timeout: 30_000)
+    |> json_result()
+  end
+
+  defp get_json(path, headers) do
+    "https://api.stripe.com"
+    |> Kernel.<>(path)
+    |> HTTPoison.get(headers, recv_timeout: 30_000)
+    |> json_result()
+  end
+
+  defp json_result({:ok, %HTTPoison.Response{status_code: 200, body: body}}),
+    do: {:ok, Poison.decode!(body)}
+
+  defp json_result({:ok, %HTTPoison.Response{status_code: status, body: body}}),
+    do: {:error, {status, decode_or_raw(body)}}
+
+  defp json_result({:error, reason}), do: {:error, reason}
 
   @impl true
   def retrieve_price(price_id) do

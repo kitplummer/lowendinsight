@@ -144,7 +144,7 @@ config :lowendinsight,
   # passes that check by having nothing to check, which is the failure this
   # codebase keeps meeting -- so the list is set here rather than left to a
   # default.
-  payment_rails: [Lei.Payments.Rails.Mpp],
+  payment_rails: [Lei.Payments.Rails.Mpp, Lei.Payments.Rails.Tempo],
   rate_limits: %{
     free: 60,
     pro: 600,

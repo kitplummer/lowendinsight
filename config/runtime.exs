@@ -147,6 +147,9 @@ if config_env() == :prod do
     # The Stripe profile agents' Shared Payment Tokens are scoped to. Without
     # it the MPP rail issues no challenge (#143).
     stripe_profile_id: System.get_env("STRIPE_PROFILE_ID"),
+    # A Stripe crypto deposit address on Tempo, created with the same key. The
+    # tempo rail names it in challenges only once Stripe confirms it (#144).
+    tempo_deposit_address: System.get_env("TEMPO_DEPOSIT_ADDRESS"),
     # Customer-facing: Stripe Checkout success/cancel redirects and the
     # payment-intent return_url. Must be the canonical domain, not the
     # fly.dev hostname, or paying customers land on the wrong brand.

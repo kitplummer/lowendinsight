@@ -101,6 +101,51 @@ defmodule Lei.Stripe.ObjectCheckTest do
     end
   end
 
+  describe "check_deposit_address/4" do
+    @address "0x5ff8d73e8bccd3701c9aef78389f3b9771172b5c"
+
+    test "an address the key's account holds is ok" do
+      expect(Lei.StripeMock, :list_deposit_addresses, fn "tempo" -> {:ok, [@address]} end)
+      assert ObjectCheck.check_deposit_address(@test_key, @address, nil, Lei.StripeMock) == "ok"
+    end
+
+    test "an address from the other mode is a mismatch" do
+      # Deposit addresses carry no mode. A sandbox address beside a live key
+      # would take mainnet money Stripe never credits.
+      expect(Lei.StripeMock, :list_deposit_addresses, fn _ -> {:ok, ["0xother"]} end)
+
+      assert ObjectCheck.check_deposit_address(@live, @address, "production", Lei.StripeMock) ==
+               "mismatch"
+    end
+
+    test "comparison ignores hex case" do
+      expect(Lei.StripeMock, :list_deposit_addresses, fn _ -> {:ok, [@address]} end)
+
+      assert ObjectCheck.check_deposit_address(
+               @live,
+               String.upcase(@address) |> String.replace("0X", "0x"),
+               "production",
+               Lei.StripeMock
+             ) == "ok"
+    end
+
+    test "rejected key and unreachable Stripe are reported as such" do
+      expect(Lei.StripeMock, :list_deposit_addresses, fn _ -> {:error, {401, %{}}} end)
+
+      assert ObjectCheck.check_deposit_address(@live, @address, nil, Lei.StripeMock) ==
+               "unauthorized"
+
+      expect(Lei.StripeMock, :list_deposit_addresses, fn _ -> {:error, :timeout} end)
+
+      assert ObjectCheck.check_deposit_address(@live, @address, nil, Lei.StripeMock) ==
+               "unreachable"
+    end
+
+    test "no address configured asks nothing and is ok" do
+      assert ObjectCheck.check_deposit_address(@live, nil, "production", Lei.StripeMock) == "ok"
+    end
+  end
+
   describe "the checker process" do
     defp start(config, opts \\ []) do
       name = :"object_check_#{System.unique_integer([:positive])}"
@@ -123,7 +168,7 @@ defmodule Lei.Stripe.ObjectCheckTest do
 
     test "reports the result of its first check" do
       stub(Lei.StripeMock, :retrieve_price, fn _ -> {:error, missing()} end)
-      name = start({@live, @prices, "production", Lei.StripeMock})
+      name = start({@live, @prices, "production", Lei.StripeMock, nil})
       assert eventually(name, "mismatch") == "mismatch"
     end
 
@@ -136,15 +181,44 @@ defmodule Lei.Stripe.ObjectCheckTest do
       end)
 
       name =
-        start({@live, @prices, "production", Lei.StripeMock}, retry_ms: 10, recheck_ms: 60_000)
+        start({@live, @prices, "production", Lei.StripeMock, nil},
+          retry_ms: 10,
+          recheck_ms: 60_000
+        )
 
       assert eventually(name, "ok") == "ok"
     end
 
     test "a raising Stripe client reads as unreachable, not a crashed checker" do
       stub(Lei.StripeMock, :retrieve_price, fn _ -> raise "boom" end)
-      name = start({@live, @prices, "production", Lei.StripeMock}, retry_ms: 60_000)
+      name = start({@live, @prices, "production", Lei.StripeMock, nil}, retry_ms: 60_000)
       assert eventually(name, "unreachable") == "unreachable"
+    end
+
+    test "confirms only the address Stripe listed, and only once it has" do
+      address = "0x5ff8d73e8bccd3701c9aef78389f3b9771172b5c"
+      stub(Lei.StripeMock, :retrieve_price, fn _ -> {:ok, price()} end)
+      stub(Lei.StripeMock, :list_deposit_addresses, fn _ -> {:ok, [address]} end)
+
+      name = start({@live, @prices, "production", Lei.StripeMock, address})
+      assert eventually(name, "ok") == "ok"
+
+      assert ObjectCheck.deposit_address_confirmed?(address, name)
+      refute ObjectCheck.deposit_address_confirmed?("0x" <> String.duplicate("0", 40), name)
+    end
+
+    test "an unlisted address is not confirmed and degrades readiness" do
+      address = "0x5ff8d73e8bccd3701c9aef78389f3b9771172b5c"
+      stub(Lei.StripeMock, :retrieve_price, fn _ -> {:ok, price()} end)
+      stub(Lei.StripeMock, :list_deposit_addresses, fn _ -> {:ok, []} end)
+
+      name = start({@live, @prices, "production", Lei.StripeMock, address})
+      assert eventually(name, "mismatch") == "mismatch"
+      refute ObjectCheck.deposit_address_confirmed?(address, name)
+    end
+
+    test "nothing is confirmed by a checker that is not running" do
+      refute ObjectCheck.deposit_address_confirmed?("0xabc", :no_such_checker)
     end
 
     test "status of a checker that is not running is reported, not raised" do
