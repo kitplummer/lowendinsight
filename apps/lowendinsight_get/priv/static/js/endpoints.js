@@ -14,6 +14,17 @@ function el(id){
     return document.getElementById(id);
 }
 
+// Set when the Try It allowance of fresh analyses is used up (#152), so the
+// form does not also claim the URL was invalid.
+var try_it_limited = false;
+
+function enable_button(){
+    var button = el("analyze-button");
+    if (!button) return;
+    button.classList.remove("is-loading");
+    button.removeAttribute("disabled");
+}
+
 function disable_button(){
     var button = el("analyze-button");
     if (!button) return;
@@ -67,9 +78,18 @@ async function validate_url(encoded_url){
         await fetch(`/url=${encoded_url}`)
             .then(analyze => {
                 is_valid_repo = (analyze.status == 200);
+                // The per-address allowance of fresh analyses is used up. Saying
+                // "Invalid repo URL" would be false; say what happened instead.
+                if (analyze.status == 429) show_try_it_limited();
             }).catch(error => console.log(error))
     } 
     return is_valid_repo;
+}
+
+function show_try_it_limited(){
+    var limited = el("try-it-limited");
+    if (limited) limited.style.display = "block";
+    try_it_limited = true;
 }
 
 async function validate_and_submit(event){
@@ -84,6 +104,7 @@ async function validate_and_submit(event){
 
     var form = el("form");
     if (!form) return false;
+    try_it_limited = false;
     disable_button();
 
     var encoded_url = get_encoded_url();
@@ -92,6 +113,8 @@ async function validate_and_submit(event){
     if (is_valid_url) {
       form.action = `/url=${encoded_url}`;
       form.submit();
+    } else if (try_it_limited) {
+        enable_button();
     } else {
         display_error();
     }

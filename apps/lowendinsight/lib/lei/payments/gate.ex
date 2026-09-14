@@ -25,7 +25,11 @@ defmodule Lei.Payments.Gate do
 
   alias Lei.Payments.Http
 
-  @paid_routes [{"POST", "/v1/analyze"}, {"POST", "/v1/analyze/batch"}]
+  @paid_routes [
+    {"POST", "/v1/analyze"},
+    {"POST", "/v1/analyze/batch"},
+    {"POST", "/v1/analyze/sbom"}
+  ]
 
   @doc """
   Whether a request may arrive with no credentials, to be asked to pay.
@@ -63,16 +67,25 @@ defmodule Lei.Payments.Gate do
   @doc """
   `{:ok, conn, {org_id, api_key_id, tier}}` to proceed, or `{:halt, conn}` with
   the response already sent.
-  """
-  def admit(%Plug.Conn{halted: true} = conn), do: {:halt, conn}
 
-  def admit(conn) do
+  `:required_credits` is what the request will cost, when the caller can say.
+  A credit-funded org holding less is asked to top up by at least the
+  shortfall, rather than admitted and run into debt: an SBOM naming hundreds of
+  uncached repositories costs far more than one block (#152).
+  """
+  def admit(conn, opts \\ [])
+
+  def admit(%Plug.Conn{halted: true} = conn, _opts), do: {:halt, conn}
+
+  def admit(conn, opts) do
+    required = Keyword.get(opts, :required_credits, 0)
+
     case billing_context(conn) do
       {nil, _, _} = context ->
         if conn.assigns[:auth_method] == :jwt do
           {:ok, conn, context}
         else
-          {:halt, Http.challenge(conn, nil, default_top_up())}
+          {:halt, Http.challenge(conn, nil, top_up(0, required))}
         end
 
       {_org_id, _, "pro"} = context ->
@@ -80,6 +93,15 @@ defmodule Lei.Payments.Gate do
 
       {org_id, _, _} = context ->
         case Lei.UsageTracker.check_free_tier_quota(org_id) do
+          # For a wallet org the value is its credit balance, and the balance
+          # is the whole gate.
+          {:ok, balance} when required > 0 and balance < required ->
+            if credit_funded?(org_id) do
+              {:halt, Http.challenge(conn, org_id, top_up(balance, required))}
+            else
+              {:ok, conn, context}
+            end
+
           {:ok, _remaining} ->
             {:ok, conn, context}
 
@@ -93,8 +115,8 @@ defmodule Lei.Payments.Gate do
              })}
 
           # A 402 carrying real payment requirements, not just a balance.
-          {:error, :insufficient_credits, info} ->
-            {:halt, Http.challenge(conn, org_id, top_up_credits(info))}
+          {:error, :insufficient_credits, %{balance: balance}} ->
+            {:halt, Http.challenge(conn, org_id, top_up(balance, required))}
 
           {:error, _} ->
             {:ok, conn, context}
@@ -122,11 +144,15 @@ defmodule Lei.Payments.Gate do
   # rail, so charging for one analysis at a time would spend more on collection
   # than the analysis is worth. 15,000 credits is $15, matching the Pro tier's
   # monthly credit. A negative balance is added back, or an org in debt would
-  # be topped up to less than zero and refused again.
-  defp top_up_credits(%{balance: balance}) when is_integer(balance) and balance < 0,
-    do: default_top_up() - balance
+  # be topped up to less than zero and refused again. And never less than the
+  # request needs, or the agent pays and is refused again.
+  defp top_up(balance, required) do
+    max(default_top_up() - min(balance, 0), required - balance)
+  end
 
-  defp top_up_credits(_info), do: default_top_up()
+  defp credit_funded?(org_id) do
+    Lei.Wallets.wallet_org?(Lei.Repo.get(Lei.Org, org_id))
+  end
 
   defp default_top_up, do: Application.get_env(:lowendinsight, :default_top_up_credits, 15_000)
 

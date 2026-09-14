@@ -20,6 +20,49 @@ defmodule Lei.RateLimiterTest do
     :ok
   end
 
+  describe "per-bucket windows (#152)" do
+    setup do
+      windows = Application.get_env(:lowendinsight, :rate_limit_windows)
+
+      on_exit(fn ->
+        if windows,
+          do: Application.put_env(:lowendinsight, :rate_limit_windows, windows),
+          else: Application.delete_env(:lowendinsight, :rate_limit_windows)
+      end)
+
+      :ok
+    end
+
+    test "a bucket with its own window counts over that window, not the default minute" do
+      Application.put_env(:lowendinsight, :rate_limits, %{free: 60, pro: 600, try_it: 1})
+      Application.put_env(:lowendinsight, :rate_limit_windows, %{try_it: 3_600_000})
+
+      assert {:ok, 0} = Lei.RateLimiter.check("hourly", "try_it")
+      assert {:error, :rate_limited, retry_after} = Lei.RateLimiter.check("hourly", "try_it")
+
+      # Retry is measured against the hour, not the minute.
+      assert retry_after > 60_000
+    end
+
+    test "cleanup keeps what a longer window still counts" do
+      # Cleanup ran on the default minute, so an hourly bucket's history was
+      # erased every two minutes and its limit could never be reached.
+      Application.put_env(:lowendinsight, :rate_limits, %{free: 60, pro: 600, try_it: 1})
+      Application.put_env(:lowendinsight, :rate_limit_windows, %{try_it: 3_600_000})
+
+      assert {:ok, 0} = Lei.RateLimiter.check("survives-cleanup", "try_it")
+
+      # Age the entry past the default minute but well inside the hour.
+      [{key, [ts]}] = :ets.lookup(:lei_rate_limiter, "survives-cleanup")
+      :ets.insert(:lei_rate_limiter, {key, [ts - 120_000]})
+
+      send(Lei.RateLimiter, :cleanup)
+      :sys.get_state(Lei.RateLimiter)
+
+      assert {:error, :rate_limited, _} = Lei.RateLimiter.check("survives-cleanup", "try_it")
+    end
+  end
+
   test "allows requests under limit" do
     assert {:ok, _remaining} = Lei.RateLimiter.check("test-key", "free")
   end

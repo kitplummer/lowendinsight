@@ -62,7 +62,11 @@ defmodule Lei.Payments.RateLimit do
   # Fly sets fly-client-ip at its proxy, so a caller cannot spoof it.
   # x-forwarded-for can be spoofed, so it is only a fallback for non-Fly
   # deployments, and remote_ip is the last resort.
-  defp client_ip(conn) do
+  @doc """
+  The caller's address: Fly's client IP header, then the first X-Forwarded-For
+  hop, then the socket. Public so every per-IP limit resolves it the same way.
+  """
+  def client_ip(conn) do
     case get_req_header(conn, "fly-client-ip") do
       [ip | _] when is_binary(ip) and ip != "" ->
         ip

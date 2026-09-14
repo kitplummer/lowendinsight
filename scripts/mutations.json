@@ -671,8 +671,8 @@
       "id": "analyze-bills-key-not-payer",
       "bug": "POST /v1/analyze bills only an API key's org. An agent that pays on the request has no key, so it is served with its balance never debited. (#147)",
       "file": "apps/lowendinsight_get/lib/lowendinsight_get/endpoint.ex",
-      "find": "              track_analyze_usage(billing, result)",
-      "replace": "              track_analyze_usage({nil, nil, nil}, result)",
+      "find": "            {:ok, result} ->\n              record_usage(billing, split)\n",
+      "replace": "            {:ok, result} ->\n              record_usage({nil, nil, nil}, split)\n",
       "guarded_by": "test/lowendinsight_get/agent_payment_test.exs",
       "app": "apps/lowendinsight_get"
     },
@@ -783,6 +783,96 @@
       "replace": "",
       "guarded_by": "test/lowendinsight_get/agent_guide_test.exs",
       "app": "apps/lowendinsight_get"
+    },
+    {
+      "id": "sbom-analysis-unbilled",
+      "bug": "POST /v1/analyze/sbom runs the analysis without debiting it: every repository an SBOM names, free. (#152)",
+      "file": "apps/lowendinsight_get/lib/lowendinsight_get/endpoint.ex",
+      "find": "              {:ok, result} ->\n                record_usage(billing, split)\n",
+      "replace": "              {:ok, result} ->\n",
+      "guarded_by": "test/lowendinsight_get/unbilled_paths_test.exs",
+      "app": "apps/lowendinsight_get"
+    },
+    {
+      "id": "sbom-not-gated",
+      "bug": "POST /v1/analyze/sbom admits any key without checking balance or quota, so a wallet org with no credits is served. (#152)",
+      "file": "apps/lowendinsight_get/lib/lowendinsight_get/endpoint.ex",
+      "find": "        case Lei.Payments.Gate.admit(conn, required_credits: credits_for(split)) do\n",
+      "replace": "        case {:ok, conn, Lei.Payments.Gate.billing_context(conn)} do\n",
+      "guarded_by": "test/lowendinsight_get/unbilled_paths_test.exs",
+      "app": "apps/lowendinsight_get"
+    },
+    {
+      "id": "analyze-billed-from-response",
+      "bug": "/v1/analyze bills from nothing the request knew in advance -- an async analysis of an uncached repository is recorded as zero and collected later for free. (#152)",
+      "file": "apps/lowendinsight_get/lib/lowendinsight_get/endpoint.ex",
+      "find": "            {:ok, result} ->\n              record_usage(billing, split)\n",
+      "replace": "            {:ok, result} ->\n              record_usage(billing, {0, 0})\n",
+      "guarded_by": "test/lowendinsight_get/unbilled_paths_test.exs",
+      "app": "apps/lowendinsight_get"
+    },
+    {
+      "id": "required-credits-ignored",
+      "bug": "A credit-funded org holding less than a request costs is admitted and run into debt: an SBOM of hundreds of uncached repositories on a balance of five credits. (#152)",
+      "file": "apps/lowendinsight/lib/lei/payments/gate.ex",
+      "find": "          {:ok, balance} when required > 0 and balance < required ->",
+      "replace": "          {:ok, balance} when false and balance < required ->",
+      "guarded_by": "test/lowendinsight_get/unbilled_paths_test.exs",
+      "app": "apps/lowendinsight_get"
+    },
+    {
+      "id": "top-up-below-shortfall",
+      "bug": "The top-up asked for is the default block even when the request needs more, so an agent pays and is refused again. (#152)",
+      "file": "apps/lowendinsight/lib/lei/payments/gate.ex",
+      "find": "    max(default_top_up() - min(balance, 0), required - balance)",
+      "replace": "    default_top_up() - min(balance, 0)",
+      "guarded_by": "test/lowendinsight_get/unbilled_paths_test.exs",
+      "app": "apps/lowendinsight_get"
+    },
+    {
+      "id": "sbom-not-paid-route",
+      "bug": "POST /v1/analyze/sbom answers an agent with no credentials 401 rather than asking it to pay. (#152)",
+      "file": "apps/lowendinsight/lib/lei/payments/gate.ex",
+      "find": "    {\"POST\", \"/v1/analyze/sbom\"}\n",
+      "replace": "    {\"POST\", \"/v1/analyze/sbom-disabled\"}\n",
+      "guarded_by": "test/lowendinsight_get/unbilled_paths_test.exs",
+      "app": "apps/lowendinsight_get"
+    },
+    {
+      "id": "try-it-unlimited",
+      "bug": "The Try It form runs fresh analyses for any caller without limit -- a free analysis path around the 402. (#152)",
+      "file": "apps/lowendinsight_get/lib/lowendinsight_get/endpoint.ex",
+      "find": "      case Lei.RateLimiter.check(\"try_it:#{ip}\", \"try_it\") do",
+      "replace": "      case {:ok, 1} do",
+      "guarded_by": "test/lowendinsight_get/unbilled_paths_test.exs",
+      "app": "apps/lowendinsight_get"
+    },
+    {
+      "id": "try-it-counts-cached-reports",
+      "bug": "Cached reports count against the Try It allowance, so a person browsing already-analysed repositories is refused. (#152)",
+      "file": "apps/lowendinsight_get/lib/lowendinsight_get/endpoint.ex",
+      "find": "    if LowendinsightGet.Datastore.in_cache?(url) do\n      :ok",
+      "replace": "    if false do\n      :ok",
+      "guarded_by": "test/lowendinsight_get/unbilled_paths_test.exs",
+      "app": "apps/lowendinsight_get"
+    },
+    {
+      "id": "rate-limiter-cleanup-default-window",
+      "bug": "Cleanup purges on the default minute, erasing an hourly bucket's history every two minutes so its limit is never reached. (#152)",
+      "file": "apps/lowendinsight/lib/lei/rate_limiter.ex",
+      "find": "    cutoff = now - longest_window()",
+      "replace": "    cutoff = now - window_ms()",
+      "guarded_by": "test/lei/rate_limiter_test.exs",
+      "app": "apps/lowendinsight"
+    },
+    {
+      "id": "rate-limiter-ignores-bucket-window",
+      "bug": "Every bucket counts over the default minute, so an hourly limit is really a per-minute one. (#152)",
+      "file": "apps/lowendinsight/lib/lei/rate_limiter.ex",
+      "find": "    window = window_for(tier)",
+      "replace": "    window = window_ms()",
+      "guarded_by": "test/lei/rate_limiter_test.exs",
+      "app": "apps/lowendinsight"
     }
   ]
 }

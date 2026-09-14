@@ -15,7 +15,7 @@ defmodule Lei.RateLimiter do
 
   def check(key, tier \\ "free") do
     now = System.monotonic_time(:millisecond)
-    window = window_ms()
+    window = window_for(tier)
     limit = limit_for(tier)
     cutoff = now - window
 
@@ -53,6 +53,23 @@ defmodule Lei.RateLimiter do
     Application.get_env(:lowendinsight, :rate_limit_window_ms, @default_window_ms)
   end
 
+  # A bucket may count over a longer window than the default minute -- the Try
+  # It form is limited per hour (#152). Buckets without an entry use the default.
+  defp window_for(tier) do
+    windows = Application.get_env(:lowendinsight, :rate_limit_windows, %{})
+    Map.get(windows, String.to_existing_atom(tier), window_ms())
+  rescue
+    ArgumentError -> window_ms()
+  end
+
+  defp longest_window do
+    :lowendinsight
+    |> Application.get_env(:rate_limit_windows, %{})
+    |> Map.values()
+    |> Enum.max(fn -> 0 end)
+    |> max(window_ms())
+  end
+
   defp limit_for(tier) do
     limits = Application.get_env(:lowendinsight, :rate_limits, @default_limits)
     Map.get(limits, String.to_existing_atom(tier), @default_limits.free)
@@ -70,7 +87,10 @@ defmodule Lei.RateLimiter do
   @impl true
   def handle_info(:cleanup, state) do
     now = System.monotonic_time(:millisecond)
-    cutoff = now - window_ms()
+    # The longest window any bucket counts over. Cutting at the default minute
+    # would erase an hourly bucket's history every two minutes, and the limit
+    # would never be reached.
+    cutoff = now - longest_window()
 
     :ets.foldl(
       fn {key, timestamps}, _acc ->
