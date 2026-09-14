@@ -945,6 +945,15 @@
       "replace": "  metrics_collectors: []",
       "guarded_by": "test/lowendinsight_get/trending_refresh_test.exs",
       "app": "apps/lowendinsight_get"
+    },
+    {
+      "id": "trending-job-reenabled-while-unsafe",
+      "bug": "The trending job is scheduled active before per-repository memory is bounded; its first run OOM-killed production (#158).",
+      "file": "config/config.exs",
+      "find": "          state: :inactive\n",
+      "replace": "",
+      "guarded_by": "test/lowendinsight_get/trending_refresh_test.exs",
+      "app": "apps/lowendinsight_get"
     }
   ]
 }

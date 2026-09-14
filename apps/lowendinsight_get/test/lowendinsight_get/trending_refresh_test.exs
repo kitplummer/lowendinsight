@@ -287,6 +287,12 @@ defmodule LowendinsightGet.TrendingRefreshTest do
       assert job.overlap == false
       assert Crontab.CronExpression.Composer.compose(job.schedule) =~ ~r/^0 \* \* \* \*/
     end
+
+    test "is disabled until per-repository memory is bounded (#158)" do
+      # Its first production run OOM-killed the service. Delete this test when
+      # the job is deliberately re-enabled -- not before.
+      assert LowendinsightGet.Scheduler.find_job(:github_trending).state == :inactive
+    end
   end
 
   describe "metrics/1" do
@@ -306,6 +312,7 @@ defmodule LowendinsightGet.TrendingRefreshTest do
 
       lines = GithubTrending.metrics(later) |> Enum.join("\n")
 
+      assert lines =~ "lei_trending_job_active 0"
       assert lines =~ ~s(lei_trending_report_completed{language="zz-trend-a"} 1)
       assert lines =~ ~s(lei_trending_report_completed{language="zz-trend-b"} 0)
       assert lines =~ ~r/lei_trending_report_age_seconds\{language="zz-trend-a"\} 3[56]\d\d/

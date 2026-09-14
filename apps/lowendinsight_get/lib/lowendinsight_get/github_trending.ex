@@ -180,6 +180,20 @@ defmodule LowendinsightGet.GithubTrending do
 
   defp completed_key(language), do: "gh_trending_#{language}_completed_at"
 
+  # Monitoring needs to tell "disabled on purpose" from "enabled and failing":
+  # a freshness alert that fires every 15 minutes for a job that is switched off
+  # is a permanently red monitor, and a red monitor hides the next real failure.
+  defp job_active? do
+    case LowendinsightGet.Scheduler.find_job(:github_trending) do
+      %{state: :active} -> true
+      _ -> false
+    end
+  rescue
+    _ -> false
+  catch
+    _, _ -> false
+  end
+
   @doc """
   `/metrics` lines: whether each language has a completed report, and its age.
 
@@ -194,6 +208,9 @@ defmodule LowendinsightGet.GithubTrending do
     rows = Enum.map(languages, fn l -> {l, completed_at(l)} end)
 
     [
+      "# HELP lei_trending_job_active Whether the scheduled trending job is enabled",
+      "# TYPE lei_trending_job_active gauge",
+      "lei_trending_job_active #{if job_active?(), do: 1, else: 0}",
       "# HELP lei_trending_report_completed Whether a language has a completed trending report",
       "# TYPE lei_trending_report_completed gauge"
     ] ++
