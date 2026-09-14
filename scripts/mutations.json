@@ -1017,6 +1017,15 @@
       "replace": "          overlap: false,\n          state: :inactive\n        ]",
       "guarded_by": "test/lowendinsight_get/trending_refresh_test.exs",
       "app": "apps/lowendinsight_get"
+    },
+    {
+      "id": "trending-run-in-progress-always-zero",
+      "bug": "The run-in-progress metric never reports a run, so the monitor fails -- and emails -- every 15 minutes while a first run fills in reports (#158 follow-up).",
+      "file": "apps/lowendinsight_get/lib/lowendinsight_get/github_trending.ex",
+      "find": "    match?({:ok, holder} when is_binary(holder), Redix.command(:redix, [\"GET\", @lock_key]))",
+      "replace": "    false",
+      "guarded_by": "test/lowendinsight_get/trending_refresh_test.exs",
+      "app": "apps/lowendinsight_get"
     }
   ]
 }
