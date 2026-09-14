@@ -878,7 +878,7 @@
       "id": "trending-languages-concurrent",
       "bug": "Languages are analysed concurrently, so clones pile up until the 512 MB machine runs out of memory and every analysis dies -- production's state for days. (#158)",
       "file": "apps/lowendinsight_get/lib/lowendinsight_get/github_trending.ex",
-      "find": "      |> Enum.map(fn language -> {language, refresh(language, opts)} end)",
+      "find": "      |> Enum.map(fn language ->\n        result = refresh(language, opts)\n        extend_lock(token, lock_ms)\n        {language, result}\n      end)",
       "replace": "      |> Task.async_stream(fn language -> {language, refresh(language, opts)} end, max_concurrency: 8, timeout: :infinity)\n      |> Enum.map(fn {:ok, result} -> result end)",
       "guarded_by": "test/lowendinsight_get/trending_refresh_test.exs",
       "app": "apps/lowendinsight_get"
@@ -905,8 +905,8 @@
       "id": "trending-runs-without-lock",
       "bug": "The hourly job and the manual trigger analyse at the same time, doubling the clones in memory. (#158)",
       "file": "apps/lowendinsight_get/lib/lowendinsight_get/github_trending.ex",
-      "find": "    case Redix.command(:redix, [\"SET\", @lock_key, token, \"NX\", \"PX\", @lock_ms]) do",
-      "replace": "    case Redix.command(:redix, [\"SET\", @lock_key, token, \"PX\", @lock_ms]) do",
+      "find": "    case Redix.command(:redix, [\"SET\", @lock_key, token, \"NX\", \"PX\", lock_ms]) do",
+      "replace": "    case Redix.command(:redix, [\"SET\", @lock_key, token, \"PX\", lock_ms]) do",
       "guarded_by": "test/lowendinsight_get/trending_refresh_test.exs",
       "app": "apps/lowendinsight_get"
     },
@@ -923,8 +923,8 @@
       "id": "trending-analyses-oversized-repos",
       "bug": "Repositories over the size limit are sent for analysis. (#158)",
       "file": "apps/lowendinsight_get/lib/lowendinsight_get/github_trending.ex",
-      "find": "  def keep_repo?(size, true) when is_integer(size), do: size < 1_000_000",
-      "replace": "  def keep_repo?(size, true) when is_integer(size), do: true",
+      "find": "  def keep_repo?(size, true) when is_integer(size),\n    do:\n      size <",
+      "replace": "  def keep_repo?(size, true) when is_integer(size),\n    do:\n      0 <",
       "guarded_by": "test/lowendinsight_get/github_trending_test.exs",
       "app": "apps/lowendinsight_get"
     },
@@ -972,6 +972,51 @@
       "replace": "",
       "guarded_by": "test/analysis_memory_test.exs",
       "app": "apps/lowendinsight"
+    },
+    {
+      "id": "trending-lock-outlives-a-crash",
+      "bug": "The trending lock lasts six hours, so an OOM kill mid-run keeps the job from running for the rest of the day. (#158)",
+      "file": "apps/lowendinsight_get/lib/lowendinsight_get/github_trending.ex",
+      "find": "  @lock_ms 90 * 60 * 1000",
+      "replace": "  @lock_ms 6 * 3600 * 1000",
+      "guarded_by": "test/lowendinsight_get/trending_refresh_test.exs",
+      "app": "apps/lowendinsight_get"
+    },
+    {
+      "id": "trending-lock-not-extended",
+      "bug": "The lock is not extended as languages complete, so a long run loses it partway and the next hourly run starts alongside. (#158)",
+      "file": "apps/lowendinsight_get/lib/lowendinsight_get/github_trending.ex",
+      "find": "        extend_lock(token, lock_ms)\n",
+      "replace": "",
+      "guarded_by": "test/lowendinsight_get/trending_refresh_test.exs",
+      "app": "apps/lowendinsight_get"
+    },
+    {
+      "id": "trending-size-limit-1gb",
+      "bug": "The size limit admits repositories up to 1 GB, several times the machine's memory. (#158)",
+      "file": "apps/lowendinsight_get/lib/lowendinsight_get/github_trending.ex",
+      "find": "  @default_max_repo_size_kb 250_000",
+      "replace": "  @default_max_repo_size_kb 1_000_000",
+      "guarded_by": "test/lowendinsight_get/trending_refresh_test.exs",
+      "app": "apps/lowendinsight_get"
+    },
+    {
+      "id": "trending-fallback-most-starred",
+      "bug": "The GitHub Search fallback returns the most-starred repositories with a recent push -- the largest, longest-history projects -- rather than rising ones. (#158)",
+      "file": "apps/lowendinsight_get/lib/lowendinsight_get/github_trending.ex",
+      "find": "    \"language:#{language} created:>#{since} stars:>=10 fork:false archived:false\"",
+      "replace": "    \"language:#{language} pushed:>#{since} stars:>10\"",
+      "guarded_by": "test/lowendinsight_get/trending_refresh_test.exs",
+      "app": "apps/lowendinsight_get"
+    },
+    {
+      "id": "ossinsight-unavailable-unreported",
+      "bug": "OSS Insight's stated 'ranking unavailable' answer is reported as a generic empty result, hiding why trending runs on the fallback. (#158)",
+      "file": "apps/lowendinsight_get/lib/lowendinsight_get/github_trending.ex",
+      "find": "      {:ok, %{\"data_quality\" => %{\"status\" => \"unavailable\"} = quality}} ->",
+      "replace": "      {:ok, %{\"data_quality\" => %{\"status\" => \"never-matches\"} = quality}} ->",
+      "guarded_by": "test/lowendinsight_get/trending_refresh_test.exs",
+      "app": "apps/lowendinsight_get"
     }
   ]
 }

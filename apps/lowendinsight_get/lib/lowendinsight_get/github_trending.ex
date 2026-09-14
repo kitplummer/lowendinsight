@@ -16,11 +16,14 @@ defmodule LowendinsightGet.GithubTrending do
   @refresh_after_seconds 24 * 3600
 
   # Held while languages are processed, so the hourly job and the manual trigger
-  # (POST /v1/gh_trending/process) never analyse at the same time. Long enough
-  # for a full run of sequential clones; it expires on its own if the holder is
-  # killed, so a crash cannot wedge the job.
+  # (POST /v1/gh_trending/process) never analyse at the same time.
+  #
+  # Sized to one language, not a whole run, and extended as each language
+  # completes. It was six hours: when production was OOM-killed mid-run the
+  # release in `after` never happened, and the lock kept the job from running
+  # for the rest of the day (#158). Now a kill costs at most this long.
   @lock_key "gh_trending_lock"
-  @lock_ms 6 * 3600 * 1000
+  @lock_ms 90 * 60 * 1000
 
   @doc """
   Refreshes every language that is due, one at a time.
@@ -40,13 +43,19 @@ defmodule LowendinsightGet.GithubTrending do
   `:force`.
   """
   def refresh_due(opts \\ []) do
-    with_lock(fn ->
+    lock_ms = Keyword.get(opts, :lock_ms, @lock_ms)
+
+    with_lock(lock_ms, fn token ->
       opts
       |> Keyword.get_lazy(:languages, fn ->
         Application.get_env(:lowendinsight_get, :languages)
       end)
       |> Enum.filter(&(Keyword.get(opts, :force, false) or due?(&1, Keyword.get(opts, :now))))
-      |> Enum.map(fn language -> {language, refresh(language, opts)} end)
+      |> Enum.map(fn language ->
+        result = refresh(language, opts)
+        extend_lock(token, lock_ms)
+        {language, result}
+      end)
     end)
   end
 
@@ -155,13 +164,13 @@ defmodule LowendinsightGet.GithubTrending do
     |> Enum.take(num_of_repos)
   end
 
-  defp with_lock(fun) do
+  defp with_lock(lock_ms, fun) do
     token = UUID.uuid4()
 
-    case Redix.command(:redix, ["SET", @lock_key, token, "NX", "PX", @lock_ms]) do
+    case Redix.command(:redix, ["SET", @lock_key, token, "NX", "PX", lock_ms]) do
       {:ok, "OK"} ->
         try do
-          fun.()
+          fun.(token)
         after
           case Redix.command(:redix, ["GET", @lock_key]) do
             {:ok, ^token} -> Redix.command(:redix, ["DEL", @lock_key])
@@ -175,6 +184,16 @@ defmodule LowendinsightGet.GithubTrending do
 
       {:error, reason} ->
         {:error, {:lock_unavailable, reason}}
+    end
+  end
+
+  # Only extends a lock this run still holds. Get-then-set races an expiry by a
+  # few microseconds; the cost of losing that race is one overlapping language,
+  # not a wedged job.
+  defp extend_lock(token, lock_ms) do
+    case Redix.command(:redix, ["GET", @lock_key]) do
+      {:ok, ^token} -> Redix.command(:redix, ["PEXPIRE", @lock_key, lock_ms])
+      _ -> :ok
     end
   end
 
@@ -284,9 +303,23 @@ defmodule LowendinsightGet.GithubTrending do
     end
   end
 
+  # Clone time and disk, now that analysis memory no longer scales with history
+  # (#162). It was 1,000,000 KB -- 1 GB, on a machine with 459 MB of memory --
+  # and let plausible/analytics (671 MB) and firezone (411 MB) through.
+  @default_max_repo_size_kb 250_000
+
   @doc "Whether a repository of this size (GitHub KB) is analysed."
   def keep_repo?(_size, false), do: true
-  def keep_repo?(size, true) when is_integer(size), do: size < 1_000_000
+
+  def keep_repo?(size, true) when is_integer(size),
+    do:
+      size <
+        Application.get_env(
+          :lowendinsight_get,
+          :trending_max_repo_size_kb,
+          @default_max_repo_size_kb
+        )
+
   # Size unknown (API error, private, deleted): not analysed.
   def keep_repo?(_size, true), do: false
 
@@ -322,6 +355,38 @@ defmodule LowendinsightGet.GithubTrending do
     end
   end
 
+  @doc """
+  Interprets an OSS Insight trends response.
+
+  Since 2026-03-01 OSS Insight has answered with no rows and a `data_quality`
+  block saying the ranking cannot be computed -- its capture of GitHub events
+  fell to about 0.3% of baseline. That was logged as "no repos returned" for
+  six months, with the GitHub Search fallback quietly doing all the work. The
+  stated reason is surfaced now, so the log says what is true.
+  """
+  def parse_ossinsight(body) do
+    case Poison.decode(body) do
+      {:ok, %{"data_quality" => %{"status" => "unavailable"} = quality}} ->
+        {:error,
+         {:ossinsight_unavailable,
+          "since #{quality["unavailable_since"] || "unknown"}: #{quality["reason"] || "no reason given"}"}}
+
+      {:ok, %{"data" => %{"rows" => rows}}} when is_list(rows) ->
+        repos =
+          rows
+          |> Enum.filter(fn row -> is_binary(row["repo_name"]) end)
+          |> Enum.map(fn row -> %{"url" => "https://github.com/" <> row["repo_name"]} end)
+
+        if repos == [], do: {:error, "no repos returned"}, else: {:ok, repos}
+
+      {:ok, _other} ->
+        {:error, "unexpected OSS Insight response structure"}
+
+      {:error, err} ->
+        {:error, "JSON parse error: #{inspect(err)}"}
+    end
+  end
+
   @doc false
   def fetch_from_ossinsight(language) do
     display_lang = capitalize_language(language)
@@ -335,25 +400,7 @@ defmodule LowendinsightGet.GithubTrending do
 
     case HTTPoison.get(url, [], recv_timeout: 30_000) do
       {:ok, %HTTPoison.Response{status_code: 200, body: body}} ->
-        case Poison.decode(body) do
-          {:ok, %{"data" => %{"rows" => rows}}} when is_list(rows) ->
-            repos =
-              rows
-              |> Enum.filter(fn row -> is_binary(row["repo_name"]) end)
-              |> Enum.map(fn row ->
-                %{"url" => "https://github.com/" <> row["repo_name"]}
-              end)
-
-            if repos == [],
-              do: {:error, "no repos returned"},
-              else: {:ok, repos}
-
-          {:ok, _other} ->
-            {:error, "unexpected OSS Insight response structure"}
-
-          {:error, err} ->
-            {:error, "JSON parse error: #{inspect(err)}"}
-        end
+        parse_ossinsight(body)
 
       {:ok, %HTTPoison.Response{status_code: status}} ->
         {:error, "OSS Insight HTTP #{status}"}
@@ -363,12 +410,30 @@ defmodule LowendinsightGet.GithubTrending do
     end
   end
 
+  @doc """
+  A GitHub Search query that approximates "trending" for a language.
+
+  The previous query -- pushed in the last week, sorted by stars -- returned the
+  most-starred repositories of all time that happened to have a recent commit:
+  the largest, oldest, longest-history projects in each language, which is
+  neither trending nor cheap to analyse (#158). GitHub Search cannot rank by
+  stars gained recently, so the closest honest proxy is repositories *created*
+  recently, ranked by the stars they already have: projects that are rising.
+
+  90 days and 10 stars, checked 2026-09-14: 30 days and 20 stars left small
+  ecosystems nearly empty (elixir 2 results, haskell 0), while 90/10 gives
+  elixir 40 and haskell 8 and still puts strong new projects first for rust
+  and dart, because results are ranked by stars.
+  """
+  def github_search_query(language, today) do
+    since = today |> Date.add(-90) |> Date.to_iso8601()
+    "language:#{language} created:>#{since} stars:>=10 fork:false archived:false"
+  end
+
   @doc false
   def fetch_from_github_search(language) do
     token = get_token()
-    week_ago = Date.utc_today() |> Date.add(-7) |> Date.to_iso8601()
-
-    query = "language:#{language} pushed:>#{week_ago} stars:>10"
+    query = github_search_query(language, Date.utc_today())
 
     url =
       @github_search_base <>

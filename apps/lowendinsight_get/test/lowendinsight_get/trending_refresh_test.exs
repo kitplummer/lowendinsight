@@ -244,6 +244,110 @@ defmodule LowendinsightGet.TrendingRefreshTest do
     end
   end
 
+  describe "sources (#158)" do
+    test "OSS Insight's 'ranking unavailable' answer is reported as that, with its reason" do
+      # The literal shape OSS Insight has returned since 2026-03-01.
+      body =
+        Poison.encode!(%{
+          "type" => "sql_endpoint",
+          "data" => %{"columns" => [], "rows" => [], "result" => %{"row_count" => 0}},
+          "data_quality" => %{
+            "status" => "unavailable",
+            "unavailable_since" => "2026-03-01",
+            "reason" => "capture of those events fell to roughly 0.3% of baseline"
+          }
+        })
+
+      assert {:error, {:ossinsight_unavailable, message}} = GithubTrending.parse_ossinsight(body)
+      assert message =~ "2026-03-01"
+      assert message =~ "0.3% of baseline"
+    end
+
+    test "OSS Insight rows still parse when the ranking is available" do
+      body = Poison.encode!(%{"data" => %{"rows" => [%{"repo_name" => "a/b"}]}})
+      assert {:ok, [%{"url" => "https://github.com/a/b"}]} = GithubTrending.parse_ossinsight(body)
+    end
+
+    test "the search fallback asks for rising repositories, not the most-starred of all time" do
+      query = GithubTrending.github_search_query("elixir", ~D[2026-09-14])
+
+      assert query =~ "language:elixir"
+      assert query =~ "created:>2026-06-16"
+      assert query =~ "fork:false"
+      assert query =~ "archived:false"
+      # The old query selected by recent activity, which every large, long-lived
+      # project has.
+      refute query =~ "pushed:"
+    end
+  end
+
+  describe "the size limit" do
+    test "defaults to 250 MB and is configurable" do
+      assert GithubTrending.keep_repo?(249_999, true)
+      refute GithubTrending.keep_repo?(250_000, true)
+      # plausible/analytics, which the old 1 GB limit admitted.
+      refute GithubTrending.keep_repo?(671_430, true)
+
+      previous = Application.get_env(:lowendinsight_get, :trending_max_repo_size_kb)
+      Application.put_env(:lowendinsight_get, :trending_max_repo_size_kb, 1_000)
+
+      on_exit(fn ->
+        if previous,
+          do: Application.put_env(:lowendinsight_get, :trending_max_repo_size_kb, previous),
+          else: Application.delete_env(:lowendinsight_get, :trending_max_repo_size_kb)
+      end)
+
+      refute GithubTrending.keep_repo?(1_000, true)
+      assert GithubTrending.keep_repo?(999, true)
+    end
+  end
+
+  describe "the lock (#158)" do
+    test "lives about one language, not a whole day" do
+      parent = self()
+
+      GithubTrending.refresh_due(
+        languages: ["zz-trend-a"],
+        fetch: &list_for/1,
+        repo_size: &small/1,
+        analyze: fn uuid, urls, start ->
+          {:ok, pttl} = Redix.command(:redix, ["PTTL", "gh_trending_lock"])
+          send(parent, {:pttl, pttl})
+          completing_analysis().(uuid, urls, start)
+        end
+      )
+
+      assert_received {:pttl, pttl}
+      # 90 minutes. It was six hours; an OOM kill stranded it for the rest of the day.
+      assert pttl > 0 and pttl <= 90 * 60 * 1000
+    end
+
+    test "is extended as each language completes, so a long run keeps it" do
+      # A lock that would expire during the run without extension: three
+      # languages of 400ms each against a 1s lock.
+      parent = self()
+
+      slow = fn uuid, urls, start ->
+        Process.sleep(400)
+        {:ok, holder} = Redix.command(:redix, ["GET", "gh_trending_lock"])
+        send(parent, {:held, holder != nil})
+        completing_analysis().(uuid, urls, start)
+      end
+
+      GithubTrending.refresh_due(
+        languages: @languages,
+        fetch: &list_for/1,
+        repo_size: &small/1,
+        analyze: slow,
+        lock_ms: 1_000
+      )
+
+      assert_received {:held, true}
+      assert_received {:held, true}
+      assert_received {:held, true}
+    end
+  end
+
   describe "the page" do
     test "renders one row per analysed repository, in the shape the canary counts" do
       # The canary counts `var project = "<url>"` in the rendered page. Pinned
