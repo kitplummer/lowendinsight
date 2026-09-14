@@ -21,6 +21,30 @@ if config_env() == :prod do
     System.get_env("LEI_JWT_SECRET") ||
       raise "LEI_JWT_SECRET env var is required in production"
 
+  # Read here, at boot, not in config.exs. config.exs is evaluated when the
+  # release is *built*, where no Fly secret exists, so production silently ran
+  # with the development defaults for both of these -- the session secret
+  # committed to this repository and a known JWT secret for Lei.Auth -- whatever
+  # was set in Fly (security, 2026-09-14). A missing or placeholder session
+  # secret now stops the release instead of signing cookies anyone can forge.
+  session_secret =
+    System.get_env("LEI_SESSION_SECRET") ||
+      raise "LEI_SESSION_SECRET env var is required in production"
+
+  if byte_size(session_secret) < 64 do
+    raise "LEI_SESSION_SECRET must be at least 64 bytes"
+  end
+
+  if String.starts_with?(session_secret, "lei_dev_session_secret") do
+    raise "LEI_SESSION_SECRET is the development default; generate a real one"
+  end
+
+  config :lowendinsight,
+    # Lei.Auth verifies JWTs on Lei.Web.Router's own listener (start_http) with
+    # this. It must be the same secret the endpoint's LowendinsightGet.Auth uses.
+    jwt_secret: jwt_secret,
+    session_secret_key_base: session_secret
+
   config :lowendinsight_get,
     jwt_secret: jwt_secret,
     cache_ttl: String.to_integer(System.get_env("LEI_CACHE_TTL") || "30"),
