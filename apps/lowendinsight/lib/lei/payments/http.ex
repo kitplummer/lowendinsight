@@ -26,12 +26,16 @@ defmodule Lei.Payments.Http do
 
   require Logger
 
-  alias Lei.Payments
-  alias Lei.Payments.ChallengeStore
+  alias Lei.{ApiKeys, Org, Payments, Repo, Wallets}
+  alias Lei.Payments.{ChallengeStore, MachineRail}
   alias Lei.Payments.Mpp.{Challenge, Credential, Receipt}
 
   @doc """
   Answers an unfunded request with a payment challenge.
+
+  `org_id` is nil for a caller with no org -- an agent that has never been
+  here. Only rails that can identify their payer are offered then, because the
+  org it ends up with is the payer's (#147).
   """
   def challenge(conn, org_id, credits, opts \\ []) do
     conn = Lei.Payments.RateLimit.check(conn, :payment_challenge)
@@ -44,7 +48,10 @@ defmodule Lei.Payments.Http do
   end
 
   defp issue(conn, org_id, credits, opts) do
-    rails = Keyword.get_lazy(opts, :rails, &configured_rails/0)
+    rails =
+      opts
+      |> Keyword.get_lazy(:rails, &configured_rails/0)
+      |> Enum.filter(&(org_id != nil or MachineRail.identifies_payer?(&1)))
 
     results = Enum.map(rails, fn rail -> {rail, rail.requirements(credits, opts)} end)
 
@@ -147,12 +154,27 @@ defmodule Lei.Payments.Http do
   half of the exchange.
   """
   def settle(conn, opts \\ []) do
-    conn = Lei.Payments.RateLimit.check(conn, :payment_settle)
+    # Only a request presenting a Payment credential spends from the settle
+    # bucket. Checked the other way round, every paid request counted -- ten a
+    # minute per IP for all analysis, keyed or not, once both analyze routes
+    # passed through here (#147).
+    if payment_credential?(conn) do
+      conn = Lei.Payments.RateLimit.check(conn, :payment_settle)
 
-    if Lei.Payments.RateLimit.limited?(conn) do
-      {:rate_limited, conn}
+      if Lei.Payments.RateLimit.limited?(conn) do
+        {:rate_limited, conn}
+      else
+        do_settle(conn, opts)
+      end
     else
-      do_settle(conn, opts)
+      :no_credential
+    end
+  end
+
+  defp payment_credential?(conn) do
+    case get_req_header(conn, "authorization") do
+      ["Payment " <> _ | _] -> true
+      _ -> false
     end
   end
 
@@ -161,19 +183,113 @@ defmodule Lei.Payments.Http do
          {:ok, credential} <- Credential.from_header(header),
          {:ok, issued, record, rail} <- recall(credential),
          {:ok, settlement} <- rail.verify(credential, Keyword.put(opts, :challenge, issued)),
-         {:ok, _entry} <- credit(record.org_id, settlement) do
-      ChallengeStore.mark_settled(record)
+         {:ok, org_id, issued_key} <- credit_payer(record, rail, settlement) do
+      ChallengeStore.mark_settled(record, org_id)
 
       receipt = Receipt.new(method: rail.name(), reference: settlement.settlement_ref)
 
       conn =
         conn
         |> put_resp_header("payment-receipt", Receipt.to_header(receipt))
-        # Who paid, taken from the recorded challenge. The caller needs it to
-        # bill the right org, and it is not derivable from the request.
-        |> Plug.Conn.assign(:settled_org_id, record.org_id)
+        |> maybe_put_key(issued_key)
+        # Who paid, taken from the recorded challenge -- or, for a caller that
+        # had no org, from the payment itself. The caller needs it to bill the
+        # right org, and it is not derivable from the request.
+        |> Plug.Conn.assign(:settled_org_id, org_id)
 
       {:ok, conn, settlement}
+    end
+  end
+
+  # The key an agent comes back with. Without it, the 15,000 credits it just
+  # bought are stranded: its next request carries no credential and is asked
+  # to pay again (#147).
+  defp maybe_put_key(conn, nil), do: conn
+  defp maybe_put_key(conn, raw_key), do: put_resp_header(conn, "lei-api-key", raw_key)
+
+  # A challenge issued to an org credits that org, whoever presents the proof.
+  defp credit_payer(%{org_id: org_id}, _rail, settlement) when not is_nil(org_id) do
+    case credit(org_id, settlement) do
+      {:ok, _} -> {:ok, org_id, nil}
+      error -> error
+    end
+  end
+
+  # A challenge issued to no one credits the wallet that paid, and hands back a
+  # key for it.
+  #
+  # This is an unauthenticated path that issues a credential -- the shape #89
+  # was an org takeover through. What makes it safe is where the identity comes
+  # from: a transfer the rail verified on chain, bound to this challenge by its
+  # memo, signed by the holder, and confirmed by Stripe. Nothing the caller
+  # asserts is consulted. Anyone who can make that payment controls the wallet.
+  defp credit_payer(%{org_id: nil}, rail, settlement) do
+    with {:ok, wallet} <- payer_wallet(rail, settlement),
+         {:ok, org} <- wallet_org(wallet) do
+      # The credit and the key describe one event, so they commit together. A
+      # credit without its key strands the balance, and a replay could not
+      # recover it: the duplicate is refused before a key would be issued.
+      Repo.transaction(fn ->
+        case Payments.credit_settlement(org.id, settlement) do
+          {:ok, _entry} ->
+            case ApiKeys.create_api_key(org, "mpp #{rail.name()}", ["analyze"]) do
+              {:ok, raw_key, _api_key} -> {org.id, raw_key}
+              {:error, reason} -> Repo.rollback({:key_not_issued, reason})
+            end
+
+          # Postgres has aborted the transaction on the unique violation, so
+          # nothing more can run in it. A replay: credited before, keyed before.
+          {:error, :duplicate} ->
+            Repo.rollback(:duplicate)
+
+          {:error, reason} ->
+            Repo.rollback(reason)
+        end
+      end)
+      |> case do
+        {:ok, {org_id, raw_key}} -> {:ok, org_id, raw_key}
+        {:error, :duplicate} -> {:ok, org.id, nil}
+        {:error, reason} -> {:error, {:credit_failed, reason}}
+      end
+    end
+  end
+
+  defp payer_wallet(rail, settlement) do
+    wallet = if MachineRail.identifies_payer?(rail), do: rail.payer_wallet(settlement)
+
+    case wallet do
+      nil ->
+        Logger.error("#{rail.name()} settled an anonymous challenge without identifying a payer")
+        {:error, :payer_unidentified}
+
+      wallet ->
+        {:ok, wallet}
+    end
+  end
+
+  # Create-only, with the unique index as arbiter: two agents paying from one
+  # wallet at once both reach provision/2, one wins, the other finds it. Done
+  # outside the credit transaction, because a unique violation inside one aborts
+  # it.
+  defp wallet_org(wallet) do
+    case Wallets.find_by_address(wallet) do
+      %Org{} = org ->
+        {:ok, org}
+
+      nil ->
+        case Wallets.provision(wallet) do
+          {:ok, org} ->
+            {:ok, org}
+
+          {:error, :wallet_taken} ->
+            case Wallets.find_by_address(wallet) do
+              %Org{} = org -> {:ok, org}
+              nil -> {:error, :wallet_org_unavailable}
+            end
+
+          {:error, reason} ->
+            {:error, {:wallet_org_unavailable, reason}}
+        end
     end
   end
 

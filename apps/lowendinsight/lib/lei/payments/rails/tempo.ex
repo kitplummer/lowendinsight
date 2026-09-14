@@ -105,9 +105,9 @@ defmodule Lei.Payments.Rails.Tempo do
          :ok <- check_matches(credential, issued),
          {:ok, hash} <- fetch_hash(credential),
          {:ok, network} <- check_network(issued),
-         {:ok, _transfer} <- check_receipt(network, hash, issued),
+         {:ok, transfer} <- check_receipt(network, hash, issued),
          {:ok, intent} <- settle_with_stripe(hash, issued, opts) do
-      {:ok, settlement(issued, intent)}
+      {:ok, settlement(issued, intent, transfer)}
     end
   end
 
@@ -251,7 +251,7 @@ defmodule Lei.Payments.Rails.Tempo do
       Keyword.get(opts, :settle_timeout_ms, settle_timeout_ms())
   end
 
-  defp settlement(issued, intent) do
+  defp settlement(issued, intent, transfer) do
     crypto = get_in(intent, ["latest_charge", "payment_method_details", "crypto"]) || %{}
     units = String.to_integer(issued.request["amount"])
 
@@ -262,7 +262,11 @@ defmodule Lei.Payments.Rails.Tempo do
       usd_value_cents: intent["amount_received"],
       asset: String.upcase(crypto["token_currency"] || "usdc"),
       amount: format_units(units),
-      payer: crypto["buyer_address"],
+      # From the chain, where the memo binds it to this challenge and the
+      # signer check has shown the holder authorised it. Stripe's
+      # buyer_address agreed in every sandbox run, but it is not what was
+      # checked.
+      payer: transfer.from,
       settled_at: DateTime.utc_now() |> DateTime.to_iso8601()
     }
   end
@@ -272,6 +276,12 @@ defmodule Lei.Payments.Rails.Tempo do
     frac = rem(units, 1_000_000) |> Integer.to_string() |> String.pad_leading(6, "0")
     "#{whole}.#{frac}"
   end
+
+  @impl true
+  def payer_wallet(%{rail: "tempo", payer: "0x" <> hex = payer}) when byte_size(hex) == 40,
+    do: String.downcase(payer)
+
+  def payer_wallet(_settlement), do: nil
 
   @doc "The configured deposit address, lowercased, or nil."
   def deposit_address do

@@ -302,6 +302,27 @@ How a stablecoin payment is verified (behaviour observed in sandbox against real
 
 Minimum is **$0.50**. Stripe rejects smaller crypto PaymentIntents, although its docs say 0.01 USDC.
 
+### An agent from nothing (#147)
+
+`POST /v1/analyze` and `POST /v1/analyze/batch` are the only routes that accept a request with no credentials, and they answer it with a 402. Everything else under `/v1` still returns 401.
+
+```
+POST /v1/analyze                          (no Authorization)
+  <- 402  WWW-Authenticate: Payment ... method="tempo"
+POST /v1/analyze                          Authorization: Payment <credential>
+  <- 200  Payment-Receipt: ...   Lei-Api-Key: lei_...
+POST /v1/analyze                          Authorization: Bearer lei_...
+  <- 200                                  (spends the balance, no payment)
+```
+
+- **Only stablecoin is offered anonymously.** The org belongs to the wallet that paid, taken from the transfer on chain, and that wallet must also be the transaction's signer (not an approved spender). A card token identifies no one, so card challenges are offered only to callers that already have an org.
+- **Create-only:** a wallet with an existing org is credited there. Anyone who can pay from that wallet controls it.
+- **The key comes back once**, on the settling response. A replayed credential isn't credited twice and gets no second key. An agent that loses the key pays again to get another.
+- **One transaction:** the credit and the key commit together, and the org is created beforehand.
+- **Both routes go through `Lei.Payments.Gate`.** It refuses by default: anything that isn't an operator JWT and has no org is asked to pay.
+
+The canary asserts that an unauthenticated analysis gets a 402 offering `tempo`.
+
 ### The mode switch, and what guards it (#137)
 
 There is no mode setting. **The mode is whatever `STRIPE_SECRET_KEY`'s prefix

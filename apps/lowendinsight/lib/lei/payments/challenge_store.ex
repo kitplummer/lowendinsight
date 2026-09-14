@@ -43,9 +43,10 @@ defmodule Lei.Payments.ChallengeStore do
         :expires_at,
         :settled_at
       ])
+      # org_id is absent for a challenge issued to an agent that has no org
+      # yet; settlement records the org the payment identified (#147).
       |> validate_required([
         :challenge_id,
-        :org_id,
         :rail,
         :credits,
         :amount_cents,
@@ -104,9 +105,9 @@ defmodule Lei.Payments.ChallengeStore do
   twice. This makes "issued and never answered" countable, which is the number
   that says whether the on-ramp is working.
   """
-  def mark_settled(%Record{} = record) do
+  def mark_settled(%Record{} = record, org_id \\ nil) do
     record
-    |> Record.changeset(%{settled_at: DateTime.utc_now()})
+    |> Record.changeset(%{settled_at: DateTime.utc_now(), org_id: record.org_id || org_id})
     |> Repo.update()
   end
 

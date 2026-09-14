@@ -275,8 +275,8 @@
       "id": "mpp-credits-presenter-not-payer",
       "bug": "A credential proves a payment happened; it does not prove who it was for. Crediting whoever presents one lets an intercepted credential top up the wrong org -- the payer's money, someone else's balance. The org is taken from the recorded challenge, never from the request.",
       "file": "apps/lowendinsight/lib/lei/payments/http.ex",
-      "find": "         {:ok, _entry} <- credit(record.org_id, settlement) do",
-      "replace": "         {:ok, _entry} <- credit(Keyword.get(opts, :org_id, record.org_id), settlement) do",
+      "find": "         {:ok, org_id, issued_key} <- credit_payer(record, rail, settlement) do",
+      "replace": "         {:ok, org_id, issued_key} <- credit_payer(%{record | org_id: Keyword.get(opts, :org_id, record.org_id)}, rail, settlement) do",
       "guarded_by": "test/lei/payments/mpp_http_test.exs",
       "app": "apps/lowendinsight"
     },
@@ -293,7 +293,7 @@
       "id": "auth-rejects-payment-scheme",
       "bug": "An agent paying with MPP puts its credential in Authorization, per the Payment auth scheme. Without a clause for it the value falls off the end of authenticate/1 and a paying agent gets a 500 for presenting a valid credential -- the one request it most needs to succeed.",
       "file": "apps/lowendinsight/lib/lei/auth.ex",
-      "find": "  defp authenticate({conn, \"Payment \" <> _credential}) do\n    assign(conn, :auth_method, :payment)\n  end\n\n",
+      "find": "  defp authenticate({conn, \"Payment \" <> _credential}) do\n    if Lei.Payments.Gate.paid_route?(conn),\n      do: assign(conn, :auth_method, :payment),\n      else: send_401(conn)\n  end\n\n",
       "replace": "",
       "guarded_by": "test/lei/payments/mpp_journey_test.exs",
       "app": "apps/lowendinsight"
@@ -310,9 +310,9 @@
     {
       "id": "paid-request-skips-quota",
       "bug": "A wallet agent has no API key, so without billing context from the settled payment the quota check sees no org and is skipped entirely. The paid request is then served for the wrong reason -- not because it paid, but because nothing was checked -- and an unpaid one would be served identically.",
-      "file": "apps/lowendinsight/lib/lei/web/router.ex",
-      "find": "        payment_billing_context(conn)",
-      "replace": "        {nil, nil, nil}",
+      "file": "apps/lowendinsight/lib/lei/payments/gate.ex",
+      "find": "        case conn.assigns[:payment_org_id] && Lei.Repo.get(Lei.Org, conn.assigns[:payment_org_id]) do",
+      "replace": "        case nil do",
       "guarded_by": "test/lei/payments/mpp_journey_test.exs",
       "app": "apps/lowendinsight"
     },
@@ -518,8 +518,8 @@
       "id": "tempo-reverted-transaction-accepted",
       "bug": "A reverted transaction's logs are read as a payment that happened. (#144)",
       "file": "apps/lowendinsight/lib/lei/tempo/transfer.ex",
-      "find": "      receipt[\"status\"] != \"0x1\" ->",
-      "replace": "      false ->",
+      "find": "    if receipt[\"status\"] != \"0x1\" do",
+      "replace": "    if false do",
       "guarded_by": "test/lei/tempo/transfer_test.exs",
       "app": "apps/lowendinsight"
     },
@@ -527,8 +527,8 @@
       "id": "tempo-chain-read-skipped",
       "bug": "Stripe is asked, and credits granted, without the receipt binding the transfer to the challenge -- Stripe verifies the money but not whose it is. (#144)",
       "file": "apps/lowendinsight/lib/lei/payments/rails/tempo.ex",
-      "find": "         {:ok, _transfer} <- check_receipt(network, hash, issued),\n",
-      "replace": "",
+      "find": "         {:ok, transfer} <- check_receipt(network, hash, issued),\n",
+      "replace": "         transfer = %{from: nil},\n",
       "guarded_by": "test/lei/payments/tempo_rail_test.exs",
       "app": "apps/lowendinsight"
     },
@@ -602,6 +602,96 @@
       "find": "    offered = for {rail, {:ok, challenge}} <- results, do: {rail, challenge}",
       "replace": "    offered = Enum.take(for({rail, {:ok, challenge}} <- results, do: {rail, challenge}), 1)",
       "guarded_by": "test/lei/payments/tempo_http_test.exs",
+      "app": "apps/lowendinsight"
+    },
+    {
+      "id": "payment-gate-serves-anonymous",
+      "bug": "A request with no org and no operator token is served rather than asked to pay -- free analysis for anyone who omits the Authorization header. (#147)",
+      "file": "apps/lowendinsight/lib/lei/payments/gate.ex",
+      "find": "        if conn.assigns[:auth_method] == :jwt do",
+      "replace": "        if true do",
+      "guarded_by": "test/lowendinsight_get/agent_payment_test.exs",
+      "app": "apps/lowendinsight_get"
+    },
+    {
+      "id": "endpoint-auth-rejects-payment-scheme",
+      "bug": "The deployed endpoint's auth plug answers an Authorization: Payment credential with 401, so no paying retry ever reaches settlement -- production's state for two releases. (#147)",
+      "file": "apps/lowendinsight_get/lib/lowendinsight_get/auth.ex",
+      "find": "      do: Plug.Conn.assign(conn, :auth_method, :payment),",
+      "replace": "      do: send_401(conn),",
+      "guarded_by": "test/lowendinsight_get/agent_payment_test.exs",
+      "app": "apps/lowendinsight_get"
+    },
+    {
+      "id": "endpoint-auth-401s-new-agent",
+      "bug": "An agent with no credentials is told to authenticate with something it cannot have, instead of being asked to pay. (#147)",
+      "file": "apps/lowendinsight_get/lib/lowendinsight_get/auth.ex",
+      "find": "      do: Plug.Conn.assign(conn, :auth_method, :anonymous),",
+      "replace": "      do: send_401(conn),",
+      "guarded_by": "test/lowendinsight_get/agent_payment_test.exs",
+      "app": "apps/lowendinsight_get"
+    },
+    {
+      "id": "paid-route-opens-all-v1",
+      "bug": "Every /v1 route accepts unauthenticated requests, not just the paid analysis routes. (#147)",
+      "file": "apps/lowendinsight/lib/lei/payments/gate.ex",
+      "find": "    do: {method, path} in @paid_routes",
+      "replace": "    do: method != nil and path != nil",
+      "guarded_by": "test/lowendinsight_get/agent_payment_test.exs",
+      "app": "apps/lowendinsight_get"
+    },
+    {
+      "id": "card-offered-to-anonymous-agent",
+      "bug": "A card challenge is offered to a caller with no org. A card token identifies no payer, so the payment could create no org -- money taken, nobody to credit. (#147)",
+      "file": "apps/lowendinsight/lib/lei/payments/http.ex",
+      "find": "      |> Enum.filter(&(org_id != nil or MachineRail.identifies_payer?(&1)))",
+      "replace": "      |> Enum.filter(&(&1 != nil))",
+      "guarded_by": "test/lowendinsight_get/agent_payment_test.exs",
+      "app": "apps/lowendinsight_get"
+    },
+    {
+      "id": "paid-agent-gets-no-key",
+      "bug": "The agent that paid is not given a key, so the credits it bought are stranded: its next request is asked to pay again. (#147)",
+      "file": "apps/lowendinsight/lib/lei/payments/http.ex",
+      "find": "        |> maybe_put_key(issued_key)\n",
+      "replace": "",
+      "guarded_by": "test/lowendinsight_get/agent_payment_test.exs",
+      "app": "apps/lowendinsight_get"
+    },
+    {
+      "id": "transfer-signer-not-checked",
+      "bug": "Tokens moved by an approved spender (transferFrom) identify the holder as payer, so anyone with an allowance can pay as a wallet and be issued its org and a key. (#147)",
+      "file": "apps/lowendinsight/lib/lei/tempo/transfer.ex",
+      "find": "        %{from: ^signer} = payment -> {:ok, payment}",
+      "replace": "        payment -> {:ok, payment}",
+      "guarded_by": "test/lei/tempo/transfer_test.exs",
+      "app": "apps/lowendinsight"
+    },
+    {
+      "id": "analyze-bills-key-not-payer",
+      "bug": "POST /v1/analyze bills only an API key's org. An agent that pays on the request has no key, so it is served with its balance never debited. (#147)",
+      "file": "apps/lowendinsight_get/lib/lowendinsight_get/endpoint.ex",
+      "find": "              track_analyze_usage(billing, result)",
+      "replace": "              track_analyze_usage({nil, nil, nil}, result)",
+      "guarded_by": "test/lowendinsight_get/agent_payment_test.exs",
+      "app": "apps/lowendinsight_get"
+    },
+    {
+      "id": "settle-bucket-spent-by-all-traffic",
+      "bug": "The settle rate limit is charged before looking for a credential, capping all analysis from one IP at 10 a minute. (#147)",
+      "file": "apps/lowendinsight/lib/lei/payments/http.ex",
+      "find": "    if payment_credential?(conn) do",
+      "replace": "    if payment_credential?(conn) or true do",
+      "guarded_by": "test/lei/payments/mpp_http_test.exs",
+      "app": "apps/lowendinsight"
+    },
+    {
+      "id": "lei-auth-jwt-unmarked",
+      "bug": "Lei.Auth does not mark an operator JWT, so the gate treats an operator's request as an anonymous caller and asks it to pay. (#147)",
+      "file": "apps/lowendinsight/lib/lei/auth.ex",
+      "find": "        assign(conn, :auth_method, :jwt)",
+      "replace": "        conn",
+      "guarded_by": "test/lei/web/router_test.exs",
       "app": "apps/lowendinsight"
     }
   ]

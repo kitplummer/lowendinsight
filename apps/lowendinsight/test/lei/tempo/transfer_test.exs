@@ -99,6 +99,15 @@ defmodule Lei.Tempo.TransferTest do
              Transfer.find_payment(receipt("memo_to_deposit"), expected(%{token: usdc_e}))
   end
 
+  test "tokens moved by someone other than the signer do not identify a payer" do
+    # transferFrom: an approved spender signs, the holder's tokens move. The
+    # log's from is the holder, the receipt's from is the spender. Paying "as"
+    # a wallet you merely hold an allowance on must not earn that wallet's org.
+    spender = Map.put(receipt("memo_to_deposit"), "from", "0x" <> String.duplicate("99", 20))
+
+    assert {:error, :sender_not_signer} = Transfer.find_payment(spender, expected())
+  end
+
   test "less than asked is underpaid" do
     assert {:error, :underpaid} =
              Transfer.find_payment(receipt("memo_to_deposit"), expected(%{amount: 500_001}))

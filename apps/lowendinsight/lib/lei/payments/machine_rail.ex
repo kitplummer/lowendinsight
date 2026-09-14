@@ -119,4 +119,24 @@ defmodule Lei.Payments.MachineRail do
   """
   @callback verify(proof(), opts :: keyword()) ::
               {:ok, settlement()} | {:error, term()}
+
+  @doc """
+  The wallet that made a settlement, when the rail can prove it.
+
+  Optional, and deliberately so: only a rail that implements it may be offered
+  to a caller with no org, because the org such a caller ends up with is the
+  payer's (#147). A proof of payment is not automatically a proof of identity
+  -- a card token names no one -- so a rail that cannot answer this must not
+  be able to create orgs.
+
+  Return nil rather than a guess.
+  """
+  @callback payer_wallet(settlement()) :: String.t() | nil
+
+  @optional_callbacks payer_wallet: 1
+
+  @doc "Whether a rail can identify its payer, and so be offered anonymously."
+  def identifies_payer?(rail) do
+    Code.ensure_loaded?(rail) and function_exported?(rail, :payer_wallet, 1)
+  end
 end
