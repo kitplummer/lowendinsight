@@ -16,7 +16,9 @@ Operated by (r)evolve (https://revolveteam.com). Source: https://github.com/kitp
 4. The response is `200` with the analysis, a `Payment-Receipt` header, and a `Lei-Api-Key` header.
 5. Keep the key. Send `Authorization: Bearer <key>` on later requests to spend the balance without paying again. The key is shown once.
 
-Other routes: `POST /v1/analyze/batch` (dependencies), `GET /v1/analyze/{uuid}` (job result). Full schema: https://lowendinsight.dev/openapi.json
+Other paid routes, same flow: `POST /v1/analyze/sbom` (a CycloneDX or SPDX SBOM; priced per repository it names) and `POST /v1/analyze/batch` (dependencies). `GET /v1/analyze/{uuid}` fetches a job's result. Full schema: https://lowendinsight.dev/openapi.json
+
+A request is priced before it runs, from which repositories already have cached reports. It is charged when accepted, whether it completes in the request or runs asynchronously. A balance smaller than the request is asked to top up by at least the difference.
 
 ## Pricing
 

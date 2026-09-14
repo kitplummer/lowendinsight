@@ -121,6 +121,46 @@ defmodule LowendinsightGet.Endpoint do
   get "/url=:url" do
     url = URI.decode(url)
 
+    case try_it_allowance(conn, url) do
+      :ok -> try_it(conn, url)
+      {:limited, retry_after} -> try_it_limited(conn, retry_after)
+    end
+  end
+
+  # The Try It form is free for a person trying the product, and was free for
+  # anything: an agent that reads HTML had a full analysis path around the 402
+  # (#152). A cached report costs nothing to serve and stays unlimited; a fresh
+  # analysis is limited per IP, checked before any work starts.
+  defp try_it_allowance(conn, url) do
+    if LowendinsightGet.Datastore.in_cache?(url) do
+      :ok
+    else
+      ip = Lei.Payments.RateLimit.client_ip(conn)
+
+      case Lei.RateLimiter.check("try_it:#{ip}", "try_it") do
+        {:ok, _remaining} -> :ok
+        {:error, :rate_limited, retry_after_ms} -> {:limited, max(div(retry_after_ms, 1000), 1)}
+      end
+    end
+  end
+
+  defp try_it_limited(conn, retry_after) do
+    conn
+    |> put_resp_header("retry-after", Integer.to_string(retry_after))
+    |> send_json(429, %{
+      error: "try_it_limit",
+      message:
+        "The Try It form's allowance of fresh analyses for your address is used up. " <>
+          "Analyze through the API instead: POST /v1/analyze, paying per use with no account, " <>
+          "or with a free key from /signup.",
+      api: "/v1/analyze",
+      guide: "/llms.txt",
+      signup: "/signup",
+      retry_after_seconds: retry_after
+    })
+  end
+
+  defp try_it(conn, url) do
     case LowendinsightGet.Analysis.analyze(url, "lei-get", %{types: false}) do
       {:ok, report, _cache_status} ->
         {:ok, data} = Map.fetch(report, :data)
@@ -191,13 +231,14 @@ defmodule LowendinsightGet.Endpoint do
     # payment path at all, and answered a wallet org out of credits with a 500
     # from an unmatched case clause (#147).
     conn = Lei.Payments.Gate.settle(conn)
+    split = cache_split(conn.body_params["urls"])
 
-    case Lei.Payments.Gate.admit(conn) do
+    case Lei.Payments.Gate.admit(conn, required_credits: credits_for(split)) do
       {:halt, conn} ->
         conn
 
       {:ok, conn, billing} ->
-        {status, body} = analyze_urls(conn, billing, uuid, start_time)
+        {status, body} = analyze_urls(conn, billing, split, uuid, start_time)
 
         conn
         |> put_resp_content_type(@content_type)
@@ -205,7 +246,7 @@ defmodule LowendinsightGet.Endpoint do
     end
   end
 
-  defp analyze_urls(conn, billing, uuid, start_time) do
+  defp analyze_urls(conn, billing, split, uuid, start_time) do
     case conn.body_params do
       %{"urls" => urls} ->
         cache_mode = Map.get(conn.body_params, "cache_mode", "blocking")
@@ -222,11 +263,15 @@ defmodule LowendinsightGet.Endpoint do
 
           case LowendinsightGet.Analysis.process_urls(urls, uuid, start_time, opts) do
             {:ok, result} ->
-              track_analyze_usage(billing, result)
+              record_usage(billing, split)
               log_analyze_request(conn, billing, urls, result)
               {200, enrich_analyze_response(conn, result)}
 
+            # Accepted and still running: billed now, because the report is
+            # collected later from GET /v1/analyze/{uuid}, which bills nothing.
             {:timeout, timed_out_uuid} ->
+              record_usage(billing, split)
+
               {202,
                Poison.encode!(%{
                  state: "incomplete",
@@ -254,66 +299,108 @@ defmodule LowendinsightGet.Endpoint do
     start_time = DateTime.utc_now()
     uuid = UUID.uuid1()
 
-    {status, body} =
-      case conn.body_params do
-        %{"sbom" => sbom} ->
-          cache_mode = Map.get(conn.body_params, "cache_mode", "async")
+    # Paid like the other analyze routes. It checked no quota and recorded no
+    # usage, so any key -- a wallet org's with no credits included -- could have
+    # every repository an SBOM names analysed for nothing (#152). The SBOM is
+    # parsed before admission because the repositories it names are the price.
+    conn = Lei.Payments.Gate.settle(conn)
 
-          cache_timeout =
-            Map.get(
-              conn.body_params,
-              "cache_timeout",
-              Application.get_env(:lowendinsight_get, :sbom_timeout, 60_000)
-            )
+    case sbom_request(conn.body_params) do
+      {:error, message} ->
+        send_json(conn, 422, %{error: message})
 
-          if cache_mode in @valid_cache_modes do
-            case LowendinsightGet.SbomParser.parse(sbom) do
-              {:ok, [_ | _] = urls} ->
-                opts = %{cache_mode: cache_mode, cache_timeout: cache_timeout}
+      {:ok, urls, cache_mode, cache_timeout} ->
+        split = cache_split(urls)
 
-                case LowendinsightGet.Analysis.process_urls(urls, uuid, start_time, opts) do
-                  {:ok, result} ->
-                    # Enhance result with SBOM metadata
-                    enhanced = add_sbom_metadata(result, length(urls))
-                    {200, enhanced}
+        case Lei.Payments.Gate.admit(conn, required_credits: credits_for(split)) do
+          {:halt, conn} ->
+            conn
 
-                  {:timeout, timed_out_uuid} ->
-                    {202,
-                     Poison.encode!(%{
-                       state: "incomplete",
-                       uuid: timed_out_uuid,
-                       sbom_urls_found: length(urls),
-                       error: "SBOM analysis did not complete within #{cache_timeout}ms timeout"
-                     })}
+          {:ok, conn, billing} ->
+            opts = %{cache_mode: cache_mode, cache_timeout: cache_timeout}
 
-                  {:error, error} ->
-                    {422, Poison.encode!(%{error: error})}
-                end
+            case LowendinsightGet.Analysis.process_urls(urls, uuid, start_time, opts) do
+              {:ok, result} ->
+                record_usage(billing, split)
 
-              {:ok, []} ->
-                {422, Poison.encode!(%{error: "no git URLs found in SBOM"})}
+                conn
+                |> put_resp_content_type(@content_type)
+                |> send_resp(200, add_sbom_metadata(result, length(urls)))
 
-              {:error, reason} ->
-                {422, Poison.encode!(%{error: "SBOM parse error: #{reason}"})}
+              {:timeout, timed_out_uuid} ->
+                record_usage(billing, split)
+
+                send_json(conn, 202, %{
+                  state: "incomplete",
+                  uuid: timed_out_uuid,
+                  sbom_urls_found: length(urls),
+                  error: "SBOM analysis did not complete within #{cache_timeout}ms timeout"
+                })
+
+              {:error, error} ->
+                send_json(conn, 422, %{error: error})
             end
-          else
-            {422,
-             Poison.encode!(%{
-               error:
-                 "invalid cache_mode: '#{cache_mode}'. Must be one of: #{Enum.join(@valid_cache_modes, ", ")}"
-             })}
-          end
+        end
+    end
+  end
 
-        _ ->
-          {422,
-           Poison.encode!(%{
-             error: "POST body must contain 'sbom' field with CycloneDX or SPDX JSON"
-           })}
-      end
+  defp sbom_request(%{"sbom" => sbom} = params) do
+    cache_mode = Map.get(params, "cache_mode", "async")
 
+    cache_timeout =
+      Map.get(
+        params,
+        "cache_timeout",
+        Application.get_env(:lowendinsight_get, :sbom_timeout, 60_000)
+      )
+
+    cond do
+      cache_mode not in @valid_cache_modes ->
+        {:error,
+         "invalid cache_mode: '#{cache_mode}'. Must be one of: #{Enum.join(@valid_cache_modes, ", ")}"}
+
+      true ->
+        case LowendinsightGet.SbomParser.parse(sbom) do
+          {:ok, [_ | _] = urls} -> {:ok, urls, cache_mode, cache_timeout}
+          {:ok, []} -> {:error, "no git URLs found in SBOM"}
+          {:error, reason} -> {:error, "SBOM parse error: #{reason}"}
+        end
+    end
+  end
+
+  defp sbom_request(_params),
+    do: {:error, "POST body must contain 'sbom' field with CycloneDX or SPDX JSON"}
+
+  defp send_json(conn, status, body) do
     conn
     |> put_resp_content_type(@content_type)
-    |> send_resp(status, body)
+    |> send_resp(status, Poison.encode!(body))
+  end
+
+  # What a request will cost, decided before any work: a repository with a
+  # cached report is a hit, anything else a miss. Billing from the response
+  # instead recorded nothing for async, stale and timed-out requests, whose
+  # responses carry no cache counts (#152).
+  defp cache_split(urls) when is_list(urls) do
+    urls = Enum.filter(urls, &is_binary/1)
+    hits = Enum.count(urls, &LowendinsightGet.Datastore.in_cache?/1)
+    {hits, length(urls) - hits}
+  end
+
+  defp cache_split(_), do: {0, 0}
+
+  defp credits_for({hits, misses}) do
+    Lei.UsageTracker.calculate_cost(hits, misses)
+    |> Decimal.mult(10)
+    |> Decimal.round(0, :ceiling)
+    |> Decimal.to_integer()
+  end
+
+  defp record_usage({nil, _key_id, _tier}, _split), do: :ok
+  defp record_usage(_billing, {0, 0}), do: :ok
+
+  defp record_usage({org_id, api_key_id, _tier}, {hits, misses}) do
+    Lei.UsageTracker.record_usage_async(org_id, api_key_id, hits, misses)
   end
 
   ## Cache Management Endpoints (Phase 3: Distributable Cache)
@@ -481,25 +568,6 @@ defmodule LowendinsightGet.Endpoint do
     |> put_resp_content_type(@content_type)
     |> send_resp(404, Poison.encode!(%{:error => "UUID not provided or found."}))
   end
-
-  # Billed to the org the gate admitted: the key's, or the one a payment on
-  # this request identified. Keyed on the API key alone, a paying agent would
-  # have been served without its balance ever being debited.
-  defp track_analyze_usage({nil, _api_key_id, _tier}, _result), do: :ok
-
-  defp track_analyze_usage({org_id, api_key_id, _tier}, result) when is_binary(result) do
-    case Poison.decode(result) do
-      {:ok, decoded} ->
-        hits = get_in(decoded, ["metadata", "cache_status", "hits"]) || 0
-        misses = get_in(decoded, ["metadata", "cache_status", "misses"]) || 0
-        Lei.UsageTracker.record_usage_async(org_id, api_key_id, hits, misses)
-
-      {:error, _} ->
-        :ok
-    end
-  end
-
-  defp track_analyze_usage(_conn, _result), do: :ok
 
   # Logged against the org the gate billed -- the key's, or the one a payment
   # on this request identified. Keyed on the API key alone, a paying agent's

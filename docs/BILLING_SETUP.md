@@ -304,7 +304,14 @@ Minimum is **$0.50**. Stripe rejects smaller crypto PaymentIntents, although its
 
 ### An agent from nothing (#147)
 
-`POST /v1/analyze` and `POST /v1/analyze/batch` are the only routes that accept a request with no credentials, and they answer it with a 402. Everything else under `/v1` still returns 401.
+`POST /v1/analyze`, `POST /v1/analyze/batch` and `POST /v1/analyze/sbom` are the only routes that accept a request with no credentials, and they answer it with a 402. Everything else under `/v1` still returns 401.
+
+**Pricing a request (#152).** `/v1/analyze` and `/v1/analyze/sbom` price a request before running it: each repository with a cached report is a hit, anything else a miss.
+- **Charged when accepted**, including async, stale and timed-out requests. It had been billed from the response's cache counts, which those responses don't carry, so they were free.
+- **Top-ups cover the whole request:** a credit-funded org holding less than the price is asked to top up by at least the shortfall.
+- **Batch is unchanged:** it bills from `BatchAnalyzer`'s summary, which is synchronous.
+
+**The Try It form** (`GET /url=`) serves cached reports freely. Fresh analyses are limited per IP (`rate_limits.try_it`, per `rate_limit_windows.try_it`: 10 an hour by default) and checked before any work.
 
 ```
 POST /v1/analyze                          (no Authorization)

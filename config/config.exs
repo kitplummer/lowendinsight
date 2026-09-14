@@ -151,7 +151,11 @@ config :lowendinsight,
     acp: 20,
     acp_complete: 5,
     payment_challenge: 30,
-    payment_settle: 10
-  }
+    payment_settle: 10,
+    # Fresh analyses through the homepage's Try It form, per IP, per hour
+    # (window below). Cached reports are not counted (#152).
+    try_it: 10
+  },
+  rate_limit_windows: %{try_it: 3_600_000}
 
 import_config "#{Mix.env()}.exs"

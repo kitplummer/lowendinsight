@@ -313,6 +313,9 @@ const key = res.headers.get('lei-api-key')   // keep it: it holds your balance</
                 </div>
               </form>
               <span id="invalid-url" style="display: none; color: var(--accent-red);">Invalid repo URL</span>
+              <p id="try-it-limited" class="is-size-7 mt-2" style="display: none; color: var(--accent-red);">
+                This address has used its fresh analyses through the Try It form for now. Reports already analyzed are still free here. For more, use the API: <a href="#agents">pay per use with no account</a>, or <a href="/signup">get a free key</a>.
+              </p>
             </div>
 
             <div class="box">
