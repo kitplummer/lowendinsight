@@ -230,15 +230,7 @@ defmodule GitModule do
   def get_contributors(repo) do
     list =
       Git.shortlog!(repo, ["-n", "-e", "HEAD", "--"])
-      |> String.codepoints()
-      |> Enum.map(fn x ->
-        if !String.valid?(x) do
-          Enum.join(for <<c <- x>>, do: <<c::utf8>>)
-        else
-          x
-        end
-      end)
-      |> Enum.join()
+      |> GitHelper.repair_utf8()
       |> GitHelper.parse_shortlog()
 
     {:ok, list}
@@ -363,8 +355,13 @@ defmodule GitModule do
   def get_commits_with_trailers(repo) do
     separator = "---LEI_SEPARATOR---"
 
+    # Only commits whose message mentions a co-author can yield one: every
+    # pattern Lei.AgenticDetector matches is a "Co-Authored-By:" line. Asking
+    # git for just those commits gives identical detection, where reading every
+    # commit body held the whole history in memory -- part of what OOM-killed
+    # production analysing large repositories (#158).
     raw =
-      Git.log!(repo, ["--pretty=format:%ae\t%B#{separator}"])
+      Git.log!(repo, ["-i", "-F", "--grep=Co-Authored-By:", "--pretty=format:%ae\t%B#{separator}"])
       |> String.split(separator)
       |> Enum.map(&String.trim/1)
       |> Enum.filter(&(&1 != ""))

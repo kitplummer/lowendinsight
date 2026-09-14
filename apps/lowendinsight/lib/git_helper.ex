@@ -94,6 +94,46 @@ defmodule GitHelper do
   end
 
   @spec parse_shortlog(String.t()) :: [Contributor.t()]
+  @doc """
+  Replaces each byte that is not part of valid UTF-8 with the codepoint of the
+  same value (reading it as Latin-1), leaving valid UTF-8 untouched.
+
+  Same result as the code it replaced, which split the whole shortlog into
+  codepoints and rebuilt it. That built a list with one binary per character
+  -- about 1.2 million for elixir-lang/elixir's shortlog -- and, called three
+  times per analysis, took the VM from ~180 MB to 572 MB: the allocation
+  that OOM-killed production (#158). This walks the binary once and only
+  copies around invalid bytes; valid input is returned as is.
+  """
+  @spec repair_utf8(binary()) :: String.t()
+  def repair_utf8(binary) when is_binary(binary) do
+    if String.valid?(binary), do: binary, else: repair_utf8(binary, 0, 0, [])
+  end
+
+  # Walks `binary` by byte offset, slicing runs of valid UTF-8 out of the
+  # original rather than copying the remainder at each invalid byte, so the
+  # cost is one pass however many bytes need repairing.
+  defp repair_utf8(binary, start, pos, acc) do
+    case binary do
+      <<_::binary-size(pos)>> ->
+        [binary_part(binary, start, pos - start) | acc]
+        |> :lists.reverse()
+        |> IO.iodata_to_binary()
+
+      <<_::binary-size(pos), codepoint::utf8, _::binary>> ->
+        repair_utf8(binary, start, pos + utf8_width(codepoint), acc)
+
+      <<_::binary-size(pos), byte, _::binary>> ->
+        acc = [<<byte::utf8>>, binary_part(binary, start, pos - start) | acc]
+        repair_utf8(binary, pos + 1, pos + 1, acc)
+    end
+  end
+
+  defp utf8_width(cp) when cp < 0x80, do: 1
+  defp utf8_width(cp) when cp < 0x800, do: 2
+  defp utf8_width(cp) when cp < 0x10000, do: 3
+  defp utf8_width(_), do: 4
+
   def parse_shortlog(log) do
     split_shortlog(log)
     |> Enum.map(fn contributor ->
