@@ -947,15 +947,6 @@
       "app": "apps/lowendinsight_get"
     },
     {
-      "id": "trending-job-reenabled-while-unsafe",
-      "bug": "The trending job is scheduled active before per-repository memory is bounded; its first run OOM-killed production (#158).",
-      "file": "config/config.exs",
-      "find": "          state: :inactive\n",
-      "replace": "",
-      "guarded_by": "test/lowendinsight_get/trending_refresh_test.exs",
-      "app": "apps/lowendinsight_get"
-    },
-    {
       "id": "utf8-repair-per-codepoint",
       "bug": "Shortlog UTF-8 repair splits the whole history into one binary per codepoint: elixir-lang/elixir's analysis went from ~180 MB to 572 MB RSS, the allocation that OOM-killed production (#158).",
       "file": "apps/lowendinsight/lib/git_helper.ex",
@@ -1015,6 +1006,15 @@
       "file": "apps/lowendinsight_get/lib/lowendinsight_get/github_trending.ex",
       "find": "      {:ok, %{\"data_quality\" => %{\"status\" => \"unavailable\"} = quality}} ->",
       "replace": "      {:ok, %{\"data_quality\" => %{\"status\" => \"never-matches\"} = quality}} ->",
+      "guarded_by": "test/lowendinsight_get/trending_refresh_test.exs",
+      "app": "apps/lowendinsight_get"
+    },
+    {
+      "id": "trending-job-left-disabled",
+      "bug": "The trending job stays switched off: the pages go stale and monitoring only warns (#158).",
+      "file": "config/config.exs",
+      "find": "          overlap: false\n        ]",
+      "replace": "          overlap: false,\n          state: :inactive\n        ]",
       "guarded_by": "test/lowendinsight_get/trending_refresh_test.exs",
       "app": "apps/lowendinsight_get"
     }

@@ -392,10 +392,11 @@ defmodule LowendinsightGet.TrendingRefreshTest do
       assert Crontab.CronExpression.Composer.compose(job.schedule) =~ ~r/^0 \* \* \* \*/
     end
 
-    test "is disabled until per-repository memory is bounded (#158)" do
-      # Its first production run OOM-killed the service. Delete this test when
-      # the job is deliberately re-enabled -- not before.
-      assert LowendinsightGet.Scheduler.find_job(:github_trending).state == :inactive
+    test "is enabled (#158)" do
+      # It was disabled after its first production run OOM-killed the service,
+      # and re-enabled once #162 and #163 bounded that. A job left switched off
+      # shows only as a monitor warning, so its state is asserted here.
+      assert LowendinsightGet.Scheduler.find_job(:github_trending).state == :active
     end
   end
 
@@ -416,7 +417,13 @@ defmodule LowendinsightGet.TrendingRefreshTest do
 
       lines = GithubTrending.metrics(later) |> Enum.join("\n")
 
-      assert lines =~ "lei_trending_job_active 0"
+      # Follows the scheduler, both ways.
+      assert lines =~ "lei_trending_job_active 1"
+      LowendinsightGet.Scheduler.deactivate_job(:github_trending)
+      on_exit(fn -> LowendinsightGet.Scheduler.activate_job(:github_trending) end)
+      assert GithubTrending.metrics(later) |> Enum.join("\n") =~ "lei_trending_job_active 0"
+      LowendinsightGet.Scheduler.activate_job(:github_trending)
+
       assert lines =~ ~s(lei_trending_report_completed{language="zz-trend-a"} 1)
       assert lines =~ ~s(lei_trending_report_completed{language="zz-trend-b"} 0)
       assert lines =~ ~r/lei_trending_report_age_seconds\{language="zz-trend-a"\} 3[56]\d\d/
