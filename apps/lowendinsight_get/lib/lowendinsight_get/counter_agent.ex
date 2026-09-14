@@ -22,7 +22,9 @@ defmodule LowendinsightGet.CounterAgent do
 
   def add(pid, url) do
     Agent.update(:counter, fn {proc, log} ->
-      Logger.info("running process ##{map_size(proc) + 1} -> #{url}")
+      Logger.info("running process ##{map_size(proc) + 1}")
+      # The URL only at debug (#149).
+      Logger.debug("running process ##{map_size(proc) + 1} -> #{url}")
       {Map.put(proc, pid, :running), log}
     end)
 

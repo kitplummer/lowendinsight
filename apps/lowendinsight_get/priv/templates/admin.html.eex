@@ -219,9 +219,12 @@
                       <td><code><%= req.endpoint %></code></td>
                       <td style="font-size:0.8em;"><%= req.org_id || "—" %></td>
                       <td style="font-size:0.8em;">
-                        <%= if req.repo_urls && length(req.repo_urls) > 0 do %>
+                        <%= cond do %>
+                          <% Map.get(req, :repo_urls_withheld) -> %>
+                          <span title="Wallet org: repositories are not recorded (#149)">withheld</span>
+                          <% req.repo_urls && length(req.repo_urls) > 0 -> %>
                           <%= Enum.join(req.repo_urls, ", ") %>
-                        <% else %>
+                          <% true -> %>
                           —
                         <% end %>
                       </td>

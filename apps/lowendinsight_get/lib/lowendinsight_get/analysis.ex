@@ -15,7 +15,8 @@ defmodule LowendinsightGet.Analysis do
            Application.get_env(:lowendinsight_get, :cache_ttl)
          ) do
       {:ok, repo_report, :hit} ->
-        Logger.info("#{url} is cached, yay!")
+        # The URL only at debug, which production does not emit (#149).
+        Logger.debug("#{url} is cached, yay!")
         repo_data = Poison.decode!(repo_report, as: %RepoReport{data: %Data{results: %Results{}}})
         {:ok, repo_data, :hit}
 
@@ -28,7 +29,11 @@ defmodule LowendinsightGet.Analysis do
   end
 
   def process(uuid, urls, start_time) do
-    Logger.info("processing #{uuid} -> #{inspect(urls)}")
+    # Counts at info, repositories at debug. An info line naming the URLs sits
+    # in production logs beside a ledger entry's timestamp, which is enough to
+    # put a paying wallet next to what it analysed (#149).
+    Logger.info("processing #{uuid} -> #{length(urls)} repos")
+    Logger.debug("processing #{uuid} -> #{inspect(urls)}")
     LowendinsightGet.CounterAgent.new_counter(Enum.count(urls))
 
     results =
