@@ -143,11 +143,11 @@ if config_env() == :prod do
         [
           schedule: "0 * * * *",
           task: {LowendinsightGet.GithubTrending, :refresh_due, []},
-          overlap: false,
-          # DISABLED 2026-09-14 (#158). Its first run OOM-killed production:
-          # a single large repository's analysis took beam.smp to 342 MB on a
-          # 459 MB machine. Re-enable only once per-repository memory is bounded.
-          state: :inactive
+          # Re-enabled after #158: disabled 2026-09-14 when its first run
+          # OOM-killed production. Bounded since by #162 (analysis memory no
+          # longer scales with history) and #163 (rising repositories, 250 MB
+          # cap, 90-minute lock).
+          overlap: false
         ]
       }
     ]
