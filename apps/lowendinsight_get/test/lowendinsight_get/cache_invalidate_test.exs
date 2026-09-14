@@ -52,22 +52,24 @@ defmodule LowendinsightGet.CacheInvalidateTest do
       assert Poison.decode!(conn.resp_body)["error"] == "insufficient scope"
     end
 
-    test "an admin key is accepted", %{admin_key: key} do
+    test "an org admin key is refused: admin of an org is not a platform scope", %{admin_key: key} do
+      # Every signup key carries "admin" for its own org. Accepting it here let
+      # any stranger force re-analysis of anything (security, 2026-09-14).
       conn = invalidate(key, %{url: @url})
 
-      assert conn.status in [200, 503]
+      assert conn.status == 403
     end
   end
 
   describe "the request" do
-    test "rejects a missing url", %{admin_key: key} do
+    test "rejects a missing url", %{cache_key: key} do
       conn = invalidate(key, %{})
 
       assert conn.status == 400
       assert Poison.decode!(conn.resp_body)["error"] =~ "url"
     end
 
-    test "rejects an empty url", %{admin_key: key} do
+    test "rejects an empty url", %{cache_key: key} do
       conn = invalidate(key, %{url: ""})
 
       assert conn.status == 400
@@ -95,9 +97,12 @@ defmodule LowendinsightGet.CacheInvalidateTest do
       assert conn.status == 403
     end
 
-    test "an admin key still works on cache routes", %{admin_key: key} do
-      # Narrowing must not lock out the operator credential.
-      conn = invalidate(key, %{url: @url})
+    test "an operator JWT still works on cache routes" do
+      # Narrowing must not lock out the operator credential -- which is a JWT,
+      # not an org's "admin" key.
+      signer = Joken.Signer.create("HS256", Application.get_env(:lowendinsight_get, :jwt_secret))
+      {:ok, jwt, _} = Joken.generate_and_sign(%{}, %{}, signer)
+      conn = invalidate(jwt, %{url: @url})
 
       assert conn.status in [200, 503]
       refute conn.status == 403
@@ -129,7 +134,18 @@ defmodule LowendinsightGet.CacheInvalidateTest do
       assert conn.status == 403
     end
 
-    test "an admin key still can", %{admin_key: key} do
+    test "an org admin key cannot either (security, 2026-09-14)", %{admin_key: key} do
+      # Export dumped every cached report, which then embedded the app's
+      # secrets. "admin" was accepted, and every signup key has it.
+      conn =
+        conn(:get, "/v1/cache/export")
+        |> put_req_header("authorization", "Bearer #{key}")
+        |> LowendinsightGet.Endpoint.call(@opts)
+
+      assert conn.status == 403
+    end
+
+    test "a cache-scoped key can export", %{cache_key: key} do
       conn =
         conn(:get, "/v1/cache/export")
         |> put_req_header("authorization", "Bearer #{key}")
@@ -140,7 +156,7 @@ defmodule LowendinsightGet.CacheInvalidateTest do
   end
 
   describe "routing" do
-    test "the route is reachable, not swallowed by the endpoint catch-all", %{admin_key: key} do
+    test "the route is reachable, not swallowed by the endpoint catch-all", %{cache_key: key} do
       # A route present in the endpoint but missing from @auth_paths returns
       # 404 in production while every test of the handler passes. #69 shipped
       # eight of those at once.

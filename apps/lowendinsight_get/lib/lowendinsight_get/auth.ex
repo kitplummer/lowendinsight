@@ -158,7 +158,11 @@ defmodule LowendinsightGet.Auth do
   # requires.
   defp has_scope?(conn, required) do
     case conn.assigns[:current_api_key] do
-      %{scopes: scopes} when is_list(scopes) -> required in scopes or "admin" in scopes
+      # The scope itself, and nothing broader. "admin" was accepted here too,
+      # and every signup key is admin of its own org -- so any stranger could
+      # export, import over or invalidate the cache everyone is served
+      # (security, 2026-09-14). Operators use a JWT.
+      %{scopes: scopes} when is_list(scopes) -> required in scopes
       _ -> false
     end
   end

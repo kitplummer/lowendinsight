@@ -408,7 +408,19 @@ defmodule Lei.Web.Router do
   # --- Self-registration endpoints ---
 
   post "/v1/orgs" do
-    case conn.body_params do
+    # Creating orgs is an operator action. It required only the "admin" scope,
+    # which every signup key carries.
+    case {conn.assigns[:auth_method], conn.body_params} do
+      {method, _} when method != :jwt ->
+        json_resp(conn, 403, %{error: "operator credentials required"})
+
+      {_, body_params} ->
+        create_org_from(conn, body_params)
+    end
+  end
+
+  defp create_org_from(conn, body_params) do
+    case body_params do
       %{"name" => name} when is_binary(name) and name != "" ->
         # find_or_create_org/2 is correct here, unlike on the signup paths: this
         # route requires the "admin" scope and returns only org metadata, never
@@ -431,37 +443,42 @@ defmodule Lei.Web.Router do
     end
   end
 
+  # --- Org key management ---
+  #
+  # An org's credentials act on that org only (security, 2026-09-14). Signup
+  # gives every org a key with the "admin" scope -- admin *of that org*. These
+  # routes checked neither ownership nor who was asking, so any stranger's
+  # signup key could mint a key for any org and take it over, list its keys,
+  # or revoke them. A slug the caller may not manage answers exactly like one
+  # that does not exist, so slugs cannot be enumerated.
+
   post "/v1/orgs/:slug/keys" do
-    case Lei.ApiKeys.get_org_by_slug(slug) do
-      nil ->
-        json_resp(conn, 404, %{error: "org not found"})
+    with {:ok, org} <- authorize_org(conn, slug),
+         scopes = get_in(conn.body_params, ["scopes"]) || [],
+         :ok <- authorize_scopes(conn, scopes) do
+      name = get_in(conn.body_params, ["name"]) || "default"
 
-      org ->
-        name = get_in(conn.body_params, ["name"]) || "default"
-        scopes = get_in(conn.body_params, ["scopes"]) || []
+      case Lei.ApiKeys.create_api_key(org, name, scopes) do
+        {:ok, raw_key, api_key} ->
+          json_resp(conn, 201, %{
+            key: raw_key,
+            name: api_key.name,
+            key_prefix: api_key.key_prefix,
+            scopes: api_key.scopes,
+            warning: "Store this key securely. It will not be shown again."
+          })
 
-        case Lei.ApiKeys.create_api_key(org, name, scopes) do
-          {:ok, raw_key, api_key} ->
-            json_resp(conn, 201, %{
-              key: raw_key,
-              name: api_key.name,
-              key_prefix: api_key.key_prefix,
-              scopes: api_key.scopes,
-              warning: "Store this key securely. It will not be shown again."
-            })
-
-          {:error, changeset} ->
-            json_resp(conn, 422, %{error: format_errors(changeset)})
-        end
+        {:error, changeset} ->
+          json_resp(conn, 422, %{error: format_errors(changeset)})
+      end
+    else
+      {:error, status, body} -> json_resp(conn, status, body)
     end
   end
 
   get "/v1/orgs/:slug/keys" do
-    case Lei.ApiKeys.get_org_by_slug(slug) do
-      nil ->
-        json_resp(conn, 404, %{error: "org not found"})
-
-      org ->
+    case authorize_org(conn, slug) do
+      {:ok, org} ->
         keys = Lei.ApiKeys.list_keys(org)
 
         json_resp(conn, 200, %{
@@ -477,21 +494,60 @@ defmodule Lei.Web.Router do
               }
             end)
         })
+
+      {:error, status, body} ->
+        json_resp(conn, status, body)
     end
   end
 
   delete "/v1/orgs/:slug/keys/:key_id" do
-    case Lei.ApiKeys.get_org_by_slug(slug) do
-      nil ->
-        json_resp(conn, 404, %{error: "org not found"})
-
-      _org ->
-        case Lei.ApiKeys.revoke_key(key_id) do
-          {:ok, _} -> json_resp(conn, 200, %{status: "revoked"})
-          {:error, :not_found} -> json_resp(conn, 404, %{error: "key not found"})
-        end
+    with {:ok, org} <- authorize_org(conn, slug),
+         # The key must belong to the org in the path. It was looked up by id
+         # alone, so any org's key could be revoked through any slug.
+         %Lei.ApiKey{} = key <-
+           Enum.find(Lei.ApiKeys.list_keys(org), &(to_string(&1.id) == key_id)),
+         {:ok, _} <- Lei.ApiKeys.revoke_key(key.id) do
+      json_resp(conn, 200, %{status: "revoked"})
+    else
+      {:error, status, body} when is_integer(status) -> json_resp(conn, status, body)
+      _ -> json_resp(conn, 404, %{error: "key not found"})
     end
   end
+
+  # An operator (a JWT signed with the deployment's secret) may manage any org.
+  # Otherwise the caller must hold an "admin" key belonging to this org.
+  defp authorize_org(conn, slug) do
+    not_found = {:error, 404, %{error: "org not found"}}
+
+    case {conn.assigns[:auth_method], conn.assigns[:current_api_key],
+          Lei.ApiKeys.get_org_by_slug(slug)} do
+      {_, _, nil} ->
+        not_found
+
+      {:jwt, _, org} ->
+        {:ok, org}
+
+      {_, %Lei.ApiKey{org_id: org_id, scopes: scopes}, %Lei.Org{id: org_id} = org} ->
+        if "admin" in scopes, do: {:ok, org}, else: not_found
+
+      _ ->
+        not_found
+    end
+  end
+
+  # Scopes an org admin may grant. "cache" reaches every customer's reports and
+  # is an operator's to hand out; "admin" here means admin of the same org.
+  @self_service_scopes ["admin", "analyze"]
+
+  defp authorize_scopes(conn, scopes) when is_list(scopes) do
+    cond do
+      conn.assigns[:auth_method] == :jwt -> :ok
+      Enum.all?(scopes, &(&1 in @self_service_scopes)) -> :ok
+      true -> {:error, 403, %{error: "scope not grantable", grantable: @self_service_scopes}}
+    end
+  end
+
+  defp authorize_scopes(_conn, _scopes), do: {:error, 422, %{error: "scopes must be a list"}}
 
   # Unauthenticated health/metrics endpoints (outside /v1 prefix)
 

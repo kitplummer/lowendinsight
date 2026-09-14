@@ -1071,6 +1071,51 @@
       "replace": "",
       "guarded_by": "test/lowendinsight_get/encoded_path_auth_test.exs",
       "app": "apps/lowendinsight_get"
+    },
+    {
+      "id": "org-keys-without-ownership",
+      "bug": "Org key routes do not check the caller's key belongs to the org in the path: any signup key mints, lists or revokes keys for any org -- a full takeover (security, 2026-09-14).",
+      "file": "apps/lowendinsight/lib/lei/web/router.ex",
+      "find": "      {_, %Lei.ApiKey{org_id: org_id, scopes: scopes}, %Lei.Org{id: org_id} = org} ->",
+      "replace": "      {_, %Lei.ApiKey{scopes: scopes}, %Lei.Org{} = org} ->",
+      "guarded_by": "test/lowendinsight_get/tenant_isolation_test.exs",
+      "app": "apps/lowendinsight_get"
+    },
+    {
+      "id": "revoke-key-by-id-across-orgs",
+      "bug": "Key revocation looks the key up by id alone, so any org's key can be revoked through any slug the caller controls (security, 2026-09-14).",
+      "file": "apps/lowendinsight/lib/lei/web/router.ex",
+      "find": "Enum.find(Lei.ApiKeys.list_keys(org), &(to_string(&1.id) == key_id))",
+      "replace": "Lei.Repo.get(Lei.ApiKey, key_id)",
+      "guarded_by": "test/lowendinsight_get/tenant_isolation_test.exs",
+      "app": "apps/lowendinsight_get"
+    },
+    {
+      "id": "org-admin-grants-platform-scope",
+      "bug": "An org admin can mint a key with the platform 'cache' scope for its own org, escalating to import/export of every customer's reports (security, 2026-09-14).",
+      "file": "apps/lowendinsight/lib/lei/web/router.ex",
+      "find": "      Enum.all?(scopes, &(&1 in @self_service_scopes)) -> :ok",
+      "replace": "      is_list(scopes) -> :ok",
+      "guarded_by": "test/lowendinsight_get/tenant_isolation_test.exs",
+      "app": "apps/lowendinsight_get"
+    },
+    {
+      "id": "cache-routes-accept-org-admin",
+      "bug": "Cache routes accept the 'admin' scope that every signup key carries, so any stranger can export, import over or invalidate the shared cache (security, 2026-09-14).",
+      "file": "apps/lowendinsight_get/lib/lowendinsight_get/auth.ex",
+      "find": "      %{scopes: scopes} when is_list(scopes) -> required in scopes",
+      "replace": "      %{scopes: scopes} when is_list(scopes) -> required in scopes or \"admin\" in scopes",
+      "guarded_by": "test/lowendinsight_get/tenant_isolation_test.exs",
+      "app": "apps/lowendinsight_get"
+    },
+    {
+      "id": "org-creation-by-org-admin",
+      "bug": "POST /v1/orgs accepts any signup key's 'admin' scope instead of requiring an operator (security, 2026-09-14).",
+      "file": "apps/lowendinsight/lib/lei/web/router.ex",
+      "find": "      {method, _} when method != :jwt ->",
+      "replace": "      {method, _} when method == :never ->",
+      "guarded_by": "test/lowendinsight_get/tenant_isolation_test.exs",
+      "app": "apps/lowendinsight_get"
     }
   ]
 }
