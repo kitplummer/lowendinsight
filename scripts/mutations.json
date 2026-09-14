@@ -873,6 +873,78 @@
       "replace": "    window = window_ms()",
       "guarded_by": "test/lei/rate_limiter_test.exs",
       "app": "apps/lowendinsight"
+    },
+    {
+      "id": "trending-languages-concurrent",
+      "bug": "Languages are analysed concurrently, so clones pile up until the 512 MB machine runs out of memory and every analysis dies -- production's state for days. (#158)",
+      "file": "apps/lowendinsight_get/lib/lowendinsight_get/github_trending.ex",
+      "find": "      |> Enum.map(fn language -> {language, refresh(language, opts)} end)",
+      "replace": "      |> Task.async_stream(fn language -> {language, refresh(language, opts)} end, max_concurrency: 8, timeout: :infinity)\n      |> Enum.map(fn {:ok, result} -> result end)",
+      "guarded_by": "test/lowendinsight_get/trending_refresh_test.exs",
+      "app": "apps/lowendinsight_get"
+    },
+    {
+      "id": "trending-publishes-incomplete",
+      "bug": "A language's page is pointed at a report that has not completed, replacing the last good one with a placeholder that renders empty. (#158)",
+      "file": "apps/lowendinsight_get/lib/lowendinsight_get/github_trending.ex",
+      "find": "         :ok <- ensure_complete(uuid) do",
+      "replace": "         true do",
+      "guarded_by": "test/lowendinsight_get/trending_refresh_test.exs",
+      "app": "apps/lowendinsight_get"
+    },
+    {
+      "id": "trending-redoes-completed-languages",
+      "bug": "Every run redoes every language, so a run killed partway starts over and never reaches the end. (#158)",
+      "file": "apps/lowendinsight_get/lib/lowendinsight_get/github_trending.ex",
+      "find": "      |> Enum.filter(&(Keyword.get(opts, :force, false) or due?(&1, Keyword.get(opts, :now))))",
+      "replace": "      |> Enum.filter(fn _ -> true end)",
+      "guarded_by": "test/lowendinsight_get/trending_refresh_test.exs",
+      "app": "apps/lowendinsight_get"
+    },
+    {
+      "id": "trending-runs-without-lock",
+      "bug": "The hourly job and the manual trigger analyse at the same time, doubling the clones in memory. (#158)",
+      "file": "apps/lowendinsight_get/lib/lowendinsight_get/github_trending.ex",
+      "find": "    case Redix.command(:redix, [\"SET\", @lock_key, token, \"NX\", \"PX\", @lock_ms]) do",
+      "replace": "    case Redix.command(:redix, [\"SET\", @lock_key, token, \"PX\", @lock_ms]) do",
+      "guarded_by": "test/lowendinsight_get/trending_refresh_test.exs",
+      "app": "apps/lowendinsight_get"
+    },
+    {
+      "id": "trending-analysis-crash-escapes",
+      "bug": "An analysis that raises crashes the whole run instead of failing one language. (#158)",
+      "file": "apps/lowendinsight_get/lib/lowendinsight_get/github_trending.ex",
+      "find": "    e -> {:error, {:analysis_raised, Exception.message(e)}}",
+      "replace": "    e -> reraise e, __STACKTRACE__",
+      "guarded_by": "test/lowendinsight_get/trending_refresh_test.exs",
+      "app": "apps/lowendinsight_get"
+    },
+    {
+      "id": "trending-analyses-oversized-repos",
+      "bug": "Repositories over the size limit are sent for analysis. (#158)",
+      "file": "apps/lowendinsight_get/lib/lowendinsight_get/github_trending.ex",
+      "find": "  def keep_repo?(size, true) when is_integer(size), do: size < 1_000_000",
+      "replace": "  def keep_repo?(size, true) when is_integer(size), do: true",
+      "guarded_by": "test/lowendinsight_get/github_trending_test.exs",
+      "app": "apps/lowendinsight_get"
+    },
+    {
+      "id": "trending-job-overlaps",
+      "bug": "The hourly trending job may start while the previous run is still cloning. (#158)",
+      "file": "config/config.exs",
+      "find": "          overlap: false",
+      "replace": "          overlap: true",
+      "guarded_by": "test/lowendinsight_get/trending_refresh_test.exs",
+      "app": "apps/lowendinsight_get"
+    },
+    {
+      "id": "trending-metrics-not-exposed",
+      "bug": "Trending report completion and age are not on /metrics, so monitoring cannot see the job failing. (#158)",
+      "file": "config/config.exs",
+      "find": "  metrics_collectors: [{LowendinsightGet.GithubTrending, :metrics, []}]",
+      "replace": "  metrics_collectors: []",
+      "guarded_by": "test/lowendinsight_get/trending_refresh_test.exs",
+      "app": "apps/lowendinsight_get"
     }
   ]
 }

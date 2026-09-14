@@ -11,43 +11,204 @@ defmodule LowendinsightGet.GithubTrending do
   @ossinsight_base "https://api.ossinsight.io/v1/trends/repos/"
   @github_search_base "https://api.github.com/search/repositories"
 
-  def process_languages() do
-    Application.get_env(:lowendinsight_get, :languages)
-    |> Enum.each(fn language -> LowendinsightGet.GithubTrending.analyze(language) end)
+  # A refresh older than this is due again. The job runs hourly, so a language
+  # is at most a day and an hour stale when everything is healthy.
+  @refresh_after_seconds 24 * 3600
+
+  # Held while languages are processed, so the hourly job and the manual trigger
+  # (POST /v1/gh_trending/process) never analyse at the same time. Long enough
+  # for a full run of sequential clones; it expires on its own if the holder is
+  # killed, so a crash cannot wedge the job.
+  @lock_key "gh_trending_lock"
+  @lock_ms 6 * 3600 * 1000
+
+  @doc """
+  Refreshes every language that is due, one at a time.
+
+  This replaced a midnight job that started every language's analysis at once,
+  asynchronously. Clones of large trending repositories piled up until the
+  512 MB machine ran out of memory (4 MB free for over a minute on
+  2026-09-14), the process was killed, and every language was left pointing
+  at a placeholder report that would never complete (#158).
+
+  Now: one language's analysis runs to completion before the next starts, a
+  language's report is replaced only by a complete one, and progress survives
+  restarts -- a language refreshed within the last day is skipped, so a kill
+  costs the language in flight rather than the night.
+
+  Options (for tests): `:languages`, `:now`, `:fetch`, `:repo_size`, `:analyze`,
+  `:force`.
+  """
+  def refresh_due(opts \\ []) do
+    with_lock(fn ->
+      opts
+      |> Keyword.get_lazy(:languages, fn ->
+        Application.get_env(:lowendinsight_get, :languages)
+      end)
+      |> Enum.filter(&(Keyword.get(opts, :force, false) or due?(&1, Keyword.get(opts, :now))))
+      |> Enum.map(fn language -> {language, refresh(language, opts)} end)
+    end)
   end
 
-  @spec analyze(any) :: {:error, any} | {:ok, <<_::64, _::_*8>>}
-  def analyze(language) do
-    Logger.info("Github Trending Analysis: {#{language}}")
-    uuid = UUID.uuid1()
-    check_repo? = check_repo_size?()
-    num_of_repos = Application.fetch_env!(:lowendinsight_get, :num_of_repos) || 5
+  @doc "Refreshes every language regardless of age. The manual trigger."
+  def process_languages() do
+    refresh_due(force: true)
+  end
 
-    case fetch_trending_list(language) do
-      {:error, reason} ->
-        {:error, reason}
+  @doc """
+  Whether a language's last completed report is older than a day, or absent.
+  """
+  def due?(language, now \\ nil) do
+    now = now || DateTime.utc_now()
 
-      {:ok, list} ->
-        urls =
-          filter_to_urls(list)
-          |> Enum.map(fn url -> get_repo_size(url) end)
-          |> Enum.map(fn {repo_size, url} ->
-            filter_out_large_repos({repo_size, url}, check_repo?)
-          end)
-          |> Enum.take(num_of_repos)
-
-        Logger.debug("URLS: #{inspect(urls)}")
-
-        LowendinsightGet.Analysis.process_urls(
-          urls,
-          uuid,
-          DateTime.utc_now()
-        )
-
-        # Write the UUID into the gh_trending entry in Redis
-        Redix.command(:redix, ["SET", "gh_trending_#{language}_uuid", uuid])
-        {:ok, "successfully started analyzing trending repos for job id:#{uuid}"}
+    case completed_at(language) do
+      nil -> true
+      completed -> DateTime.diff(now, completed) >= @refresh_after_seconds
     end
+  end
+
+  @doc "When a language's current report was completed, or nil."
+  def completed_at(language) do
+    case Redix.command(:redix, ["GET", completed_key(language)]) do
+      {:ok, iso} when is_binary(iso) ->
+        case DateTime.from_iso8601(iso) do
+          {:ok, dt, _} -> dt
+          _ -> nil
+        end
+
+      _ ->
+        nil
+    end
+  end
+
+  @doc """
+  Analyses one language's trending repositories, synchronously, and points the
+  page at the result only if it completed.
+  """
+  def refresh(language, opts \\ []) do
+    fetch = Keyword.get(opts, :fetch, &fetch_trending_list/1)
+    analyze = Keyword.get(opts, :analyze, &LowendinsightGet.Analysis.process/3)
+    uuid = UUID.uuid1()
+
+    Logger.info("Github Trending Analysis: {#{language}}")
+
+    with {:ok, list} <- fetch.(language),
+         [_ | _] = urls <- candidate_urls(list, Keyword.get(opts, :repo_size, &get_repo_size/1)),
+         :ok <- run_analysis(analyze, uuid, urls),
+         :ok <- ensure_complete(uuid) do
+      {:ok, _} =
+        Redix.pipeline(:redix, [
+          ["SET", "gh_trending_#{language}_uuid", uuid],
+          ["SET", completed_key(language), DateTime.utc_now() |> DateTime.to_iso8601()]
+        ])
+
+      Logger.info("Github Trending Analysis complete: {#{language}} #{length(urls)} repos")
+      {:ok, uuid}
+    else
+      [] ->
+        Logger.warning("Github Trending Analysis: no analysable repositories for #{language}")
+        {:error, :no_repositories}
+
+      {:error, reason} = error ->
+        # The previous report stays: a failed refresh is never published.
+        Logger.error("Github Trending Analysis failed for #{language}: #{inspect(reason)}")
+        error
+    end
+  end
+
+  defp run_analysis(analyze, uuid, urls) do
+    analyze.(uuid, urls, DateTime.utc_now())
+    :ok
+  rescue
+    e -> {:error, {:analysis_raised, Exception.message(e)}}
+  catch
+    kind, reason -> {:error, {:analysis_exited, kind, reason}}
+  end
+
+  defp ensure_complete(uuid) do
+    with {:ok, json} <- LowendinsightGet.Datastore.get_job(uuid),
+         {:ok, %{"state" => "complete"}} <- Poison.decode(json) do
+      :ok
+    else
+      {:ok, %{"state" => state}} -> {:error, {:incomplete, state}}
+      other -> {:error, {:no_report, other}}
+    end
+  end
+
+  # Too-large repositories are dropped. They were marked "-skip_too_big" and
+  # sent for analysis anyway, which cost a clone attempt of a URL that does not
+  # exist and put an error row in the report.
+  defp candidate_urls(list, repo_size) do
+    check_repo? = check_repo_size?()
+    num_of_repos = Application.get_env(:lowendinsight_get, :num_of_repos) || 5
+
+    list
+    |> filter_to_urls()
+    |> Enum.map(fn url -> if check_repo?, do: repo_size.(url), else: {0, url} end)
+    |> Enum.flat_map(fn
+      {size, url} when is_binary(url) ->
+        if keep_repo?(size, check_repo?), do: [url], else: []
+
+      _ ->
+        []
+    end)
+    |> Enum.take(num_of_repos)
+  end
+
+  defp with_lock(fun) do
+    token = UUID.uuid4()
+
+    case Redix.command(:redix, ["SET", @lock_key, token, "NX", "PX", @lock_ms]) do
+      {:ok, "OK"} ->
+        try do
+          fun.()
+        after
+          case Redix.command(:redix, ["GET", @lock_key]) do
+            {:ok, ^token} -> Redix.command(:redix, ["DEL", @lock_key])
+            _ -> :ok
+          end
+        end
+
+      {:ok, nil} ->
+        Logger.info("Github Trending Analysis already running; skipping this run")
+        {:error, :already_running}
+
+      {:error, reason} ->
+        {:error, {:lock_unavailable, reason}}
+    end
+  end
+
+  defp completed_key(language), do: "gh_trending_#{language}_completed_at"
+
+  @doc """
+  `/metrics` lines: whether each language has a completed report, and its age.
+
+  Registered through `:metrics_collectors` so the library stays free of Redis.
+  Monitoring fails on a language with no completed report or one older than
+  two days -- the state that went unnoticed while the pages showed nothing.
+  """
+  def metrics(now \\ nil) do
+    now = now || DateTime.utc_now()
+    languages = Application.get_env(:lowendinsight_get, :languages) || []
+
+    rows = Enum.map(languages, fn l -> {l, completed_at(l)} end)
+
+    [
+      "# HELP lei_trending_report_completed Whether a language has a completed trending report",
+      "# TYPE lei_trending_report_completed gauge"
+    ] ++
+      Enum.map(rows, fn {l, c} ->
+        ~s(lei_trending_report_completed{language="#{l}"} #{if c, do: 1, else: 0})
+      end) ++
+      [
+        "# HELP lei_trending_report_age_seconds Age of each language's completed trending report",
+        "# TYPE lei_trending_report_age_seconds gauge"
+      ] ++
+      for(
+        {l, c} <- rows,
+        c,
+        do: ~s(lei_trending_report_age_seconds{language="#{l}"} #{DateTime.diff(now, c)})
+      )
   end
 
   def get_current_gh_trending_report(language) do
@@ -93,26 +254,24 @@ defmodule LowendinsightGet.GithubTrending do
     HTTPoison.get("https://api.github.com/repos/" <> slug, headers)
   end
 
+  # {size_in_kb | nil, url}. Never raises: one repository the API cannot
+  # describe (rate limit, deleted, network) must not abort a language's refresh.
   def get_repo_size(url) do
-    case Helpers.get_slug(url) do
-      {:ok, slug} ->
-        {:ok, response} = fetch_gh_api_response(get_token(), slug)
-        json = Poison.Parser.parse!(response.body, %{})
-        {json["size"], url}
-
-      {:error, msg} ->
-        {:error, msg}
+    with {:ok, slug} <- Helpers.get_slug(url),
+         {:ok, %HTTPoison.Response{status_code: 200, body: body}} <-
+           fetch_gh_api_response(get_token(), slug),
+         {:ok, %{"size" => size}} <- Poison.decode(body) do
+      {size, url}
+    else
+      _ -> {nil, url}
     end
   end
 
-  def filter_out_large_repos({repo_size, url}, check_repo?)
-      when repo_size < 1_000_000 or not check_repo? do
-    url
-  end
-
-  def filter_out_large_repos({_repo_size, url}, check_repo?) when check_repo? do
-    url <> "-skip_too_big"
-  end
+  @doc "Whether a repository of this size (GitHub KB) is analysed."
+  def keep_repo?(_size, false), do: true
+  def keep_repo?(size, true) when is_integer(size), do: size < 1_000_000
+  # Size unknown (API error, private, deleted): not analysed.
+  def keep_repo?(_size, true), do: false
 
   def get_wait_time() do
     if Application.fetch_env(:lowendinsight_get, :wait_time) == :error,

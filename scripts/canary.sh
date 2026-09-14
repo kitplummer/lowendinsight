@@ -208,19 +208,35 @@ bold "the other main-page destinations"
 DOC_STATUS=$(curl -s -o /dev/null -w '%{http_code}' --max-time 15 "$BASE_URL/doc")
 [ "$DOC_STATUS" = "200" ] && ok "manual loads" || bad "manual loads" "status ${DOC_STATUS}"
 
-TRENDING=$(curl -s --max-time 60 "$BASE_URL/gh_trending")
+TRENDING=$(curl -s --max-time 60 "$BASE_URL/gh_trending/elixir")
 TRENDING_RC=$?
 
 if [ "$TRENDING_RC" -ne 0 ]; then
   bad "trending returns" "curl exit ${TRENDING_RC}"
 else
   ok "trending returns"
-  # Trending returned 200 with an empty report and a fabricated UUID for
-  # months. Presence of the page is not evidence it found anything.
-  if printf '%s' "$TRENDING" | grep -qE 'github\.com'; then
-    ok "trending names real repositories"
+
+  # This check used to grep the page for "github.com" -- and matched the
+  # Source link in the page chrome, so it passed while every trending report
+  # was an empty placeholder (#158). It now reads what the report contains:
+  # one row per analysed repository, each assigning `var project = "<url>"`.
+  ROWS=$(printf '%s' "$TRENDING" | grep -cE 'var project = "https?://' || true)
+  COMPLETED=$(curl -s --max-time 15 "$BASE_URL/metrics" \
+    | grep 'lei_trending_report_completed{language="elixir"}' | awk '{print $2}' | tr -d '\r')
+
+  if [ "${COMPLETED:-}" = "1" ]; then
+    if [ "${ROWS:-0}" -gt 0 ]; then
+      ok "trending shows analysed repositories (${ROWS})"
+    else
+      bad "trending shows analysed repositories" "a completed report is recorded but the page has no repository rows"
+    fi
   else
-    bad "trending names real repositories" "no github.com links in the page"
+    # Not failed here in either mode. A deploy can precede the first hourly
+    # refresh, and a rollback over that would never let the fix ship; and
+    # freshness is already the monitor's "Check trending reports are fresh"
+    # step, from lei_trending_report_age_seconds. Said out loud, not passed.
+    echo "  ---- no completed elixir trending report (completed=${COMPLETED:-absent});"
+    echo "       freshness is enforced by the monitor's trending step, not here."
   fi
 fi
 echo

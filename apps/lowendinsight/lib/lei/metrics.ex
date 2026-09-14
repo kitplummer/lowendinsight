@@ -4,7 +4,7 @@ defmodule Lei.Metrics do
   """
 
   def collect do
-    (vm_metrics() ++ app_metrics())
+    (vm_metrics() ++ app_metrics() ++ registered_metrics())
     |> Enum.join("\n")
     |> Kernel.<>("\n")
   end
@@ -133,6 +133,27 @@ defmodule Lei.Metrics do
   defp format_ecosystem_metrics(ecosystems) do
     Enum.map(ecosystems, fn {ecosystem, count} ->
       "lei_cache_ecosystems{ecosystem=\"#{ecosystem}\"} #{count}"
+    end)
+  end
+
+  # Metrics from apps this library cannot depend on -- the web app's Redis-backed
+  # trending job, for one (#158). Registered as `{module, function, args}` under
+  # `:metrics_collectors`, returning lines. A collector whose module is not
+  # loaded is skipped; one that raises reports that it failed rather than
+  # taking /metrics down with it.
+  defp registered_metrics do
+    :lowendinsight
+    |> Application.get_env(:metrics_collectors, [])
+    |> Enum.flat_map(fn {module, function, args} ->
+      if Code.ensure_loaded?(module) do
+        try do
+          ["" | apply(module, function, args)]
+        rescue
+          _ -> ["", ~s(lei_metrics_collector_error{collector="#{inspect(module)}"} 1)]
+        end
+      else
+        []
+      end
     end)
   end
 end

@@ -135,7 +135,17 @@ if config_env() == :prod do
   config :lowendinsight_get, LowendinsightGet.Scheduler,
     jobs: [
       {"*/5 * * * *", {LowendinsightGet.CacheCleaner, :clean, []}},
-      {"0 0 * * *", {LowendinsightGet.GithubTrending, :process_languages, []}}
+      {
+        # Hourly, never overlapping: each run refreshes only languages not
+        # refreshed in the last day, one at a time, so a restart costs one
+        # language rather than the night (#158).
+        :github_trending,
+        [
+          schedule: "0 * * * *",
+          task: {LowendinsightGet.GithubTrending, :refresh_due, []},
+          overlap: false
+        ]
+      }
     ]
 
   # Stripe + ACP
