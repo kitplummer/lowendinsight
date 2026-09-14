@@ -738,6 +738,51 @@
       "replace": "        Logger.info(\"#{url} is cached, yay!\")",
       "guarded_by": "test/lowendinsight_get/analysis_logging_test.exs",
       "app": "apps/lowendinsight_get"
+    },
+    {
+      "id": "guide-price-hardcoded",
+      "bug": "The homepage quotes a price that is not the rate the ledger charges, so a rate change leaves agents told the old price.",
+      "file": "apps/lowendinsight_get/lib/lowendinsight_get/agent_guide.ex",
+      "find": "    hit = credits(:cache_hit_cost_cents, 0.5)",
+      "replace": "    hit = 5",
+      "guarded_by": "test/lowendinsight_get/agent_guide_test.exs",
+      "app": "apps/lowendinsight_get"
+    },
+    {
+      "id": "guide-rounds-half-cent",
+      "bug": "A cache hit's half cent is shown as $0.01, doubling the stated price.",
+      "file": "apps/lowendinsight_get/lib/lowendinsight_get/agent_guide.ex",
+      "find": "    if rem(frac, 10) == 0 do",
+      "replace": "    if true do",
+      "guarded_by": "test/lowendinsight_get/agent_guide_test.exs",
+      "app": "apps/lowendinsight_get"
+    },
+    {
+      "id": "guide-claims-stablecoin-available",
+      "bug": "The homepage says stablecoin is available when the rail would issue no challenge -- telling agents to pay a way that will refuse them.",
+      "file": "apps/lowendinsight_get/lib/lowendinsight_get/agent_guide.ex",
+      "find": "      match?({:ok, _}, safe(fn -> Tempo.requirements(Tempo.minimum_purchase_credits()) end))\n",
+      "replace": "      true\n",
+      "guarded_by": "test/lowendinsight_get/agent_guide_test.exs",
+      "app": "apps/lowendinsight_get"
+    },
+    {
+      "id": "guide-mode-not-from-key",
+      "bug": "The homepage describes live USDC payments while the service runs on a test key, or test mode after go-live.",
+      "file": "apps/lowendinsight_get/lib/lowendinsight_get/agent_guide.ex",
+      "find": "      live?: mode == :live,",
+      "replace": "      live?: false,",
+      "guarded_by": "test/lowendinsight_get/agent_guide_test.exs",
+      "app": "apps/lowendinsight_get"
+    },
+    {
+      "id": "homepage-without-agent-guide",
+      "bug": "The homepage stops pointing agents at /llms.txt.",
+      "file": "apps/lowendinsight_get/priv/templates/analyze.html.eex",
+      "find": "    <link rel=\"alternate\" type=\"text/markdown\" href=\"/llms.txt\" title=\"LowEndInsight for agents\">\n",
+      "replace": "",
+      "guarded_by": "test/lowendinsight_get/agent_guide_test.exs",
+      "app": "apps/lowendinsight_get"
     }
   ]
 }

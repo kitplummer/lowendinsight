@@ -71,6 +71,16 @@ contains "homepage renders" "LowEndInsight" "$HOME_BODY"
 contains "homepage has the analyze form" 'id="form"' "$HOME_BODY"
 contains "homepage credits the operator" "(r)evolve" "$HOME_BODY"
 
+# The homepage is how an agent learns it can pay rather than sign up, and
+# /llms.txt is the same guide for agents that read markdown. Both are rendered
+# from live configuration; a regression to the old page would tell agents
+# nothing about the 402 they will receive.
+contains "homepage tells agents how to pay" "no account needed" "$HOME_BODY"
+contains "homepage links the agent guide" 'href="/llms.txt"' "$HOME_BODY"
+
+LLMS_BODY=$(curl -s --max-time 15 "$BASE_URL/llms.txt")
+contains "llms.txt describes the payment challenge" "WWW-Authenticate: Payment" "$LLMS_BODY"
+
 # The form does nothing without its JavaScript, and a 404 on it is silent in
 # the browser -- the button simply stops responding.
 #

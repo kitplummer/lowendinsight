@@ -72,7 +72,18 @@ defmodule LowendinsightGet.Endpoint do
   end
 
   get "/" do
-    render(conn, "analyze.html", report: "")
+    render(conn, "analyze.html", report: "", guide: LowendinsightGet.AgentGuide.facts())
+  end
+
+  # The homepage's guide for agents that read markdown rather than HTML. Built
+  # from the same facts, so the two cannot disagree about a price or a rail.
+  get "/llms.txt" do
+    template = Path.join([:code.priv_dir(:lowendinsight_get), "templates", "llms.txt.eex"])
+    body = EEx.eval_file(template, guide: LowendinsightGet.AgentGuide.facts())
+
+    conn
+    |> put_resp_content_type("text/markdown")
+    |> send_resp(200, body)
   end
 
   get "/doc" do

@@ -8,6 +8,10 @@
     <link rel="icon" type="image/png" sizes="16x16" href="/images/favicon-16.png">
     <link rel="apple-touch-icon" sizes="180x180" href="/images/apple-touch-icon.png">
     <title>LowEndInsight - OSS Supply Chain Risk Analysis</title>
+    <meta name="description" content="Open source supply chain risk analysis for any public git repository. Agents pay per use over the Machine Payments Protocol, with no account.">
+    <%# The same guide, as markdown, for agents that read /llms.txt rather than HTML. %>
+    <link rel="alternate" type="text/markdown" href="/llms.txt" title="LowEndInsight for agents">
+    <link rel="describedby" type="application/json" href="/openapi.json">
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bulma@0.9.4/css/bulma.min.css">
     <link rel="stylesheet" href="/css/theme.css">
     <script>
@@ -31,6 +35,7 @@
       code { color: var(--code-text); background: var(--code-bg); padding: 0.15em 0.4em; border-radius: 3px; font-size: 0.9em; }
       pre code { color: inherit; background: none; padding: 0; }
       .endpoint { font-family: monospace; font-weight: bold; }
+      .steps li { margin-bottom: 0.5rem; }
     </style>
   </head>
   <body>
@@ -46,6 +51,10 @@
               <p class="subtitle">Open source supply chain risk and agentic analysis</p>
             </div>
             <div class="column is-narrow">
+              <a class="button is-primary is-outlined" href="#agents">
+                <span class="icon"><i class="fas fa-robot"></i></span>
+                <span>For agents</span>
+              </a>
               <a class="button is-success is-outlined" href="/signup">
                 <span class="icon"><i class="fas fa-user-plus"></i></span>
                 <span>Signup</span>
@@ -72,12 +81,105 @@
       <div class="container">
         <div class="columns">
           <div class="column is-8">
-            <div class="box">
-              <h2 class="title is-4">Quick Start</h2>
-              <p class="mb-4">Analyze any public git repository for contributor risk, commit currency, and supply chain indicators.</p>
+            <div class="box" id="agents">
+              <h2 class="title is-4">Use it from an agent &mdash; no account needed</h2>
+              <p class="mb-4">LowEndInsight is paid per use over the <a href="https://mpp.dev">Machine Payments Protocol</a> (MPP), an open HTTP payment scheme. An agent that has never been here can analyze a repository without signing up: it asks, is told the price, pays, and is served.</p>
 
+              <ol class="steps ml-5 mb-4">
+                <li><strong>Ask.</strong> <code>POST /v1/analyze</code> with no credentials returns <code>402 Payment Required</code> and a <code>WWW-Authenticate: Payment</code> challenge naming the amount, the asset and where to send it.</li>
+                <li><strong>Pay and retry the same request</strong> with <code>Authorization: Payment &lt;credential&gt;</code>. An MPP client does both steps for you.</li>
+                <li><strong>Receive</strong> the analysis, a <code>Payment-Receipt</code>, and a <code>Lei-Api-Key</code>.</li>
+                <li><strong>Come back</strong> with <code>Authorization: Bearer lei_&hellip;</code> and spend the balance without paying again.</li>
+              </ol>
+
+              <%= if guide.live? do %>
+                <p class="notification is-info is-light">Stablecoin payments use <strong><%= guide.stablecoin.token %></strong> on <strong><%= guide.stablecoin.chain %></strong>, settled through Stripe.</p>
+              <% else %>
+                <p class="notification is-warning is-light"><strong>Payments are in test mode.</strong> Stablecoin payments use <%= guide.stablecoin.token %> on <%= guide.stablecoin.chain %>, and no real money moves.</p>
+              <% end %>
+
+              <%= unless guide.stablecoin.available? do %>
+                <p class="notification is-danger is-light">Stablecoin payment is not available right now. A request without credentials receives a <code>402</code> saying so, and is not served.</p>
+              <% end %>
+
+              <h3 class="title is-5">What the first request returns</h3>
+              <pre><code>curl -i -X POST https://lowendinsight.dev/v1/analyze \
+  -H "Content-Type: application/json" \
+  -d '{"urls": ["https://github.com/kitplummer/clikan"]}'
+
+HTTP/2 402
+www-authenticate: Payment id="&hellip;", realm="lowendinsight.dev",
+  method="tempo", intent="charge", request="&hellip;"</code></pre>
+
+              <h3 class="title is-5 mt-5">Paying with an MPP client</h3>
+              <pre><code>import { Mppx, tempo } from 'mppx/client'
+
+const mppx = Mppx.create({ methods: [tempo({ account })], polyfill: false })
+
+const res = await mppx.fetch('https://lowendinsight.dev/v1/analyze', {
+  method: 'POST',
+  headers: { 'content-type': 'application/json' },
+  body: JSON.stringify({ urls: ['https://github.com/kitplummer/clikan'] }),
+})
+
+const key = res.headers.get('lei-api-key')   // keep it: it holds your balance</code></pre>
+              <p class="is-size-7">A machine-readable version of this guide is at <a href="/llms.txt">/llms.txt</a>.</p>
+            </div>
+
+            <div class="box" id="pricing">
+              <h2 class="title is-4">Pricing</h2>
+              <table class="table is-fullwidth">
+                <tbody>
+                  <tr><td>A repository with a cached report</td><td><strong><%= LowendinsightGet.AgentGuide.number(guide.hit_credits) %> credits</strong></td><td><%= guide.hit_usd %></td></tr>
+                  <tr><td>A repository analyzed fresh</td><td><strong><%= LowendinsightGet.AgentGuide.number(guide.miss_credits) %> credits</strong></td><td><%= guide.miss_usd %></td></tr>
+                  <tr><td>A block, bought when an agent's balance runs out</td><td><strong><%= LowendinsightGet.AgentGuide.number(guide.top_up_credits) %> credits</strong></td><td><%= guide.top_up_usd %></td></tr>
+                </tbody>
+              </table>
+              <p class="is-size-7">One credit is $0.001. A cached report is cheaper because someone has already paid for the work: every analysis makes the next request for that repository cheaper, whoever makes it.</p>
+            </div>
+
+            <div class="box" id="payment-options">
+              <h2 class="title is-4">Ways to pay</h2>
+              <div class="table-container">
+                <table class="table is-fullwidth">
+                  <thead>
+                    <tr><th>Pathway</th><th>For</th><th>How</th><th>Now</th></tr>
+                  </thead>
+                  <tbody>
+                    <tr>
+                      <td><strong>Stablecoin</strong><br><span class="is-size-7">MPP <code>tempo</code></span></td>
+                      <td>Any agent, no account</td>
+                      <td>Transfer <%= guide.stablecoin.token %> on <%= guide.stablecoin.chain %> to the address in the challenge. Stripe verifies and settles it.</td>
+                      <td><%= if guide.stablecoin.available?, do: "Available", else: "Unavailable" %></td>
+                    </tr>
+                    <tr>
+                      <td><strong>Card through an agent wallet</strong><br><span class="is-size-7">MPP <code>stripe</code>, Shared Payment Token</span></td>
+                      <td>Agents with an API key</td>
+                      <td>A Shared Payment Token from an agent wallet such as Link. Not offered without an account: a card token identifies no one to hold the balance.</td>
+                      <td><%= if guide.card.available?, do: "Available", else: "Unavailable" %></td>
+                    </tr>
+                    <tr>
+                      <td><strong>Free tier</strong></td>
+                      <td>People</td>
+                      <td><a href="/signup">Sign up</a> for an API key: <%= LowendinsightGet.AgentGuide.number(guide.free_monthly_analyses) %> analyses a month.</td>
+                      <td>Available</td>
+                    </tr>
+                    <tr>
+                      <td><strong>Pro</strong></td>
+                      <td>People</td>
+                      <td><a href="/signup">Sign up</a> and subscribe through Stripe Checkout: <%= guide.pro_price %>, including <%= guide.pro_included_usd %> of usage.</td>
+                      <td>Available</td>
+                    </tr>
+                  </tbody>
+                </table>
+              </div>
+            </div>
+
+            <div class="box">
+              <h2 class="title is-4">With an API key</h2>
               <h3 class="title is-5">Analyze a repo</h3>
               <pre><code>curl -X POST https://lowendinsight.dev/v1/analyze \
+  -H "Authorization: Bearer lei_&hellip;" \
   -H "Content-Type: application/json" \
   -d '{"urls": ["https://github.com/kitplummer/clikan"]}'</code></pre>
 
@@ -86,6 +188,7 @@
 
               <h3 class="title is-5 mt-5">Analyze an SBOM</h3>
               <pre><code>curl -X POST https://lowendinsight.dev/v1/analyze/sbom \
+  -H "Authorization: Bearer lei_&hellip;" \
   -H "Content-Type: application/json" \
   -d '{"sbom": &lt;cyclonedx-or-spdx-json&gt;}'</code></pre>
             </div>
@@ -138,6 +241,18 @@
           </div>
 
           <div class="column is-4">
+            <div class="box" id="no-account">
+              <h2 class="title is-5">No account, and why</h2>
+              <div class="content">
+                <p>An agent has no signup, email or organization to give, and asking for one would turn away the consumers this service is built for. <strong>The payment is the identity:</strong> the wallet that paid holds the balance.</p>
+                <p><strong>What we keep:</strong> money and counts. Each purchase and debit is recorded with the paying wallet and the amount, the financial record of what was paid and spent. We also keep monthly analysis counts.</p>
+                <p><strong>What we don't keep:</strong> which repositories a wallet analyzed. They aren't recorded against the payer, and routine production logs don't name them.</p>
+                <p><strong>Reports are cached by repository, not by who asked.</strong> That is what makes a cached report cheaper for everyone.</p>
+                <p><strong>No free allowance for wallets.</strong> A wallet costs nothing to create, so a free allowance per wallet would be a free allowance per attacker. Access comes from credits.</p>
+                <p class="is-size-7">A stablecoin transfer is public on the <%= guide.stablecoin.chain %> chain, as every on-chain payment is. What it paid for is not.</p>
+              </div>
+            </div>
+
             <div class="box">
               <h2 class="title is-5">Risk Indicators</h2>
               <div class="content">
@@ -204,6 +319,7 @@
               <h2 class="title is-5">Links</h2>
               <div class="content">
                 <ul>
+                  <li><a href="/llms.txt">Guide for agents (llms.txt)</a></li>
                   <li><a href="/doc">Interactive API Docs (Swagger)</a></li>
                   <li><a href="/openapi.json">OpenAPI Spec (JSON)</a></li>
                   <li><a href="/gh_trending">GitHub Trending Analysis</a></li>
