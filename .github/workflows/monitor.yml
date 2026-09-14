@@ -73,6 +73,14 @@ jobs:
             exit 0
           fi
 
+          # Disabled on purpose (#158) is a warning, not a failure: a monitor that
+          # fails every 15 minutes for a switched-off job hides everything else.
+          ACTIVE=$(echo "$METRICS" | grep "^lei_trending_job_active " | awk '{print $2}' | tr -d '\r')
+          if [ "$ACTIVE" = "0" ]; then
+            echo "::warning::The trending job is disabled (lei_trending_job_active 0). Trending pages are not being refreshed. See #158."
+            exit 0
+          fi
+
           MAX_AGE=172800   # two days: the job refreshes each language daily, hourly retries
           FAILED=0
 
