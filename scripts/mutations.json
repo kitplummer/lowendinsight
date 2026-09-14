@@ -954,6 +954,24 @@
       "replace": "",
       "guarded_by": "test/lowendinsight_get/trending_refresh_test.exs",
       "app": "apps/lowendinsight_get"
+    },
+    {
+      "id": "utf8-repair-per-codepoint",
+      "bug": "Shortlog UTF-8 repair splits the whole history into one binary per codepoint: elixir-lang/elixir's analysis went from ~180 MB to 572 MB RSS, the allocation that OOM-killed production (#158).",
+      "file": "apps/lowendinsight/lib/git_helper.ex",
+      "find": "    if String.valid?(binary), do: binary, else: repair_utf8(binary, 0, 0, [])",
+      "replace": "    binary |> String.codepoints() |> Enum.map(fn x -> if String.valid?(x), do: x, else: Enum.join(for(<<c <- x>>, do: <<c::utf8>>)) end) |> Enum.join()",
+      "guarded_by": "test/analysis_memory_test.exs",
+      "app": "apps/lowendinsight"
+    },
+    {
+      "id": "trailers-read-every-commit-body",
+      "bug": "Agentic detection reads every commit body in history into memory, though only commits mentioning a co-author can match (#158).",
+      "file": "apps/lowendinsight/lib/git_module.ex",
+      "find": "\"-i\", \"-F\", \"--grep=Co-Authored-By:\", ",
+      "replace": "",
+      "guarded_by": "test/analysis_memory_test.exs",
+      "app": "apps/lowendinsight"
     }
   ]
 }
