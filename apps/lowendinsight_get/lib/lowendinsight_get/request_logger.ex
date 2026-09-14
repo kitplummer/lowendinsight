@@ -25,9 +25,23 @@ defmodule LowendinsightGet.RequestLogger do
 
   @doc """
   Log an API request. All parameters after endpoint are optional.
+
+  `org` is the org the request was billed to, or nil for an operator request.
+
+  **A wallet org's request is logged without its repository URLs** (#149).
+  Decided 2026-09-14: a consumer does not register to get analysis, and for
+  wallet orgs the service keeps money and counts, never which repositories. The
+  rule lives here rather than at the call site so that a new caller cannot
+  forget it.
   """
-  def log_request(endpoint, org_id \\ nil, key_id \\ nil, repo_urls \\ [], cache_status \\ nil) do
-    GenServer.cast(__MODULE__, {:log, endpoint, org_id, key_id, repo_urls, cache_status})
+  def log_request(endpoint, org \\ nil, key_id \\ nil, repo_urls \\ [], cache_status \\ nil) do
+    withheld = Lei.Wallets.wallet_org?(org)
+    urls = if withheld, do: [], else: repo_urls
+
+    GenServer.cast(
+      __MODULE__,
+      {:log, endpoint, org && org.id, key_id, urls, withheld, cache_status}
+    )
   end
 
   @doc """
@@ -50,7 +64,7 @@ defmodule LowendinsightGet.RequestLogger do
   end
 
   def handle_cast(
-        {:log, endpoint, org_id, key_id, repo_urls, cache_status},
+        {:log, endpoint, org_id, key_id, repo_urls, withheld, cache_status},
         %{counter: counter} = state
       ) do
     new_counter = counter + 1
@@ -62,6 +76,7 @@ defmodule LowendinsightGet.RequestLogger do
       org_id: org_id,
       key_id: key_id,
       repo_urls: repo_urls,
+      repo_urls_withheld: withheld,
       cache_status: cache_status
     }
 

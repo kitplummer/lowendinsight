@@ -81,7 +81,10 @@ defmodule AnalyzerModule do
             {:ok}
         end
 
-      Logger.info("Cloned -> #{count}: #{url}")
+      Logger.info("Cloned -> #{count}")
+      # The URL only at debug: the service's production logs must not name what
+      # a consumer analysed (#149).
+      Logger.debug("Cloned -> #{count}: #{url}")
 
       # Get Files analysis
       files_analysis = Lowendinsight.Files.analyze_files(repo.path)

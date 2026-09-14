@@ -212,7 +212,7 @@ defmodule LowendinsightGet.Endpoint do
           case LowendinsightGet.Analysis.process_urls(urls, uuid, start_time, opts) do
             {:ok, result} ->
               track_analyze_usage(billing, result)
-              log_analyze_request(conn, urls, result)
+              log_analyze_request(conn, billing, urls, result)
               {200, enrich_analyze_response(conn, result)}
 
             {:timeout, timed_out_uuid} ->
@@ -490,11 +490,14 @@ defmodule LowendinsightGet.Endpoint do
 
   defp track_analyze_usage(_conn, _result), do: :ok
 
-  defp log_analyze_request(conn, urls, result) when is_binary(result) do
-    {org_id, key_id} =
+  # Logged against the org the gate billed -- the key's, or the one a payment
+  # on this request identified. Keyed on the API key alone, a paying agent's
+  # first request was logged with no org, its URLs and all (#149).
+  defp log_analyze_request(conn, {org_id, key_id, _tier}, urls, result) when is_binary(result) do
+    org =
       case conn.assigns[:current_api_key] do
-        nil -> {nil, nil}
-        api_key -> {api_key.org.id, api_key.id}
+        %{org: %Lei.Org{id: ^org_id} = org} -> org
+        _ -> org_id && Lei.Repo.get(Lei.Org, org_id)
       end
 
     cache_status =
@@ -508,10 +511,10 @@ defmodule LowendinsightGet.Endpoint do
           nil
       end
 
-    LowendinsightGet.RequestLogger.log_request("/v1/analyze", org_id, key_id, urls, cache_status)
+    LowendinsightGet.RequestLogger.log_request("/v1/analyze", org, key_id, urls, cache_status)
   end
 
-  defp log_analyze_request(_conn, _urls, _result), do: :ok
+  defp log_analyze_request(_conn, _billing, _urls, _result), do: :ok
 
   defp enrich_analyze_response(conn, result) when is_binary(result) do
     case conn.assigns[:current_api_key] do

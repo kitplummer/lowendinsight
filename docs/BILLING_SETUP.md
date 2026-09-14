@@ -323,6 +323,16 @@ POST /v1/analyze                          Authorization: Bearer lei_...
 
 The canary asserts that an unauthenticated analysis gets a 402 offering `tempo`.
 
+**What is kept about an anonymous consumer (#149).** Money and counts, never which repositories:
+
+| Kept | Not kept |
+|---|---|
+| ledger: purchases and debits, with wallet and amount | repository URLs in the request log for wallet orgs (the admin view shows "withheld") |
+| `analysis_usage`: monthly hit and miss counts | repository URLs in production logs at `:info` (they're at `:debug` only) |
+| the challenge record: amount, org, settled | |
+
+Analysis results are still cached by repository URL. The cache records the repository, not who asked.
+
 ### The mode switch, and what guards it (#137)
 
 There is no mode setting. **The mode is whatever `STRIPE_SECRET_KEY`'s prefix

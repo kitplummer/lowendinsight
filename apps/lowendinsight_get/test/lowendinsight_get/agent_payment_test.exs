@@ -248,6 +248,46 @@ defmodule LowendinsightGet.AgentPaymentTest do
       assert wait_for_balance(org.id, &(&1 < 15_000)) < 15_000
     end
 
+    test "nothing records which repository a paying agent analysed (#149)" do
+      url = "https://github.com/kitplummer/agent-privacy-#{System.unique_integer([:positive])}"
+      now = DateTime.utc_now() |> DateTime.to_iso8601()
+
+      LowendinsightGet.Datastore.write_to_cache(url, %{
+        data: %{repo: url},
+        header: %{end_time: now, start_time: now, uuid: "agent-privacy"}
+      })
+
+      analyze = fn headers ->
+        Enum.reduce(headers, conn(:post, "/v1/analyze", %{"urls" => [url]}), fn {k, v}, c ->
+          put_req_header(c, k, v)
+        end)
+        |> LowendinsightGet.Endpoint.call(@opts)
+      end
+
+      # Application logs are covered by AnalysisLoggingTest: this cached path
+      # emits no info lines, so asserting on them here would examine nothing.
+      [challenge] = analyze.([]) |> challenges()
+      expect_settlement(challenge)
+
+      paid = analyze.([{"authorization", credential_header(challenge)}])
+      assert paid.status == 200, paid.resp_body
+      [raw_key] = get_resp_header(paid, "lei-api-key")
+
+      # And coming back with the key it was issued.
+      assert analyze.([{"authorization", "Bearer " <> raw_key}]).status == 200
+
+      :sys.get_state(LowendinsightGet.RequestLogger)
+      org = Wallets.find_by_address(@payer)
+      entries = Enum.filter(LowendinsightGet.RequestLogger.get_all(), &(&1.org_id == org.id))
+
+      # Both requests are counted against the org -- the paying one and the
+      # keyed return -- and neither says what it was for.
+      assert length(entries) == 2
+      assert Enum.all?(entries, &(&1.repo_urls == [] and &1.repo_urls_withheld))
+
+      refute Enum.any?(LowendinsightGet.RequestLogger.get_all(), &(url in (&1.repo_urls || [])))
+    end
+
     test "a replayed payment credits once and issues no second key" do
       [challenge] = post_batch() |> challenges()
       expect_settlement(challenge, 2)

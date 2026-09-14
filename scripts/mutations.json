@@ -693,6 +693,51 @@
       "replace": "        conn",
       "guarded_by": "test/lei/web/router_test.exs",
       "app": "apps/lowendinsight"
+    },
+    {
+      "id": "request-log-keeps-wallet-urls",
+      "bug": "A wallet org's analysed repository URLs are recorded next to its org and key on the admin dashboard -- the link between a paying wallet and what it analysed that was decided against. (#149)",
+      "file": "apps/lowendinsight_get/lib/lowendinsight_get/request_logger.ex",
+      "find": "    urls = if withheld, do: [], else: repo_urls",
+      "replace": "    urls = repo_urls",
+      "guarded_by": "test/lowendinsight_get/request_logger_privacy_test.exs",
+      "app": "apps/lowendinsight_get"
+    },
+    {
+      "id": "analyze-log-ignores-payment-org",
+      "bug": "The request log attributes /v1/analyze only through an API key, so a paying agent's first request is logged with no org -- and, unrecognised as a wallet org, with its URLs. (#149)",
+      "file": "apps/lowendinsight_get/lib/lowendinsight_get/endpoint.ex",
+      "find": "        _ -> org_id && Lei.Repo.get(Lei.Org, org_id)",
+      "replace": "        _ -> nil",
+      "guarded_by": "test/lowendinsight_get/agent_payment_test.exs",
+      "app": "apps/lowendinsight_get"
+    },
+    {
+      "id": "worker-logs-urls-at-info",
+      "bug": "The analysis worker names the repositories it processes at info, where production logs sit beside ledger timestamps. (#149)",
+      "file": "apps/lowendinsight_get/lib/lowendinsight_get/analysis.ex",
+      "find": "    Logger.info(\"processing #{uuid} -> #{length(urls)} repos\")",
+      "replace": "    Logger.info(\"processing #{uuid} -> #{inspect(urls)}\")",
+      "guarded_by": "test/lowendinsight_get/analysis_logging_test.exs",
+      "app": "apps/lowendinsight_get"
+    },
+    {
+      "id": "counter-agent-logs-url-at-info",
+      "bug": "Each analysis process logs its repository URL at info. (#149)",
+      "file": "apps/lowendinsight_get/lib/lowendinsight_get/counter_agent.ex",
+      "find": "      Logger.info(\"running process ##{map_size(proc) + 1}\")",
+      "replace": "      Logger.info(\"running process ##{map_size(proc) + 1} -> #{url}\")",
+      "guarded_by": "test/lowendinsight_get/analysis_logging_test.exs",
+      "app": "apps/lowendinsight_get"
+    },
+    {
+      "id": "cache-hit-logs-url-at-info",
+      "bug": "A cache hit logs the repository URL at info. (#149)",
+      "file": "apps/lowendinsight_get/lib/lowendinsight_get/analysis.ex",
+      "find": "        Logger.debug(\"#{url} is cached, yay!\")",
+      "replace": "        Logger.info(\"#{url} is cached, yay!\")",
+      "guarded_by": "test/lowendinsight_get/analysis_logging_test.exs",
+      "app": "apps/lowendinsight_get"
     }
   ]
 }
