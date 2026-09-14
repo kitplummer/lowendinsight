@@ -1035,6 +1035,24 @@
       "replace": "          config: Helpers.convert_config_to_list(config),",
       "guarded_by": "test/report_config_leak_test.exs",
       "app": "apps/lowendinsight"
+    },
+    {
+      "id": "session-secret-read-at-build-time",
+      "bug": "The session secret is not read at boot, so production signs session cookies with the development default committed to this repository (security, 2026-09-14).",
+      "file": "config/runtime.exs",
+      "find": "    session_secret_key_base: session_secret\n",
+      "replace": "",
+      "guarded_by": "test/runtime_secrets_config_test.exs",
+      "app": "apps/lowendinsight"
+    },
+    {
+      "id": "session-secret-not-required",
+      "bug": "Production boots without a session secret, falling back to the public development default (security, 2026-09-14).",
+      "file": "config/runtime.exs",
+      "find": "      raise \"LEI_SESSION_SECRET env var is required in production\"",
+      "replace": "      \"lei_dev_session_secret_that_is_at_least_64_bytes_long_for_cookie_store_to_work_properly\"",
+      "guarded_by": "test/runtime_secrets_config_test.exs",
+      "app": "apps/lowendinsight"
     }
   ]
 }
