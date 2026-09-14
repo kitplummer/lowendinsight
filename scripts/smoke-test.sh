@@ -61,11 +61,21 @@ DOC_STATUS=$(curl -s -o /dev/null -w '%{http_code}' --max-time 10 "$BASE_URL/doc
 check "GET /doc returns 200" "200" "$DOC_STATUS"
 
 # --- 3. Auth enforcement ---
-bold "3. Auth enforcement (no token → 401)"
+bold "3. Auth enforcement (paid routes → 402, everything else → 401)"
+# Analysis with no credentials is asked to pay, not told to authenticate: an
+# agent that has never been here has nothing to authenticate with (#147). It
+# must still never be served for free, which is what this guards. This check
+# said 401 until #148, and failing on it rolled that deploy back -- correctly,
+# since the suite had not been told the rule changed.
 NO_AUTH=$(curl -s -o /dev/null -w '%{http_code}' --max-time 10 -X POST "$BASE_URL/v1/analyze" \
   -H "Content-Type: application/json" \
   -d '{"urls":["https://github.com/kitplummer/xmpp4rails"]}')
-check "POST /v1/analyze without auth returns 401" "401" "$NO_AUTH"
+check "POST /v1/analyze without auth returns 402, not 200" "402" "$NO_AUTH"
+
+# The opening is two routes wide. Everything else under /v1 still requires
+# credentials.
+CACHE_NO_AUTH=$(curl -s -o /dev/null -w '%{http_code}' --max-time 10 "$BASE_URL/v1/cache/stats")
+check "GET /v1/cache/stats without auth returns 401" "401" "$CACHE_NO_AUTH"
 
 FAKE_KEY=$(curl -s -o /dev/null -w '%{http_code}' --max-time 10 "$BASE_URL/v1/cache/stats" \
   -H "Authorization: Bearer lei_00000000000000000000000000000000")
