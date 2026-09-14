@@ -44,7 +44,8 @@ defmodule LowendinsightGet.MixProject do
       {:postgrex, "~> 0.18"},
       {:lowendinsight, in_umbrella: true},
       {:httpoison_retry, "~> 1.1"},
-      {:excoveralls, "~> 0.18", only: :test}
+      {:excoveralls, "~> 0.18", only: :test},
+      {:mox, "~> 1.1", only: :test}
     ]
   end
 end

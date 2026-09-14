@@ -48,7 +48,9 @@ defmodule Lei.Auth do
   # the scheme falls off the end of authenticate/1 and a paying agent gets a
   # 500 for presenting a valid credential.
   defp authenticate({conn, "Payment " <> _credential}) do
-    assign(conn, :auth_method, :payment)
+    if Lei.Payments.Gate.paid_route?(conn),
+      do: assign(conn, :auth_method, :payment),
+      else: send_401(conn)
   end
 
   defp authenticate({conn, "Bearer lei_" <> _rest = token}) do
@@ -79,15 +81,23 @@ defmodule Lei.Auth do
     case Joken.verify(jwt, signer) do
       {:ok, _} ->
         Logger.debug("Valid JWT, proceed")
-        conn
+        # Marked, as LowendinsightGet.Auth marks it. Lei.Payments.Gate serves an
+        # unkeyed request unbilled only when it carries an operator token, and
+        # treats an unmarked one as a caller to be asked to pay.
+        assign(conn, :auth_method, :jwt)
 
       {:error, err} ->
         send_401(conn, %{error: err})
     end
   end
 
+  # A paid route with no credentials is an agent to be asked to pay, not told
+  # to authenticate (#147). Lei.Payments.Gate makes that decision, and refuses
+  # by default.
   defp authenticate({conn}) do
-    send_401(conn)
+    if Lei.Payments.Gate.paid_route?(conn),
+      do: assign(conn, :auth_method, :anonymous),
+      else: send_401(conn)
   end
 
   defp check_scope(%Plug.Conn{halted: true} = conn), do: conn

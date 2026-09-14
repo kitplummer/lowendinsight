@@ -215,6 +215,32 @@ else
 fi
 echo
 
+# --- an agent that has never been here --------------------------------------
+
+bold "an agent can pay"
+
+# The payment path was built, deployed and green for two releases while no
+# agent could reach it: the endpoint's auth plug answered 401 before anything
+# behind it ran (#147). What an agent actually sees is the only proof.
+#
+# Each run issues one challenge row; unanswered challenges are reaped.
+AGENT_HEADERS=$(mktemp)
+AGENT_STATUS=$(curl -s -o /dev/null -D "$AGENT_HEADERS" -w '%{http_code}' --max-time 20 \
+  -X POST "$BASE_URL/v1/analyze" -H 'content-type: application/json' \
+  -d "{\"urls\":[\"${CANARY_REPO}\"]}")
+
+[ "$AGENT_STATUS" = "402" ] \
+  && ok "an unauthenticated analysis is asked to pay" \
+  || bad "an unauthenticated analysis is asked to pay" "status ${AGENT_STATUS}"
+
+if grep -qi '^www-authenticate: Payment .*method="tempo"' "$AGENT_HEADERS"; then
+  ok "the 402 offers stablecoin"
+else
+  bad "the 402 offers stablecoin" "no WWW-Authenticate: Payment challenge with method=\"tempo\""
+fi
+rm -f "$AGENT_HEADERS"
+echo
+
 # --- payments mode ---------------------------------------------------------
 
 bold "stripe mode"

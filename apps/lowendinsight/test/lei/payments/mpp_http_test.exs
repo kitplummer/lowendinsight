@@ -313,6 +313,24 @@ defmodule Lei.Payments.HttpTest do
     end
   end
 
+  describe "the settle bucket" do
+    test "is spent only by requests that present a credential" do
+      # Every paid request passes through settle/1. If it charged the bucket
+      # before looking for a credential, all analysis from one IP would be
+      # capped at the settle limit (#147).
+      limit = Application.get_env(:lowendinsight, :rate_limits)[:payment_settle] || 10
+
+      for _ <- 1..(limit + 5) do
+        conn = conn(:post, "/v1/analyze") |> put_req_header("authorization", "Bearer lei_x")
+        assert :no_credential = Http.settle(conn)
+      end
+
+      for _ <- 1..(limit + 5) do
+        assert :no_credential = Http.settle(conn(:post, "/v1/analyze"))
+      end
+    end
+  end
+
   describe "housekeeping" do
     test "expired unanswered challenges are purged", %{org: org} do
       {_conn, challenge} = issue_challenge(org)

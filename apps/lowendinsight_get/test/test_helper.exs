@@ -7,6 +7,17 @@
 # Run with: mix test --include network
 ExUnit.start(exclude: [network: true])
 
+# The payment journey drives the deployed endpoint, which reaches Stripe and
+# the Tempo RPC through these. Defined here too because this app's tests can
+# run without the library's test_helper having loaded.
+for {mock, behaviour} <- [
+      {Lei.StripeMock, Lei.StripeBehaviour},
+      {Lei.TempoRpcMock, Lei.Tempo.RpcBehaviour}
+    ],
+    not Code.ensure_loaded?(mock) do
+  Mox.defmock(mock, for: behaviour)
+end
+
 defmodule Getter do
   def there_yet?(test, key) do
     case test do

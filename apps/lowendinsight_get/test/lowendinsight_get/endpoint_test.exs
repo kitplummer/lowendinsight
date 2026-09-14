@@ -50,19 +50,25 @@ defmodule LowendinsightGet.EndpointTest do
     assert conn.status == 404
   end
 
-  test "it returns 401 with no token" do
+  test "with no token, analysis is refused with a 402, never served" do
+    # This was a 401. An agent that has never been here has nothing to
+    # authenticate with, so it is asked to pay instead (#147). With no payment
+    # rail available -- as here -- it is still refused, not served for free.
     Redix.command(:redix, [
       "DEL",
       LowendinsightGet.Datastore.cache_key("https://github.com/gbtestee/gbtestee")
     ])
 
-    # Create a test connection
     conn = conn(:post, "/v1/analyze", %{urls: ["https://github.com/gbtestee/gbtestee"]})
-
-    # Invoke the plug
     conn = LowendinsightGet.Endpoint.call(conn, @opts)
 
-    # Assert the response
+    assert conn.status == 402
+    assert Poison.decode!(conn.resp_body)["payment"] == "unavailable"
+  end
+
+  test "it returns 401 with no token on a route that is not paid" do
+    conn = conn(:get, "/v1/usage") |> LowendinsightGet.Endpoint.call(@opts)
+
     assert conn.status == 401
     json = Poison.decode!(conn.resp_body)
     assert "Please make sure you have authentication header" == json["message"]

@@ -54,13 +54,39 @@ defmodule Lei.AuthTest do
     refute conn.halted
   end
 
-  test "returns 401 with no auth header" do
+  test "returns 401 with no auth header on a route that is not paid" do
     conn =
-      conn(:post, "/v1/analyze")
+      conn(:get, "/v1/usage")
       |> Auth.call(%{})
 
     assert conn.status == 401
     assert conn.halted
+  end
+
+  test "lets a paid route through unauthenticated, to be asked to pay" do
+    # An agent that has never been here has nothing to authenticate with.
+    # Lei.Payments.Gate decides, and refuses by default (#147).
+    conn =
+      conn(:post, "/v1/analyze")
+      |> Auth.call(%{})
+
+    refute conn.halted
+    assert conn.assigns[:auth_method] == :anonymous
+  end
+
+  test "accepts the Payment scheme only on a paid route" do
+    paid =
+      conn(:post, "/v1/analyze/batch")
+      |> put_req_header("authorization", "Payment abc")
+      |> Auth.call(%{})
+
+    assert paid.assigns[:auth_method] == :payment
+    refute paid.halted
+
+    other =
+      conn(:get, "/v1/usage") |> put_req_header("authorization", "Payment abc") |> Auth.call(%{})
+
+    assert other.status == 401
   end
 
   test "skips auth for non-v1 paths" do

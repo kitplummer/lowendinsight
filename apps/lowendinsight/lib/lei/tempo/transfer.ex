@@ -30,21 +30,28 @@ defmodule Lei.Tempo.Transfer do
   Returns `{:ok, %{amount:, from:}}` or `{:error, reason}`.
   """
   def find_payment(%{} = receipt, expected) do
-    cond do
-      receipt["status"] != "0x1" ->
-        {:error, :transaction_failed}
+    if receipt["status"] != "0x1" do
+      {:error, :transaction_failed}
+    else
+      matches =
+        receipt
+        |> Map.get("logs", [])
+        |> Enum.flat_map(&decode(&1, expected))
 
-      true ->
-        matches =
-          receipt
-          |> Map.get("logs", [])
-          |> Enum.flat_map(&decode(&1, expected))
+      # The payer is who an org and a key are issued to (#147), so the token
+      # holder must be the account that signed. A TIP-20 transferFrom lets an
+      # approved spender move a holder's tokens: without this, anyone holding
+      # an allowance from a wallet could pay "as" that wallet and be handed its
+      # org. mppx's push mode calls transferWithMemo directly, so a conforming
+      # client always passes.
+      signer = receipt["from"] && String.downcase(receipt["from"])
 
-        case Enum.find(matches, &(&1.amount >= expected.amount)) do
-          nil when matches == [] -> {:error, :no_matching_transfer}
-          nil -> {:error, :underpaid}
-          payment -> {:ok, payment}
-        end
+      case Enum.find(matches, &(&1.amount >= expected.amount)) do
+        nil when matches == [] -> {:error, :no_matching_transfer}
+        nil -> {:error, :underpaid}
+        %{from: ^signer} = payment -> {:ok, payment}
+        _payment -> {:error, :sender_not_signer}
+      end
     end
   end
 

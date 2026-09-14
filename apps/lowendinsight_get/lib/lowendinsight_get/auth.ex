@@ -46,12 +46,28 @@ defmodule LowendinsightGet.Auth do
     end
   end
 
+  # An agent paying with MPP puts its credential in Authorization under the
+  # Payment scheme. It fell through to the clause below, so every paying retry
+  # was answered 401 before Lei.Payments ever saw it -- in production, while
+  # every test of the payment path passed against Lei.Web.Router (#147).
+  # Verification happens in Lei.Payments.Gate; this only lets it get there.
+  defp authenticate({conn, "Payment " <> _credential}) do
+    if Lei.Payments.Gate.paid_route?(conn),
+      do: Plug.Conn.assign(conn, :auth_method, :payment),
+      else: send_401(conn)
+  end
+
   defp authenticate({conn, _invalid}) do
     send_401(conn)
   end
 
+  # No credentials on a paid route is an agent that has never been here. It is
+  # asked to pay, by the gate, rather than told to authenticate with something
+  # it cannot have. Everywhere else is unchanged.
   defp authenticate({conn}) do
-    send_401(conn)
+    if Lei.Payments.Gate.paid_route?(conn),
+      do: Plug.Conn.assign(conn, :auth_method, :anonymous),
+      else: send_401(conn)
   end
 
   defp send_401(

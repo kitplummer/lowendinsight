@@ -174,68 +174,69 @@ defmodule LowendinsightGet.Endpoint do
     start_time = DateTime.utc_now()
     uuid = UUID.uuid1()
 
-    # Check free tier quota if API key auth
-    quota_result = check_analyze_quota(conn)
+    # Payment first, so an agent refused with a 402 is served when it retries
+    # this same request with a credential. Then admission: API key, payment, or
+    # an operator token -- and anything else is asked to pay. This route had no
+    # payment path at all, and answered a wallet org out of credits with a 500
+    # from an unmatched case clause (#147).
+    conn = Lei.Payments.Gate.settle(conn)
 
-    {status, body} =
-      case quota_result do
-        {:error, :quota_exceeded, info} ->
-          {402,
-           Poison.encode!(%{
-             error: "free_tier_quota_exceeded",
-             used: info.used,
-             limit: info.limit,
-             upgrade_url: "https://lowendinsight.fly.dev/signup?tier=pro"
-           })}
+    case Lei.Payments.Gate.admit(conn) do
+      {:halt, conn} ->
+        conn
 
-        {:ok, _} ->
-          case conn.body_params do
-            %{"urls" => urls} ->
-              cache_mode = Map.get(conn.body_params, "cache_mode", "blocking")
+      {:ok, conn, billing} ->
+        {status, body} = analyze_urls(conn, billing, uuid, start_time)
 
-              cache_timeout =
-                Map.get(
-                  conn.body_params,
-                  "cache_timeout",
-                  Application.get_env(:lowendinsight_get, :default_cache_timeout, 30_000)
-                )
+        conn
+        |> put_resp_content_type(@content_type)
+        |> send_resp(status, body)
+    end
+  end
 
-              if cache_mode in @valid_cache_modes do
-                opts = %{cache_mode: cache_mode, cache_timeout: cache_timeout}
+  defp analyze_urls(conn, billing, uuid, start_time) do
+    case conn.body_params do
+      %{"urls" => urls} ->
+        cache_mode = Map.get(conn.body_params, "cache_mode", "blocking")
 
-                case LowendinsightGet.Analysis.process_urls(urls, uuid, start_time, opts) do
-                  {:ok, result} ->
-                    track_analyze_usage(conn, result)
-                    log_analyze_request(conn, urls, result)
-                    {200, enrich_analyze_response(conn, result)}
+        cache_timeout =
+          Map.get(
+            conn.body_params,
+            "cache_timeout",
+            Application.get_env(:lowendinsight_get, :default_cache_timeout, 30_000)
+          )
 
-                  {:timeout, timed_out_uuid} ->
-                    {202,
-                     Poison.encode!(%{
-                       state: "incomplete",
-                       uuid: timed_out_uuid,
-                       error: "analysis did not complete within #{cache_timeout}ms timeout"
-                     })}
+        if cache_mode in @valid_cache_modes do
+          opts = %{cache_mode: cache_mode, cache_timeout: cache_timeout}
 
-                  {:error, error} ->
-                    {422, Poison.encode!(%{:error => error})}
-                end
-              else
-                {422,
-                 Poison.encode!(%{
-                   error:
-                     "invalid cache_mode: '#{cache_mode}'. Must be one of: #{Enum.join(@valid_cache_modes, ", ")}"
-                 })}
-              end
+          case LowendinsightGet.Analysis.process_urls(urls, uuid, start_time, opts) do
+            {:ok, result} ->
+              track_analyze_usage(billing, result)
+              log_analyze_request(conn, urls, result)
+              {200, enrich_analyze_response(conn, result)}
 
-            _ ->
-              {422, process()}
+            {:timeout, timed_out_uuid} ->
+              {202,
+               Poison.encode!(%{
+                 state: "incomplete",
+                 uuid: timed_out_uuid,
+                 error: "analysis did not complete within #{cache_timeout}ms timeout"
+               })}
+
+            {:error, error} ->
+              {422, Poison.encode!(%{:error => error})}
           end
-      end
+        else
+          {422,
+           Poison.encode!(%{
+             error:
+               "invalid cache_mode: '#{cache_mode}'. Must be one of: #{Enum.join(@valid_cache_modes, ", ")}"
+           })}
+        end
 
-    conn
-    |> put_resp_content_type(@content_type)
-    |> send_resp(status, body)
+      _ ->
+        {422, process()}
+    end
   end
 
   post "/v1/analyze/sbom" do
@@ -470,34 +471,20 @@ defmodule LowendinsightGet.Endpoint do
     |> send_resp(404, Poison.encode!(%{:error => "UUID not provided or found."}))
   end
 
-  defp check_analyze_quota(conn) do
-    case conn.assigns[:current_api_key] do
-      nil ->
-        {:ok, :no_billing}
+  # Billed to the org the gate admitted: the key's, or the one a payment on
+  # this request identified. Keyed on the API key alone, a paying agent would
+  # have been served without its balance ever being debited.
+  defp track_analyze_usage({nil, _api_key_id, _tier}, _result), do: :ok
 
-      api_key ->
-        case api_key.org.tier do
-          "pro" -> {:ok, :pro}
-          _ -> Lei.UsageTracker.check_free_tier_quota(api_key.org.id)
-        end
-    end
-  end
+  defp track_analyze_usage({org_id, api_key_id, _tier}, result) when is_binary(result) do
+    case Poison.decode(result) do
+      {:ok, decoded} ->
+        hits = get_in(decoded, ["metadata", "cache_status", "hits"]) || 0
+        misses = get_in(decoded, ["metadata", "cache_status", "misses"]) || 0
+        Lei.UsageTracker.record_usage_async(org_id, api_key_id, hits, misses)
 
-  defp track_analyze_usage(conn, result) when is_binary(result) do
-    case conn.assigns[:current_api_key] do
-      nil ->
+      {:error, _} ->
         :ok
-
-      api_key ->
-        case Poison.decode(result) do
-          {:ok, decoded} ->
-            hits = get_in(decoded, ["metadata", "cache_status", "hits"]) || 0
-            misses = get_in(decoded, ["metadata", "cache_status", "misses"]) || 0
-            Lei.UsageTracker.record_usage_async(api_key.org.id, api_key.id, hits, misses)
-
-          {:error, _} ->
-            :ok
-        end
     end
   end
 
