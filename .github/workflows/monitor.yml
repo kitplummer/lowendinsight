@@ -84,13 +84,23 @@ jobs:
           MAX_AGE=172800   # two days: the job refreshes each language daily, hourly retries
           FAILED=0
 
+          # A language with no report *while a run is in progress* is on its
+          # way, not missing: the first run after re-enabling took 95 minutes
+          # and this step failed -- and emailed -- every 15 minutes of it.
+          # A stale report still fails mid-run, and a missing one fails when no
+          # run is happening, so a language that keeps failing still surfaces
+          # between hourly runs. Absent metric (older release) counts as 0.
+          IN_PROGRESS=$(echo "$METRICS" | grep "^lei_trending_run_in_progress " | awk '{print $2}' | tr -d '\r')
+
           while read -r line; do
             LANG=$(echo "$line" | sed -E 's/.*language="([^"]+)".*/\1/')
             DONE=$(echo "$line" | awk '{print $2}' | tr -d '\r')
             AGE=$(echo "$METRICS" | grep "lei_trending_report_age_seconds{language=\"$LANG\"}" | awk '{print $2}' | tr -d '\r')
 
-            if [ "$DONE" != "1" ]; then
-              echo "::error::No completed trending report for ${LANG}."
+            if [ "$DONE" != "1" ] && [ "$IN_PROGRESS" = "1" ]; then
+              echo "::warning::No completed trending report for ${LANG} yet; a trending run is in progress."
+            elif [ "$DONE" != "1" ]; then
+              echo "::error::No completed trending report for ${LANG}, and no trending run is in progress."
               FAILED=1
             elif [ "${AGE:-0}" -gt "$MAX_AGE" ]; then
               echo "::error::Trending report for ${LANG} is $((AGE / 3600))h old (limit $((MAX_AGE / 3600))h)."

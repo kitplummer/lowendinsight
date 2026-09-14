@@ -199,6 +199,20 @@ defmodule LowendinsightGet.GithubTrending do
 
   defp completed_key(language), do: "gh_trending_#{language}_completed_at"
 
+  # Whether a run holds the lock right now. Monitoring uses it to tell "not
+  # refreshed yet, and being refreshed" from "not refreshed": the first run
+  # after the job was re-enabled took 95 minutes, and the monitor failed -- and
+  # emailed -- every 15 minutes of it for reports that were on their way.
+  # The lock expires 90 minutes after a killed run, so this cannot stay 1 for a
+  # run that is not happening.
+  defp run_in_progress? do
+    match?({:ok, holder} when is_binary(holder), Redix.command(:redix, ["GET", @lock_key]))
+  rescue
+    _ -> false
+  catch
+    _, _ -> false
+  end
+
   # Monitoring needs to tell "disabled on purpose" from "enabled and failing":
   # a freshness alert that fires every 15 minutes for a job that is switched off
   # is a permanently red monitor, and a red monitor hides the next real failure.
@@ -230,6 +244,9 @@ defmodule LowendinsightGet.GithubTrending do
       "# HELP lei_trending_job_active Whether the scheduled trending job is enabled",
       "# TYPE lei_trending_job_active gauge",
       "lei_trending_job_active #{if job_active?(), do: 1, else: 0}",
+      "# HELP lei_trending_run_in_progress Whether a trending run currently holds the lock",
+      "# TYPE lei_trending_run_in_progress gauge",
+      "lei_trending_run_in_progress #{if run_in_progress?(), do: 1, else: 0}",
       "# HELP lei_trending_report_completed Whether a language has a completed trending report",
       "# TYPE lei_trending_report_completed gauge"
     ] ++

@@ -348,6 +348,32 @@ defmodule LowendinsightGet.TrendingRefreshTest do
     end
   end
 
+  describe "run in progress, for monitoring" do
+    defp metric(line_prefix) do
+      GithubTrending.metrics()
+      |> Enum.find(&String.starts_with?(&1, line_prefix <> " "))
+    end
+
+    test "is 1 while a run holds the lock, and 0 when none does" do
+      assert metric("lei_trending_run_in_progress") == "lei_trending_run_in_progress 0"
+
+      parent = self()
+
+      GithubTrending.refresh_due(
+        languages: ["zz-trend-a"],
+        fetch: &list_for/1,
+        repo_size: &small/1,
+        analyze: fn uuid, urls, start ->
+          send(parent, {:during, metric("lei_trending_run_in_progress")})
+          completing_analysis().(uuid, urls, start)
+        end
+      )
+
+      assert_received {:during, "lei_trending_run_in_progress 1"}
+      assert metric("lei_trending_run_in_progress") == "lei_trending_run_in_progress 0"
+    end
+  end
+
   describe "the page" do
     test "renders one row per analysed repository, in the shape the canary counts" do
       # The canary counts `var project = "<url>"` in the rendered page. Pinned
