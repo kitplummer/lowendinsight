@@ -117,69 +117,38 @@ defmodule LowendinsightGet.GithubTrendingTest do
 
   # -- Full pipeline: analyze → Redis → report --
 
-  describe "end-to-end analyze pipeline" do
+  describe "end-to-end refresh (network)" do
     @tag :network
-    @tag timeout: 300_000
-    test "analyze/1 stores UUID in Redis and job eventually completes" do
-      language = "elixir"
+    @tag timeout: 900_000
+    test "refresh/1 publishes a complete report, and the page renders its rows" do
+      language = "dart"
 
-      # Clear any existing trending data for this language
-      Redix.command(:redix, ["DEL", "gh_trending_#{language}_uuid"])
+      Redix.command(:redix, [
+        "DEL",
+        "gh_trending_#{language}_uuid",
+        "gh_trending_#{language}_completed_at"
+      ])
 
-      {:ok, msg} = LowendinsightGet.GithubTrending.analyze(language)
-      assert String.contains?(msg, "successfully")
+      assert {:ok, _uuid} = LowendinsightGet.GithubTrending.refresh(language)
 
-      # Extract UUID from the message
-      uuid =
-        Regex.run(~r/job id:(.+)$/, msg) |> List.last()
+      # Synchronous: by the time refresh/1 returns, the report is complete.
+      report = LowendinsightGet.GithubTrending.get_current_gh_trending_report(language)
+      assert report["report"]["uuid"] || report["uuid"]
+      assert report["state"] == "complete"
+      assert [_ | _] = report["report"]["repos"]
+      assert LowendinsightGet.GithubTrending.completed_at(language)
 
-      assert uuid != nil
-
-      # Verify the UUID was written to Redis
-      {:ok, stored_uuid} = Redix.command(:redix, ["GET", "gh_trending_#{language}_uuid"])
-      assert stored_uuid == uuid
-
-      # Poll until the job completes or timeout (up to 120s)
-      report = poll_trending_report(language, 120)
-      assert report != nil
-      assert is_list(report["report"]["repos"])
-
-      # Once complete, repos should have data
-      if report["state"] == "complete" do
-        assert length(report["report"]["repos"]) > 0
-
-        # Each repo in the report should have standard LEI analysis fields
-        first_repo = hd(report["report"]["repos"])
-        assert first_repo["data"]["repo"] != nil
-      end
+      conn = conn(:get, "/gh_trending/#{language}") |> LowendinsightGet.Endpoint.call(@opts)
+      assert conn.status == 200
+      # Rows, counted the way the canary counts them. (The page's "Report ID"
+      # is the report's inner uuid, not the job's.)
+      rows = Regex.scan(~r/var project = "https?:\/\//, conn.resp_body) |> length()
+      assert rows == length(report["report"]["repos"])
+      assert rows > 0
     end
   end
 
   # -- Endpoint integration --
-
-  describe "GET /gh_trending/:language after analyze" do
-    @tag :network
-    @tag timeout: 300_000
-    test "renders HTML with repo data after analysis completes" do
-      language = "dart"
-
-      # Clear and run analysis
-      Redix.command(:redix, ["DEL", "gh_trending_#{language}_uuid"])
-      {:ok, _msg} = LowendinsightGet.GithubTrending.analyze(language)
-
-      # Wait for analysis to complete
-      poll_trending_report(language, 120)
-
-      # Now hit the endpoint
-      conn = conn(:get, "/gh_trending/#{language}")
-      conn = LowendinsightGet.Endpoint.call(conn, @opts)
-
-      assert conn.status == 200
-      assert String.contains?(conn.resp_body, "<html>")
-      # The rendered page should reference the language
-      assert String.contains?(conn.resp_body, language)
-    end
-  end
 
   describe "POST /v1/gh_trending/process" do
     @tag :network
@@ -225,47 +194,19 @@ defmodule LowendinsightGet.GithubTrendingTest do
 
   # -- Existing unit tests --
 
-  @tag :network
-  test "large repo filter" do
-    url = "https://github.com/torvalds/linux"
-    {repo_size, url} = LowendinsightGet.GithubTrending.get_repo_size(url)
-    check_repo? = LowendinsightGet.GithubTrending.check_repo_size?()
-
-    new_url =
-      LowendinsightGet.GithubTrending.filter_out_large_repos({repo_size, url}, check_repo?)
-
-    if check_repo? == "true",
-      do:
-        assert(new_url == "https://github.com/torvalds/linux-skip_too_big",
-          else: assert(new_url == "https://github.com/torvalds/linux")
-        )
+  test "repositories at or over the size limit are not analysed" do
+    alias LowendinsightGet.GithubTrending
+    assert GithubTrending.keep_repo?(999_999, true)
+    refute GithubTrending.keep_repo?(1_000_000, true)
+    # Size unknown -- the API could not describe it -- is not analysed.
+    refute GithubTrending.keep_repo?(nil, true)
+    # With the size check off, everything is.
+    assert GithubTrending.keep_repo?(5_000_000, false)
+    assert GithubTrending.keep_repo?(nil, false)
   end
 
   test "gets wait time" do
     wait_time = Application.fetch_env!(:lowendinsight_get, :wait_time)
     assert wait_time == LowendinsightGet.GithubTrending.get_wait_time()
-  end
-
-  # -- Helpers --
-
-  defp poll_trending_report(language, timeout_seconds) do
-    poll_trending_report(language, timeout_seconds, 0)
-  end
-
-  defp poll_trending_report(language, timeout_seconds, elapsed) when elapsed >= timeout_seconds do
-    LowendinsightGet.GithubTrending.get_current_gh_trending_report(language)
-  end
-
-  defp poll_trending_report(language, timeout_seconds, elapsed) do
-    report = LowendinsightGet.GithubTrending.get_current_gh_trending_report(language)
-
-    case report do
-      %{"state" => "complete"} ->
-        report
-
-      _ ->
-        :timer.sleep(3000)
-        poll_trending_report(language, timeout_seconds, elapsed + 3)
-    end
   end
 end

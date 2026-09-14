@@ -61,6 +61,39 @@ jobs:
       # Rolling a signing secret is the usual cause -- Stripe keeps the old one
       # valid for up to 24 hours, so the failure appears a day after the change
       # that caused it, by which point nobody connects the two.
+      # The trending pages rendered empty placeholders for days while every
+      # other check passed: the nightly job ran out of memory each night and
+      # nothing measured whether it ever finished (#158).
+      - name: Check trending reports are fresh
+        run: |
+          METRICS=$(curl -s --max-time 15 https://lowendinsight.dev/metrics)
+
+          if ! echo "$METRICS" | grep -q "lei_trending_report_completed"; then
+            echo "::warning::No trending metrics exposed. Deployed release predates them."
+            exit 0
+          fi
+
+          MAX_AGE=172800   # two days: the job refreshes each language daily, hourly retries
+          FAILED=0
+
+          while read -r line; do
+            LANG=$(echo "$line" | sed -E 's/.*language="([^"]+)".*/\1/')
+            DONE=$(echo "$line" | awk '{print $2}' | tr -d '\r')
+            AGE=$(echo "$METRICS" | grep "lei_trending_report_age_seconds{language=\"$LANG\"}" | awk '{print $2}' | tr -d '\r')
+
+            if [ "$DONE" != "1" ]; then
+              echo "::error::No completed trending report for ${LANG}."
+              FAILED=1
+            elif [ "${AGE:-0}" -gt "$MAX_AGE" ]; then
+              echo "::error::Trending report for ${LANG} is $((AGE / 3600))h old (limit $((MAX_AGE / 3600))h)."
+              FAILED=1
+            else
+              echo "${LANG}: $((AGE / 3600))h old"
+            fi
+          done < <(echo "$METRICS" | grep "^lei_trending_report_completed{")
+
+          exit $FAILED
+
       - name: Check Stripe webhook verification
         run: |
           METRICS=$(curl -s --max-time 15 https://lowendinsight.dev/metrics)

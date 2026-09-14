@@ -114,13 +114,28 @@ config :redix,
 config :lowendinsight_get, LowendinsightGet.Scheduler,
   jobs: [
     {"*/5 * * * *", {LowendinsightGet.CacheCleaner, :clean, []}},
-    {"0 0 * * *", {LowendinsightGet.GithubTrending, :process_languages, []}}
+    {
+        # Hourly, never overlapping: each run refreshes only languages not
+        # refreshed in the last day, one at a time, so a restart costs one
+        # language rather than the night (#158).
+        :github_trending,
+        [
+          schedule: "0 * * * *",
+          task: {LowendinsightGet.GithubTrending, :refresh_due, []},
+          overlap: false
+        ]
+      }
   ]
 
 # Optional dependency health checks surfaced by Lei.Health on /readyz.
 # Registered here rather than in the library so :lowendinsight keeps no Redis
 # dependency. A failing optional check reports "degraded" (still 200) rather
 # than pulling the instance out of rotation.
+# Metrics from the web app, collected by Lei.Metrics without the library
+# depending on it (#158).
+config :lowendinsight,
+  metrics_collectors: [{LowendinsightGet.GithubTrending, :metrics, []}]
+
 config :lowendinsight,
   optional_health_checks: [
     redis: {LowendinsightGet.Health, :check_redis, []},
