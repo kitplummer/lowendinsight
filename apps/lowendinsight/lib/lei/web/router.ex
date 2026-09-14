@@ -11,6 +11,9 @@ defmodule Lei.Web.Router do
 
   @otp_app :lowendinsight
 
+  # Also served standalone on port 4000, so it cannot rely on the endpoint
+  # having canonicalised the path. Idempotent when it has.
+  plug(Lei.Plugs.CanonicalPath)
   plug(Plug.Logger)
 
   plug(:put_secret_key_base)

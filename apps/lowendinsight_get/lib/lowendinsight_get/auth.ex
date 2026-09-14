@@ -98,7 +98,9 @@ defmodule LowendinsightGet.Auth do
       path in @public_v1_paths ->
         conn
 
-      String.contains?(path, "/v1") ->
+      # starts_with on the canonical path, not contains: a decoded Try It URL
+      # such as /url=https://github.com/x/v1 contains "/v1" and is public.
+      String.starts_with?(path, "/v1") ->
         conn
         |> get_auth_header
         |> authenticate
