@@ -1053,6 +1053,24 @@
       "replace": "      \"lei_dev_session_secret_that_is_at_least_64_bytes_long_for_cookie_store_to_work_properly\"",
       "guarded_by": "test/runtime_secrets_config_test.exs",
       "app": "apps/lowendinsight"
+    },
+    {
+      "id": "path-checks-on-raw-request-path",
+      "bug": "Auth decided on the raw request_path while the router matched the percent-decoded path, so GET /%761/cache/stats was served unauthenticated in production (security, 2026-09-14).",
+      "file": "apps/lowendinsight/lib/lei/plugs/canonical_path.ex",
+      "find": "    %{conn | request_path: \"/\" <> Enum.map_join(segments, \"/\", &URI.decode/1)}",
+      "replace": "    _ = segments\n    conn",
+      "guarded_by": "test/lowendinsight_get/encoded_path_auth_test.exs",
+      "app": "apps/lowendinsight_get"
+    },
+    {
+      "id": "endpoint-skips-canonical-path",
+      "bug": "The endpoint's path checks ran before (or without) canonicalising the path, reopening the percent-encoded auth bypass (security, 2026-09-14).",
+      "file": "apps/lowendinsight_get/lib/lowendinsight_get/endpoint.ex",
+      "find": "  plug(Lei.Plugs.CanonicalPath)\n",
+      "replace": "",
+      "guarded_by": "test/lowendinsight_get/encoded_path_auth_test.exs",
+      "app": "apps/lowendinsight_get"
     }
   ]
 }

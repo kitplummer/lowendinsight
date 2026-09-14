@@ -20,6 +20,8 @@ defmodule LowendinsightGet.Endpoint do
                  /v1/analyze/batch /v1/usage /v1/credits /v1/health /v1/orgs
                  /healthz /readyz /metrics)
 
+  # First: every path check below must see the path the router matches.
+  plug(Lei.Plugs.CanonicalPath)
   plug(LowendinsightGet.Auth)
   plug(LowendinsightGet.Plugs.RateLimiter)
   plug(Plug.Logger, log: :debug)
