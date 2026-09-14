@@ -329,7 +329,7 @@
       "id": "no-payment-rails-configured",
       "bug": "validate_rails!/0 passes trivially on an empty list: it refuses bad names and contradictory cadences, and an empty list has neither. The rail shipped unconfigured, so the boot guarantee was nominal -- a misnamed or contradictory rail would have sailed through because there were no rails to check. A check that passes by examining nothing.",
       "file": "config/config.exs",
-      "find": "  payment_rails: [Lei.Payments.Rails.Mpp],\n",
+      "find": "  payment_rails: [Lei.Payments.Rails.Mpp, Lei.Payments.Rails.Tempo],\n",
       "replace": "  payment_rails: [],\n",
       "guarded_by": "test/lei/payments_test.exs",
       "app": "apps/lowendinsight"
@@ -476,6 +476,132 @@
       "find": "      mode in [:live, :test] and profile_mode != mode ->",
       "replace": "      false ->",
       "guarded_by": "test/lei/stripe/mode_test.exs",
+      "app": "apps/lowendinsight"
+    },
+    {
+      "id": "tempo-memo-not-checked",
+      "bug": "A transfer is accepted without the challenge's memo. Hashes are public: anyone watching the chain can present another agent's payment to us as their own and take its credits. (#144)",
+      "file": "apps/lowendinsight/lib/lei/tempo/transfer.ex",
+      "find": "         true <- String.downcase(memo) == String.downcase(expected.memo),\n",
+      "replace": "",
+      "guarded_by": "test/lei/tempo/transfer_test.exs",
+      "app": "apps/lowendinsight"
+    },
+    {
+      "id": "tempo-recipient-not-checked",
+      "bug": "A transfer to any address is accepted as payment to us. (#144)",
+      "file": "apps/lowendinsight/lib/lei/tempo/transfer.ex",
+      "find": "         true <- address_from_topic(to) == String.downcase(expected.recipient),\n",
+      "replace": "",
+      "guarded_by": "test/lei/tempo/transfer_test.exs",
+      "app": "apps/lowendinsight"
+    },
+    {
+      "id": "tempo-token-not-checked",
+      "bug": "A log from any contract is accepted, so a worthless look-alike token pays for credits. (#144)",
+      "file": "apps/lowendinsight/lib/lei/tempo/transfer.ex",
+      "find": "         true <- String.downcase(address) == String.downcase(expected.token),\n",
+      "replace": "",
+      "guarded_by": "test/lei/tempo/transfer_test.exs",
+      "app": "apps/lowendinsight"
+    },
+    {
+      "id": "tempo-event-signature-not-checked",
+      "bug": "Any four-topic event from the token is read as a transfer with memo. (#144)",
+      "file": "apps/lowendinsight/lib/lei/tempo/transfer.ex",
+      "find": "    with true <- String.downcase(topic) == @transfer_with_memo,\n         true <-",
+      "replace": "    with true <-",
+      "guarded_by": "test/lei/tempo/transfer_test.exs",
+      "app": "apps/lowendinsight"
+    },
+    {
+      "id": "tempo-reverted-transaction-accepted",
+      "bug": "A reverted transaction's logs are read as a payment that happened. (#144)",
+      "file": "apps/lowendinsight/lib/lei/tempo/transfer.ex",
+      "find": "      receipt[\"status\"] != \"0x1\" ->",
+      "replace": "      false ->",
+      "guarded_by": "test/lei/tempo/transfer_test.exs",
+      "app": "apps/lowendinsight"
+    },
+    {
+      "id": "tempo-chain-read-skipped",
+      "bug": "Stripe is asked, and credits granted, without the receipt binding the transfer to the challenge -- Stripe verifies the money but not whose it is. (#144)",
+      "file": "apps/lowendinsight/lib/lei/payments/rails/tempo.ex",
+      "find": "         {:ok, _transfer} <- check_receipt(network, hash, issued),\n",
+      "replace": "",
+      "guarded_by": "test/lei/payments/tempo_rail_test.exs",
+      "app": "apps/lowendinsight"
+    },
+    {
+      "id": "tempo-inexact-amount-accepted",
+      "bug": "An overpayment passes the chain check; Stripe then declines it invalid_amount with the agent's money already sent. (#144)",
+      "file": "apps/lowendinsight/lib/lei/payments/rails/tempo.ex",
+      "find": "          {:ok, %{amount: amount} = transfer} when amount == expected.amount -> {:ok, transfer}",
+      "replace": "          {:ok, %{amount: _amount} = transfer} -> {:ok, transfer}",
+      "guarded_by": "test/lei/payments/tempo_rail_test.exs",
+      "app": "apps/lowendinsight"
+    },
+    {
+      "id": "tempo-unconfirmed-deposit-address-offered",
+      "bug": "A challenge names a deposit address Stripe has not confirmed for this key. A sandbox address beside a live key takes mainnet funds Stripe never credits. (#144)",
+      "file": "apps/lowendinsight/lib/lei/payments/rails/tempo.ex",
+      "find": "      not Keyword.get(opts, :confirmed?, &Lei.Stripe.ObjectCheck.deposit_address_confirmed?/1).(",
+      "replace": "      false and Keyword.get(opts, :confirmed?, &Lei.Stripe.ObjectCheck.deposit_address_confirmed?/1).(",
+      "guarded_by": "test/lei/payments/tempo_rail_test.exs",
+      "app": "apps/lowendinsight"
+    },
+    {
+      "id": "tempo-network-switch-ignored",
+      "bug": "A challenge issued on testnet is verified against mainnet after a mode switch, or the reverse. (#144)",
+      "file": "apps/lowendinsight/lib/lei/payments/rails/tempo.ex",
+      "find": "    if network && network.chain_id == get_in(issued.request, [\"methodDetails\", \"chainId\"]) do",
+      "replace": "    if network do",
+      "guarded_by": "test/lei/payments/tempo_rail_test.exs",
+      "app": "apps/lowendinsight"
+    },
+    {
+      "id": "tempo-no-idempotency-key",
+      "bug": "Each retry creates a new verification intent; Stripe refuses a second intent for one transfer, so the agent that paid is refused on retry. (#144)",
+      "file": "apps/lowendinsight/lib/lei/payments/rails/tempo.ex",
+      "find": "      idempotency_key: \"tempo_#{hash}\",",
+      "replace": "      idempotency_key: \"tempo_#{System.unique_integer()}\",",
+      "guarded_by": "test/lei/payments/tempo_rail_test.exs",
+      "app": "apps/lowendinsight"
+    },
+    {
+      "id": "tempo-processing-counts-as-settled",
+      "bug": "A verification intent still processing is treated as settled -- credits for money Stripe has not confirmed, which a fabricated hash never will. (#144)",
+      "file": "apps/lowendinsight/lib/lei/payments/rails/tempo.ex",
+      "find": "  defp await_settlement(_id, %{\"status\" => \"succeeded\"} = intent, _deadline, _opts),",
+      "replace": "  defp await_settlement(_id, %{\"status\" => _} = intent, _deadline, _opts),",
+      "guarded_by": "test/lei/payments/tempo_rail_test.exs",
+      "app": "apps/lowendinsight"
+    },
+    {
+      "id": "stripe-deposit-address-mismatch-ok",
+      "bug": "A deposit address absent from the key's account reads as ok, so a sandbox address beside a live key is confirmed. (#144)",
+      "file": "apps/lowendinsight/lib/lei/stripe/object_check.ex",
+      "find": "if String.downcase(address) in addresses, do: \"ok\", else: \"mismatch\"",
+      "replace": "if true, do: \"ok\", else: \"mismatch\"",
+      "guarded_by": "test/lei/stripe/object_check_test.exs",
+      "app": "apps/lowendinsight"
+    },
+    {
+      "id": "stripe-deposit-address-always-confirmed",
+      "bug": "deposit_address_confirmed?/1 answers yes without Stripe having listed the address. (#144)",
+      "file": "apps/lowendinsight/lib/lei/stripe/object_check.ex",
+      "find": "    {:reply, state.deposit == {address, \"ok\"}, state}",
+      "replace": "    {:reply, true, state}",
+      "guarded_by": "test/lei/stripe/object_check_test.exs",
+      "app": "apps/lowendinsight"
+    },
+    {
+      "id": "payment-402-offers-one-method",
+      "bug": "The 402 offers only the first available rail, so an agent holding stablecoin is shown a card challenge it cannot answer. (#144)",
+      "file": "apps/lowendinsight/lib/lei/payments/http.ex",
+      "find": "    offered = for {rail, {:ok, challenge}} <- results, do: {rail, challenge}",
+      "replace": "    offered = Enum.take(for({rail, {:ok, challenge}} <- results, do: {rail, challenge}), 1)",
+      "guarded_by": "test/lei/payments/tempo_http_test.exs",
       "app": "apps/lowendinsight"
     }
   ]

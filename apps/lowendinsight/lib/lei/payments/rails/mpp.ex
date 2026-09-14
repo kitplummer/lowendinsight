@@ -81,7 +81,7 @@ defmodule Lei.Payments.Rails.Mpp do
         # SPTs are minted for a seller profile named in the challenge. Without
         # one, no client can produce a token this rail can charge, and the
         # challenge would look payable and fail at the wallet.
-        {:error, :no_stripe_profile}
+        {:error, {:unavailable, :no_stripe_profile}}
 
       true ->
         {:ok,

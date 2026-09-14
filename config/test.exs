@@ -63,6 +63,7 @@ config :lowendinsight,
 # No bearer token or signing secret = auth checks skipped in test
 config :lowendinsight,
   stripe_module: Lei.StripeMock,
+  tempo_rpc_module: Lei.TempoRpcMock,
   # Not a real profile. Present so challenges are issued; tests that need it
   # absent delete it.
   stripe_profile_id: "profile_test_lei",

@@ -43,6 +43,40 @@ defmodule Lei.StripeTest do
     end
   end
 
+  describe "crypto_verification_request/1" do
+    # The shape sandbox Stripe accepted and verified against a real Tempo
+    # testnet transfer (#144).
+    test "asks Stripe to verify the transfer, in USD, idempotent on the hash" do
+      {body, headers} =
+        Lei.Stripe.crypto_verification_request(%{
+          amount: 50,
+          network: "tempo",
+          transaction_hash: "0xabc",
+          idempotency_key: "tempo_0xabc",
+          metadata: %{"challenge_id" => "ch1"}
+        })
+
+      form = URI.decode_query(body)
+
+      assert form["amount"] == "50"
+      assert form["currency"] == "usd"
+      assert form["confirm"] == "true"
+      assert form["payment_method_types[]"] == "crypto"
+      assert form["payment_method_data[type]"] == "crypto"
+      assert form["payment_method_options[crypto][mode]"] == "transaction_verification"
+
+      assert form["payment_method_options[crypto][transaction_verification_options][network]"] ==
+               "tempo"
+
+      assert form[
+               "payment_method_options[crypto][transaction_verification_options][transaction_hash]"
+             ] == "0xabc"
+
+      assert form["metadata[challenge_id]"] == "ch1"
+      assert {"Idempotency-Key", "tempo_0xabc"} in headers
+    end
+  end
+
   describe "construct_webhook_event/3" do
     test "verifies valid signature" do
       payload = ~s({"type":"checkout.session.completed","data":{"object":{}}})

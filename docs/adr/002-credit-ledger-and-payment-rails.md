@@ -512,7 +512,51 @@ first adapter.
   should be read before the x402 adapter ships, not before the abstraction is
   settled.
 - Whether Tempo settlement introduces a dependency worth caring about, given
-  Stripe offramps to the normal balance automatically.
+  Stripe offramps to the normal balance automatically. *Answered below.*
+
+### Addendum (2026-09-13): stablecoin is a separate MPP method, and it reads the chain
+
+Found building #143 and #144, against sandbox Stripe and real Tempo testnet
+transfers. It refines Amendment 1 and does not reverse it.
+
+**MPP over Stripe is two methods, and they verify differently.** Cards (`stripe`)
+confirm a PaymentIntent with a Shared Payment Token. The PaymentIntent is
+synchronous, and Stripe is the only party involved. Stablecoin (`tempo`) is an
+on-chain transfer to a Stripe deposit address, which Stripe verifies
+asynchronously. They are two rails, `mpp` and `tempo`, with separate ledger
+reasons.
+
+**Money is still Stripe's to confirm, so the invariant holds.** Credits are
+granted when the verification PaymentIntent is `succeeded`, which took under five
+seconds in sandbox. Stripe also checks recipient and amount itself: a transfer to
+another address declines `invalid_payment_information`, and a wrong amount
+declines `invalid_amount`. It will not track one transfer in two PaymentIntents.
+
+**Attribution needs a chain read, because Stripe cannot provide it.**
+Transaction hashes are public, and Stripe does not report the memo or which
+deposit address was paid. So Stripe cannot say *which challenge* a transfer
+answered. Without that, anyone watching the chain could present another agent's
+payment as their own.
+
+The rail issues a random memo per challenge and reads the transaction receipt
+over Tempo JSON-RPC. It requires a `TransferWithMemo` from the expected token, to
+our address, with that memo and the exact amount, before Stripe is asked
+anything.
+
+This is the "verification dependency" risk below, taken on narrowly. We trust a
+public RPC to report a receipt truthfully, for attribution only:
+
+- a lying RPC could misattribute a real payment between two of our own
+  challenges
+- it could not create money, because Stripe still has to see the transfer
+
+There are no reorg or confirmation policies of our own: the receipt is only read
+for attribution, and the credit waits for Stripe.
+
+**Deposit addresses carry no mode, and the cost of getting one wrong is
+unrecoverable.** Mainnet funds sent to a sandbox address are gone. So a challenge
+names an address only after Stripe has listed it under the configured key
+(`Lei.Stripe.ObjectCheck`).
 
 ## Rationale
 

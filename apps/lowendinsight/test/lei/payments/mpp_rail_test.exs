@@ -96,7 +96,7 @@ defmodule Lei.Payments.Rails.MppTest do
       Application.delete_env(:lowendinsight, :stripe_profile_id)
       on_exit(fn -> Application.put_env(:lowendinsight, :stripe_profile_id, previous) end)
 
-      assert {:error, :no_stripe_profile} = Mpp.requirements(15_000)
+      assert {:error, {:unavailable, :no_stripe_profile}} = Mpp.requirements(15_000)
     end
 
     test "a purchase too small to charge is refused rather than charged zero" do

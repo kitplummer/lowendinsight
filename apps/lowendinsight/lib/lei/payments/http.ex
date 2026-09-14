@@ -44,40 +44,35 @@ defmodule Lei.Payments.Http do
   end
 
   defp issue(conn, org_id, credits, opts) do
-    rail = Keyword.get(opts, :rail, default_rail())
+    rails = Keyword.get_lazy(opts, :rails, &configured_rails/0)
 
-    case rail.requirements(credits, opts) do
-      {:ok, challenge} ->
-        with :ok <- remember(challenge, org_id, rail) do
-          conn
-          |> put_resp_header("www-authenticate", Challenge.to_header(challenge))
-          |> put_resp_content_type("application/json")
-          |> send_resp(
-            402,
-            Poison.encode!(%{
-              error: "payment required",
-              credits: credits,
-              # Restated in the body because an agent that does not speak the
-              # auth scheme can still read this and decide what to do, and a
-              # human reading a log can see the price without base64-decoding a
-              # header.
-              amount: challenge.request["amount"],
-              currency: challenge.request["currency"],
-              challenge_id: challenge.id
-            })
-          )
-        else
-          {:error, _} ->
-            conn
-            |> put_resp_content_type("application/json")
-            |> send_resp(503, Poison.encode!(%{error: "payment temporarily unavailable"}))
-        end
+    results = Enum.map(rails, fn rail -> {rail, rail.requirements(credits, opts)} end)
 
-      {:error, :no_stripe_profile} ->
+    offered = for {rail, {:ok, challenge}} <- results, do: {rail, challenge}
+
+    unavailable =
+      for {rail, {:error, {:unavailable, reason}}} <- results, do: {rail.name(), reason}
+
+    failed =
+      for {rail, {:error, reason}} <- results,
+          not match?({:unavailable, _}, reason),
+          do: {rail.name(), reason}
+
+    for {name, reason} <- unavailable,
+        do: Logger.info("Payment rail #{name} offered no challenge: #{inspect(reason)}")
+
+    for {name, reason} <- failed,
+        do: Logger.error("Could not build #{name} payment requirements: #{inspect(reason)}")
+
+    cond do
+      offered != [] ->
+        send_challenges(conn, org_id, credits, offered)
+
+      failed == [] ->
+        # Every rail is unavailable -- not configured, or not yet confirmed.
         # The caller still needs credits; it just cannot buy them this way. A
-        # 500 would say the service is broken when it is declining a sale.
-        Logger.error("Payment challenge not issued: STRIPE_PROFILE_ID is not configured")
-
+        # 500 would say the service is broken when it is declining a sale, and
+        # a challenge would look payable and fail at the wallet (#143).
         conn
         |> put_resp_content_type("application/json")
         |> send_resp(
@@ -89,12 +84,57 @@ defmodule Lei.Payments.Http do
           })
         )
 
-      {:error, reason} ->
-        Logger.error("Could not build payment requirements: #{inspect(reason)}")
-
+      true ->
         conn
         |> put_resp_content_type("application/json")
         |> send_resp(500, Poison.encode!(%{error: "payment unavailable"}))
+    end
+  end
+
+  # One WWW-Authenticate value per method, which is how the scheme offers a
+  # choice: an agent with a card-backed wallet answers the stripe challenge, one
+  # holding stablecoin answers tempo. Each is recorded, because either may be
+  # the one answered.
+  defp send_challenges(conn, org_id, credits, offered) do
+    recorded = Enum.map(offered, fn {rail, challenge} -> remember(challenge, org_id, rail) end)
+
+    if Enum.all?(recorded, &(&1 == :ok)) do
+      [{_rail, first} | _] = offered
+
+      conn
+      |> prepend_resp_headers(
+        Enum.map(offered, fn {_rail, challenge} ->
+          {"www-authenticate", Challenge.to_header(challenge)}
+        end)
+      )
+      |> put_resp_content_type("application/json")
+      |> send_resp(
+        402,
+        Poison.encode!(%{
+          error: "payment required",
+          credits: credits,
+          # Restated in the body because an agent that does not speak the
+          # auth scheme can still read this and decide what to do, and a
+          # human reading a log can see the price without base64-decoding a
+          # header. Top-level fields describe the first challenge, as before.
+          amount: first.request["amount"],
+          currency: first.request["currency"],
+          challenge_id: first.id,
+          challenges:
+            Enum.map(offered, fn {_rail, challenge} ->
+              %{
+                method: challenge.method,
+                challenge_id: challenge.id,
+                amount: challenge.request["amount"],
+                currency: challenge.request["currency"]
+              }
+            end)
+        })
+      )
+    else
+      conn
+      |> put_resp_content_type("application/json")
+      |> send_resp(503, Poison.encode!(%{error: "payment temporarily unavailable"}))
     end
   end
 
@@ -183,13 +223,6 @@ defmodule Lei.Payments.Http do
     case Enum.find(configured_rails(), &(&1.name() == name)) do
       nil -> {:error, {:unknown_rail, name}}
       rail -> {:ok, rail}
-    end
-  end
-
-  defp default_rail do
-    case configured_rails() do
-      [rail | _] -> rail
-      [] -> Lei.Payments.Rails.Mpp
     end
   end
 
