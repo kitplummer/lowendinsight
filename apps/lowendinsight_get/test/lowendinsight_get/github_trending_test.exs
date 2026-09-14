@@ -196,8 +196,8 @@ defmodule LowendinsightGet.GithubTrendingTest do
 
   test "repositories at or over the size limit are not analysed" do
     alias LowendinsightGet.GithubTrending
-    assert GithubTrending.keep_repo?(999_999, true)
-    refute GithubTrending.keep_repo?(1_000_000, true)
+    assert GithubTrending.keep_repo?(249_999, true)
+    refute GithubTrending.keep_repo?(250_000, true)
     # Size unknown -- the API could not describe it -- is not analysed.
     refute GithubTrending.keep_repo?(nil, true)
     # With the size check off, everything is.
