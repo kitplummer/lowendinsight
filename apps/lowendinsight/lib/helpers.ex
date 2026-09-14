@@ -183,6 +183,41 @@ defmodule Helpers do
     end
   end
 
+  # The only configuration a report may publish: the thresholds that explain how
+  # it was scored. An allowlist, deliberately. Reports embedded the whole
+  # application env through a denylist, and as payment and session settings
+  # were added it published the Stripe secret key, the webhook signing secret,
+  # the session secret and the JWT secret in every report (2026-09-14). A key
+  # added to the app later is not published unless it is added here.
+  @report_config_keys [
+    :sbom_risk_level,
+    :critical_contributor_level,
+    :high_contributor_level,
+    :medium_contributor_level,
+    :critical_currency_level,
+    :high_currency_level,
+    :medium_currency_level,
+    :critical_large_commit_level,
+    :high_large_commit_level,
+    :medium_large_commit_level,
+    :critical_functional_contributors_level,
+    :high_functional_contributors_level,
+    :medium_functional_contributors_level,
+    :critical_agentic_level,
+    :high_agentic_level,
+    :medium_agentic_level
+  ]
+
+  @doc """
+  The configuration embedded in an analysis report: scoring thresholds only.
+  """
+  @spec report_config(keyword() | map()) :: map()
+  def report_config(config) do
+    config
+    |> Enum.filter(fn {k, v} -> k in @report_config_keys and json_encodable?(v) end)
+    |> Enum.into(%{})
+  end
+
   @doc """
   convert_config_to_list/1: takes in Application.get_all_env(:app) and returns a list of
   maps, to be encoded as JSON.  Since JSON doesn't have an equivalent tuple type the

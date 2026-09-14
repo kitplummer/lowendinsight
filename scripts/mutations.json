@@ -1026,6 +1026,15 @@
       "replace": "    false",
       "guarded_by": "test/lowendinsight_get/trending_refresh_test.exs",
       "app": "apps/lowendinsight_get"
+    },
+    {
+      "id": "report-publishes-application-env",
+      "bug": "Analysis reports embed the whole application env: the Stripe secret key, webhook secret, session secret and JWT secret were published in every report, cached report, trending page and cache export (security, 2026-09-14).",
+      "file": "apps/lowendinsight/lib/analyzer_module.ex",
+      "find": "          config: Helpers.report_config(config),",
+      "replace": "          config: Helpers.convert_config_to_list(config),",
+      "guarded_by": "test/report_config_leak_test.exs",
+      "app": "apps/lowendinsight"
     }
   ]
 }
