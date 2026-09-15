@@ -1,7 +1,16 @@
 defmodule LowendinsightGet.CounterAgentTest do
-  use ExUnit.Case, async: true
+  # Not async. :counter is a single named agent for the whole node, and
+  # Analysis.analyze/3 adds the calling process to it whenever it exists --
+  # so an async endpoint test analysing a URL while this one ran put its pid
+  # into the counter this test had just created, and `map_size(proc) == 0`
+  # failed (left: 1). Seen on main at e57f68b and on #175, passing and failing
+  # on the same commit.
+  use ExUnit.Case, async: false
 
   test "counter agent adds pid and url, increments, and stops" do
+    # A counter left running by an earlier test would carry its processes.
+    if Process.whereis(:counter), do: Agent.stop(:counter)
+
     number_of_urls = 1
     LowendinsightGet.CounterAgent.new_counter(number_of_urls)
 

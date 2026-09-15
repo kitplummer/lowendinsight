@@ -5,7 +5,17 @@
 defmodule LowendinsightGet.Analysis do
   require Logger
 
+  # Every analysis in the service starts here or in process_urls/4, so the
+  # rule on what may be cloned is enforced in both rather than trusted to each
+  # route (LowendinsightGet.RemoteUrl).
   def analyze(url, source, options) do
+    case LowendinsightGet.RemoteUrl.validate(url) do
+      :ok -> analyze_remote(url, source, options)
+      {:error, reason} -> {:error, reason}
+    end
+  end
+
+  defp analyze_remote(url, source, options) do
     if Process.whereis(:counter) do
       LowendinsightGet.CounterAgent.add(self(), url)
     end
@@ -92,7 +102,7 @@ defmodule LowendinsightGet.Analysis do
 
   # 4-arity with opts map supporting cache_mode and cache_timeout
   def process_urls(urls, uuid, start_time, opts) do
-    if :ok == Helpers.validate_urls(urls) do
+    if :ok == Helpers.validate_urls(urls) and :ok == LowendinsightGet.RemoteUrl.validate_all(urls) do
       cache_mode = Map.get(opts, :cache_mode, "async")
 
       case cache_mode do

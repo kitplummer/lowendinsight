@@ -19,6 +19,10 @@ processes = []
   LEI_DEPLOY_ENV = "production"
   ERL_AFLAGS = "-proto_dist inet6_tcp"
   PORT = "8080"
+  # git refuses every transport but https, whatever URL reaches it: the
+  # service's own check (LowendinsightGet.RemoteUrl) is the first line, this
+  # is the second, and it also covers redirects to file:// or git://.
+  GIT_ALLOW_PROTOCOL = "https"
 
 [experimental]
   allowed_public_ports = []
