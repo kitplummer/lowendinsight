@@ -97,6 +97,48 @@ defmodule LowendinsightGet.UnbilledPathsTest do
     end)
   end
 
+  describe "charged at admission, so refused input is never charged" do
+    # Admission records the usage and debits it (decided 2026-09-15). A request
+    # the analyzer would refuse -- a URL it may not clone, a bad cache_mode --
+    # is therefore refused before admission, or it would be paid for.
+    test "/v1/analyze with a URL the service may not clone costs nothing" do
+      {org, key} = wallet_key(1_000)
+
+      conn = post("/v1/analyze", %{"urls" => ["file:///etc"]}, key)
+
+      assert conn.status == 422
+      assert Credits.balance(org.id) == 1_000
+    end
+
+    test "/v1/analyze with an invalid cache_mode costs nothing" do
+      {org, key} = wallet_key(1_000)
+
+      conn = post("/v1/analyze", %{"urls" => [cached_url()], "cache_mode" => "nope"}, key)
+
+      assert conn.status == 422
+      assert Credits.balance(org.id) == 1_000
+    end
+
+    test "/v1/analyze/sbom naming a private address costs nothing" do
+      {org, key} = wallet_key(1_000)
+
+      conn = post("/v1/analyze/sbom", %{"sbom" => sbom_for(["https://127.0.0.1/o/r"])}, key)
+
+      assert conn.status == 422
+      assert Credits.balance(org.id) == 1_000
+    end
+
+    test "an admitted request is charged before it returns" do
+      {org, key} = wallet_key(1_000)
+
+      conn = post("/v1/analyze", %{"urls" => [cached_url()], "cache_mode" => "blocking"}, key)
+
+      assert conn.status == 200, conn.resp_body
+      # No settling loop: the debit is committed at admission, not by a task.
+      assert Credits.balance(org.id) == 995
+    end
+  end
+
   describe "POST /v1/analyze/sbom" do
     test "a wallet org with no credits is asked to pay, not served" do
       {_org, key} = wallet_key(0)

@@ -238,22 +238,51 @@ defmodule LowendinsightGet.Endpoint do
     # payment path at all, and answered a wallet org out of credits with a 500
     # from an unmatched case clause (#147).
     conn = Lei.Payments.Gate.settle(conn)
-    split = cache_split(conn.body_params["urls"])
 
-    case Lei.Payments.Gate.admit(conn, admission(split)) do
-      {:halt, conn} ->
-        conn
+    # Refused before admission, because admission charges: a request that
+    # cannot be analysed must not be billed (decided 2026-09-15).
+    with :ok <- analyzable(conn.body_params),
+         split = cache_split(conn.body_params["urls"]),
+         {:ok, conn, billing} <- Lei.Payments.Gate.admit(conn, admission(split)) do
+      {status, body} = analyze_urls(conn, billing, uuid, start_time)
 
-      {:ok, conn, billing} ->
-        {status, body} = analyze_urls(conn, billing, split, uuid, start_time)
-
-        conn
-        |> put_resp_content_type(@content_type)
-        |> send_resp(status, body)
+      conn
+      |> put_resp_content_type(@content_type)
+      |> send_resp(status, body)
+    else
+      {:halt, conn} -> conn
+      {:invalid, body} -> send_json(conn, 422, body)
     end
   end
 
-  defp analyze_urls(conn, billing, split, uuid, start_time) do
+  defp analyzable(%{"urls" => urls} = params) when is_list(urls) do
+    cache_mode = Map.get(params, "cache_mode", "blocking")
+
+    cond do
+      cache_mode not in @valid_cache_modes ->
+        {:invalid,
+         %{
+           error:
+             "invalid cache_mode: '#{cache_mode}'. Must be one of: #{Enum.join(@valid_cache_modes, ", ")}"
+         }}
+
+      true ->
+        urls_analyzable(urls)
+    end
+  end
+
+  defp analyzable(_params), do: {:invalid, %{error: "POST body must contain a 'urls' list"}}
+
+  # The same body process_urls/4 answers with, so moving the check ahead of
+  # admission does not change the API's response.
+  defp urls_analyzable(urls) do
+    if :ok == Helpers.validate_urls(urls) and
+         :ok == LowendinsightGet.RemoteUrl.validate_all(urls),
+       do: :ok,
+       else: {:invalid, %{error: "invalid URLs list"}}
+  end
+
+  defp analyze_urls(conn, billing, uuid, start_time) do
     case conn.body_params do
       %{"urls" => urls} ->
         cache_mode = Map.get(conn.body_params, "cache_mode", "blocking")
@@ -270,15 +299,12 @@ defmodule LowendinsightGet.Endpoint do
 
           case LowendinsightGet.Analysis.process_urls(urls, uuid, start_time, opts) do
             {:ok, result} ->
-              record_usage(billing, split)
               log_analyze_request(conn, billing, urls, result)
               {200, enrich_analyze_response(conn, result)}
 
-            # Accepted and still running: billed now, because the report is
+            # Accepted and still running. Charged at admission; the report is
             # collected later from GET /v1/analyze/{uuid}, which bills nothing.
             {:timeout, timed_out_uuid} ->
-              record_usage(billing, split)
-
               {202,
                Poison.encode!(%{
                  state: "incomplete",
@@ -312,42 +338,34 @@ defmodule LowendinsightGet.Endpoint do
     # parsed before admission because the repositories it names are the price.
     conn = Lei.Payments.Gate.settle(conn)
 
-    case sbom_request(conn.body_params) do
-      {:error, message} ->
-        send_json(conn, 422, %{error: message})
+    with {:ok, urls, cache_mode, cache_timeout} <- sbom_request(conn.body_params),
+         :ok <- urls_analyzable(urls),
+         split = cache_split(urls),
+         {:ok, conn, _billing} <- Lei.Payments.Gate.admit(conn, admission(split)) do
+      opts = %{cache_mode: cache_mode, cache_timeout: cache_timeout}
 
-      {:ok, urls, cache_mode, cache_timeout} ->
-        split = cache_split(urls)
+      # Charged at admission, so nothing is recorded here.
+      case LowendinsightGet.Analysis.process_urls(urls, uuid, start_time, opts) do
+        {:ok, result} ->
+          conn
+          |> put_resp_content_type(@content_type)
+          |> send_resp(200, add_sbom_metadata(result, length(urls)))
 
-        case Lei.Payments.Gate.admit(conn, admission(split)) do
-          {:halt, conn} ->
-            conn
+        {:timeout, timed_out_uuid} ->
+          send_json(conn, 202, %{
+            state: "incomplete",
+            uuid: timed_out_uuid,
+            sbom_urls_found: length(urls),
+            error: "SBOM analysis did not complete within #{cache_timeout}ms timeout"
+          })
 
-          {:ok, conn, billing} ->
-            opts = %{cache_mode: cache_mode, cache_timeout: cache_timeout}
-
-            case LowendinsightGet.Analysis.process_urls(urls, uuid, start_time, opts) do
-              {:ok, result} ->
-                record_usage(billing, split)
-
-                conn
-                |> put_resp_content_type(@content_type)
-                |> send_resp(200, add_sbom_metadata(result, length(urls)))
-
-              {:timeout, timed_out_uuid} ->
-                record_usage(billing, split)
-
-                send_json(conn, 202, %{
-                  state: "incomplete",
-                  uuid: timed_out_uuid,
-                  sbom_urls_found: length(urls),
-                  error: "SBOM analysis did not complete within #{cache_timeout}ms timeout"
-                })
-
-              {:error, error} ->
-                send_json(conn, 422, %{error: error})
-            end
-        end
+        {:error, error} ->
+          send_json(conn, 422, %{error: error})
+      end
+    else
+      {:error, message} -> send_json(conn, 422, %{error: message})
+      {:invalid, body} -> send_json(conn, 422, body)
+      {:halt, conn} -> conn
     end
   end
 
@@ -396,21 +414,13 @@ defmodule LowendinsightGet.Endpoint do
 
   defp cache_split(_), do: {0, 0}
 
-  defp admission({hits, misses} = split),
-    do: [required_credits: credits_for(split), analyses: hits + misses]
+  defp admission(split), do: [required_credits: credits_for(split), usage: split]
 
   defp credits_for({hits, misses}) do
     Lei.UsageTracker.calculate_cost(hits, misses)
     |> Decimal.mult(10)
     |> Decimal.round(0, :ceiling)
     |> Decimal.to_integer()
-  end
-
-  defp record_usage({nil, _key_id, _tier}, _split), do: :ok
-  defp record_usage(_billing, {0, 0}), do: :ok
-
-  defp record_usage({org_id, api_key_id, _tier}, {hits, misses}) do
-    Lei.UsageTracker.record_usage_async(org_id, api_key_id, hits, misses)
   end
 
   ## Cache Management Endpoints (Phase 3: Distributable Cache)

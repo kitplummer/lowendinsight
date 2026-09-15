@@ -1,4 +1,6 @@
 defmodule Lei.Payments.Gate do
+  require Logger
+
   @moduledoc """
   Who may run a paid request, and what to say to those who may not.
 
@@ -68,9 +70,9 @@ defmodule Lei.Payments.Gate do
   `{:ok, conn, {org_id, api_key_id, tier}}` to proceed, or `{:halt, conn}` with
   the response already sent.
 
-  `:required_credits` is what the request will cost, when the caller can say.
-  `:analyses` is how many analyses it will run, which is what a free org's
-  monthly allowance counts.
+  `:required_credits` is what the request will cost, and `:usage` the
+  `{cache_hits, cache_misses}` it will consume. For an org, admission records
+  that usage and debits it: a request that is admitted has been charged.
   A credit-funded org holding less is asked to top up by at least the
   shortfall, rather than admitted and run into debt: an SBOM naming hundreds of
   uncached repositories costs far more than one block (#152).
@@ -81,7 +83,7 @@ defmodule Lei.Payments.Gate do
 
   def admit(conn, opts) do
     required = Keyword.get(opts, :required_credits, 0)
-    analyses = Keyword.get(opts, :analyses, 0)
+    {hits, misses} = Keyword.get(opts, :usage, {0, 0})
 
     case billing_context(conn) do
       {nil, _, _} = context ->
@@ -91,57 +93,25 @@ defmodule Lei.Payments.Gate do
           {:halt, Http.challenge(conn, nil, top_up(0, required))}
         end
 
-      {_org_id, _, "pro"} = context ->
-        {:ok, conn, context}
+      # Checked and charged in one step, under a lock on the org. Checking here
+      # and debiting after the analysis let simultaneous requests all pass a
+      # check that one of them could afford (security review, 2026-09-14).
+      {org_id, api_key_id, _tier} = context ->
+        case Lei.UsageTracker.admit_usage(org_id, api_key_id, hits, misses, required) do
+          {:ok, _usage} ->
+            {:ok, conn, context}
 
-      {org_id, _, _} = context ->
-        # Two different allowances, in two different units, and the answer
-        # from check_free_tier_quota/1 means a different thing for each: a
-        # wallet org's credit balance, or a free org's analyses remaining. The
-        # gate compared the second against a price in credits and then admitted
-        # the request anyway, so the monthly limit never bounded a request --
-        # only whether one could start.
-        if credit_funded?(org_id),
-          do: admit_credit_funded(conn, context, required),
-          else: admit_free(conn, context, analyses)
-    end
-  end
+          {:error, {:insufficient_credits, balance}} ->
+            {:halt, Http.challenge(conn, org_id, top_up(balance, required))}
 
-  defp admit_credit_funded(conn, {org_id, _, _} = context, required) do
-    case Lei.UsageTracker.check_free_tier_quota(org_id) do
-      {:ok, balance} when is_integer(balance) and balance < required ->
-        {:halt, Http.challenge(conn, org_id, top_up(balance, required))}
+          {:error, {:quota_exceeded, info}} ->
+            limit_reached(conn, info)
 
-      {:ok, _balance} ->
-        {:ok, conn, context}
-
-      # A 402 carrying real payment requirements, not just a balance.
-      {:error, :insufficient_credits, %{balance: balance}} ->
-        {:halt, Http.challenge(conn, org_id, top_up(balance, required))}
-
-      {:error, _} ->
-        {:halt, Http.challenge(conn, org_id, top_up(0, required))}
-    end
-  end
-
-  defp admit_free(conn, {org_id, _, _} = context, analyses) do
-    case Lei.UsageTracker.check_free_tier_quota(org_id) do
-      {:ok, remaining} when is_integer(remaining) and analyses > remaining ->
-        limit_reached(conn, %{requested: analyses, remaining: remaining})
-
-      {:ok, _remaining} ->
-        {:ok, conn, context}
-
-      {:error, :quota_exceeded, info} ->
-        limit_reached(conn, %{
-          used: info.used,
-          limit: info.limit,
-          requested: analyses,
-          remaining: 0
-        })
-
-      {:error, _} ->
-        {:ok, conn, context}
+          # The ledger could not be written. Refused, not served unbilled.
+          {:error, reason} ->
+            Logger.error("admission failed for org #{org_id}: #{inspect(reason)}")
+            {:halt, json(conn, 503, %{error: "billing_unavailable"})}
+        end
     end
   end
 
@@ -184,13 +154,6 @@ defmodule Lei.Payments.Gate do
   # request needs, or the agent pays and is refused again.
   defp top_up(balance, required) do
     max(default_top_up() - min(balance, 0), required - balance)
-  end
-
-  defp credit_funded?(org_id) do
-    case Lei.Repo.get(Lei.Org, org_id) do
-      %Lei.Org{prepaid: true} -> true
-      org -> Lei.Wallets.wallet_org?(org)
-    end
   end
 
   defp default_top_up, do: Application.get_env(:lowendinsight, :default_top_up_credits, 15_000)

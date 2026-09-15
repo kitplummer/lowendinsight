@@ -341,28 +341,23 @@ defmodule Lei.Web.Router do
 
         admission = [
           required_credits: Lei.Credits.cost_in_credits(hits, misses),
-          analyses: hits + misses
+          usage: {hits, misses}
         ]
 
         case Lei.Payments.Gate.admit(conn, admission) do
           {:halt, conn} ->
             conn
 
-          {:ok, conn, {org_id, api_key_id, tier}} ->
+          # Charged at admission for the split priced above, which is what the
+          # billing block reports.
+          {:ok, conn, {_org_id, _api_key_id, tier}} ->
             result = Lei.BatchAnalyzer.analyze(dependencies, opts)
-            cached = result.summary.cached
-            pending = result.summary.pending
-
-            if org_id do
-              Lei.UsageTracker.record_usage_async(org_id, api_key_id, cached, pending)
-            end
-
-            cost = Lei.UsageTracker.calculate_cost(cached, pending)
+            cost = Lei.UsageTracker.calculate_cost(hits, misses)
 
             enriched =
               Map.put(result, :billing, %{
-                cache_hits: cached,
-                cache_misses: pending,
+                cache_hits: hits,
+                cache_misses: misses,
                 cost_cents: Decimal.to_float(cost),
                 tier: tier || "unknown"
               })
