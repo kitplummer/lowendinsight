@@ -9,7 +9,6 @@
     <link rel="apple-touch-icon" sizes="180x180" href="/images/apple-touch-icon.png">
     <title>LowEndInsight</title>
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bulma@0.8.0/css/bulma.min.css">
-    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/json-tree-viewer@0.0.2/libs/jsonTree/jsonTree.css">
     <link rel="stylesheet" href = "../css/endpoints.css">
     <link rel="stylesheet" href="/css/theme.css">
     <script>
@@ -22,7 +21,6 @@
         } catch (e) {}
       })();
     </script>
-    <script src="https://cdn.jsdelivr.net/npm/json-tree-viewer@0.0.2/libs/jsonTree/jsonTree.min.js"></script>
     <script type="text/javascript" defer src="https://use.fontawesome.com/releases/v5.3.1/js/all.js"></script>
     <a href="https://github.com/kitplummer/lowendinsight" target="_blank" class="github-corner" aria-label="View source on GitHub">
       <svg class="svg" width="80" height="80" viewBox="0 0 250 250" aria-hidden="true">

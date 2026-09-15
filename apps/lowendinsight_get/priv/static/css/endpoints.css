@@ -448,3 +448,58 @@ th .tooltip {
     0% { left: -5px; }
     100% { right: -5px; }
 }
+/* Report detail page (analysis.html.eex). Colours come from theme.css, so the
+   page follows the light/dark theme like the rest of the site. */
+.report-detail .container { max-width: 1100px; }
+.report-head { margin-bottom: 1.5rem; }
+.report-kicker { color: var(--text-muted); font-size: 0.8rem; letter-spacing: 0.06em; text-transform: uppercase; }
+.report-title { margin-bottom: 0.25rem !important; word-break: break-word; }
+.report-meta { color: var(--text-muted); font-size: 0.9rem; }
+.report-overall { margin-top: 0.75rem; display: flex; align-items: center; gap: 0.6rem; flex-wrap: wrap; }
+.report-overall-label { font-weight: 600; }
+
+.report-card {
+  background: var(--surface-card);
+  border: 1px solid var(--border-subtle);
+  border-radius: 8px;
+  padding: 1rem 1.1rem;
+  height: 100%;
+}
+.report-card-title { font-weight: 600; font-size: 0.95rem; }
+.report-card-value { font-size: 1.6rem; font-weight: 700; line-height: 1.2; margin: 0.2rem 0; min-height: 1.9rem; word-break: break-word; }
+.report-card-detail { color: var(--text-muted); font-size: 0.85rem; margin-bottom: 0.5rem; }
+
+.risk-badge {
+  display: inline-block;
+  border-radius: 999px;
+  padding: 0.15rem 0.7rem;
+  font-size: 0.8rem;
+  font-weight: 700;
+  color: var(--tag-ink);
+}
+.risk-critical { background: var(--tag-red); }
+.risk-high { background: var(--tag-orange); }
+.risk-medium { background: var(--accent-yellow); color: var(--tag-ink-warm); }
+.risk-low { background: var(--tag-green); }
+.risk-none { background: var(--surface-alt); color: var(--text); }
+
+.report-section { margin-top: 2rem; margin-bottom: 0.75rem !important; }
+/* The site-wide .table-container padding and .table margin make room for the
+   trending table's header tooltips; on this page they only open a gap. */
+.report-detail .table-container { padding-top: 0; }
+.report-detail .table { margin-top: 0 !important; }
+.report-facts th { width: 40%; font-weight: 600; }
+.report-facts td, .report-facts th, .report-contributors td { word-break: break-word; }
+.report-empty { color: var(--text-muted); }
+
+.report-details { margin-top: 1.5rem; border: 1px solid var(--border-subtle); border-radius: 8px; padding: 0.6rem 1rem; }
+.report-details summary { cursor: pointer; font-weight: 600; }
+.report-json pre {
+  margin-top: 0.75rem;
+  max-height: 70vh;
+  overflow: auto;
+  background: var(--pre-bg);
+  color: var(--pre-text);
+  font-size: 0.8rem;
+  white-space: pre;
+}

@@ -1566,6 +1566,33 @@
       "replace": "    if conn.assigns[:auth_method] in [:jwt, :api_key] do\n      Task.start_link(fn -> LowendinsightGet.GithubTrending.process_languages() end)",
       "guarded_by": "test/lowendinsight_get/trending_trigger_auth_test.exs",
       "app": "apps/lowendinsight_get"
+    },
+    {
+      "id": "report-page-renders-lossy-struct",
+      "bug": "The report page rendered cached reports through the RepoReport structs, which drop header, git, files and agentic fields, so every cached repository -- every trending view -- showed mostly blanks (2026-09-15).",
+      "file": "apps/lowendinsight_get/lib/lowendinsight_get/endpoint.ex",
+      "find": "            render(conn, \"analysis.html\", report: full_report(url, report), url: url)",
+      "replace": "            render(conn, \"analysis.html\", report: Poison.encode!(report), url: url)",
+      "guarded_by": "test/lowendinsight_get/report_detail_page_test.exs",
+      "app": "apps/lowendinsight_get"
+    },
+    {
+      "id": "trending-view-not-a-link",
+      "bug": "Trending's view squeezed a JSON tree into a table cell instead of opening the report page (2026-09-15).",
+      "file": "apps/lowendinsight_get/priv/static/js/endpoints.js",
+      "find": "        view.href = \"/url=\" + encodeURIComponent(href);",
+      "replace": "        view.href = \"#\";",
+      "guarded_by": "test/lowendinsight_get/report_detail_page_test.exs",
+      "app": "apps/lowendinsight_get"
+    },
+    {
+      "id": "report-page-drops-machine-readable-copy",
+      "bug": "The report page stopped embedding the report as JSON, which scripts/canary.sh reads to check an analysis happened (2026-09-15).",
+      "file": "apps/lowendinsight_get/priv/templates/analysis.html.eex",
+      "find": "        <script type=\"application/json\" id=\"report-data\"><%= Lei.Web.HTML.script_json(r) %></script>\n",
+      "replace": "",
+      "guarded_by": "test/lowendinsight_get/report_detail_page_test.exs",
+      "app": "apps/lowendinsight_get"
     }
   ]
 }
