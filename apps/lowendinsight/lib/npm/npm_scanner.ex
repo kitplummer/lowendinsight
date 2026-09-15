@@ -95,42 +95,36 @@ defmodule Npm.Scanner do
   be reached, an error is returned.
   """
   def query_npm(package) do
-    encoded_id = URI.encode(package)
+    target =
+      case repository_url(package) do
+        {:ok, url} -> url
+        :none -> package
+      end
 
-    HTTPoison.start()
+    {:ok, report} = AnalyzerModule.analyze(target, "mix.scan", %{types: true})
+    report
+  end
 
-    {:ok, response} =
-      Lei.HTTP.Retry.request(fn ->
-        HTTPoison.get("https://replicate.npmjs.com/" <> encoded_id)
-      end)
+  @registry "https://registry.npmjs.org/"
 
-    case response.status_code do
-      200 ->
-        repo_info = get_npm_repository(response.body)
+  @doc """
+  repository_url: looks `package` up in the npm registry and returns
+  `{:ok, url}` for its declared repository, or `:none` when the registry does
+  not know it, it declares no repository, or the registry cannot be reached.
+  `get` is the HTTP GET, replaceable in tests.
+  """
+  def repository_url(package, get \\ &HTTPoison.get/1) do
+    url = @registry <> URI.encode(package)
 
-        if is_map(repo_info) && Map.has_key?(repo_info, "url") do
-          {:ok, report} = AnalyzerModule.analyze(repo_info["url"], "mix.scan", %{types: true})
-          report
-        else
-          {:ok, report} = AnalyzerModule.analyze(package, "mix.scan", %{types: true})
-          report
+    case Lei.HTTP.Retry.request(fn -> get.(url) end) do
+      {:ok, %HTTPoison.Response{status_code: 200, body: body}} ->
+        case Poison.decode(body) do
+          {:ok, %{"repository" => %{"url" => repo}}} when is_binary(repo) -> {:ok, repo}
+          _ -> :none
         end
 
       _ ->
-        {:ok, report} = AnalyzerModule.analyze(package, "mix.scan", %{types: true})
-        report
+        :none
     end
-  end
-
-  defp get_npm_repository(body) do
-    decoded = Poison.decode!(body)
-
-    repos =
-      case Map.has_key?(decoded, "repository") do
-        true -> decoded["repository"]
-        false -> %{error: "no repository"}
-      end
-
-    repos
   end
 end
