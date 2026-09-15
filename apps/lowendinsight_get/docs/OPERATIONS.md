@@ -259,6 +259,21 @@ green, and then hits cache forever -- staying green while the analysis is
 completely broken. It invalidates the entry first, and treats a sub-second
 response without invalidation as a failure rather than a pass.
 
+**It reads what is served for secrets.** Every body it fetches -- the home page,
+`llms.txt`, a fresh report, trending, `/readyz`, the manual, the OpenAPI spec,
+`/metrics`, signup and login -- goes through `scripts/secret-scan.sh`, which
+looks for secret-shaped values (Stripe, API and recovery keys, tokens, JWTs,
+credentialed database URLs) and for secret setting names. It prints pattern
+names, never matched text, and an empty body fails rather than passing.
+
+Reports published the application environment, including Stripe keys and
+signing secrets, on these pages for months while every other check was green.
+
+A finding fails the canary, so it **rolls a deploy back** -- including a
+finding in data an *earlier* release stored, such as cached reports. If a leak
+is found in stored data, purge it before deploying the fix, or the fix will be
+rolled back with it. Rotate the exposed secrets either way.
+
 #### The canary's credential
 
 | | |

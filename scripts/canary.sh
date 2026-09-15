@@ -303,6 +303,39 @@ case "$STRIPE_CHECK" in
 esac
 echo
 
+# --- nothing secret on what is served -------------------------------------
+
+bold "no secrets on public pages"
+
+# Reports published the application environment -- Stripe keys and signing
+# secrets -- on these pages for months while every check here was green
+# (security, 2026-09-14). This reads what the deployment serves. The scanner
+# prints pattern names, never matched text. An empty body fails: a page that
+# could not be fetched was not scanned, and must not count as clean.
+SCAN_DIR="$(cd "$(dirname "$0")" && pwd)"
+
+scan_body() {
+  local label="$1" body="$2" out rc
+  out=$(printf '%s' "$body" | "$SCAN_DIR/secret-scan.sh" "$label" 2>&1)
+  rc=$?
+  case "$rc" in
+    0) ok "no secrets: ${label}" ;;
+    1) bad "no secrets: ${label}" "$out" ;;
+    *) bad "no secrets: ${label}" "nothing to scan (empty response)" ;;
+  esac
+}
+
+scan_body "home page" "$HOME_BODY"
+scan_body "llms.txt" "$LLMS_BODY"
+scan_body "Try It report" "${REPORT:-}"
+scan_body "trending (elixir)" "${TRENDING:-}"
+scan_body "readyz" "${READYZ:-}"
+
+for path in /gh_trending /doc /openapi.json /metrics /signup /login; do
+  scan_body "$path" "$(curl -s --max-time 30 "$BASE_URL$path")"
+done
+echo
+
 # --- result ----------------------------------------------------------------
 
 bold "=== ${PASS} passed, ${FAIL} failed ==="
