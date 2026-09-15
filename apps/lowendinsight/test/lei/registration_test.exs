@@ -12,11 +12,32 @@ defmodule Lei.RegistrationTest do
 
     {:ok, org} = Lei.ApiKeys.find_or_create_org("Admin Org", status: "active")
     {:ok, admin_key, _} = Lei.ApiKeys.create_api_key(org, "admin", ["admin"])
-    %{admin_key: admin_key, org: org}
+
+    # Creating orgs is an operator action (security, 2026-09-14): a JWT signed
+    # with the deployment's secret, not an org's "admin" key.
+    signer =
+      Joken.Signer.create(
+        "HS256",
+        Application.get_env(:lowendinsight, :jwt_secret, "lei_dev_secret")
+      )
+
+    {:ok, operator, _} = Joken.generate_and_sign(%{}, %{}, signer)
+
+    %{admin_key: admin_key, org: org, operator: operator}
   end
 
   describe "POST /v1/orgs" do
-    test "creates a new org", %{admin_key: key} do
+    test "an org admin key is refused", %{admin_key: key} do
+      conn =
+        conn(:post, "/v1/orgs", Poison.encode!(%{name: "Not Yours"}))
+        |> put_req_header("content-type", "application/json")
+        |> put_req_header("authorization", "Bearer #{key}")
+        |> Lei.Web.Router.call(@opts)
+
+      assert conn.status == 403
+    end
+
+    test "creates a new org", %{operator: key} do
       conn =
         conn(:post, "/v1/orgs", Poison.encode!(%{name: "Test Organization"}))
         |> put_req_header("content-type", "application/json")
@@ -30,7 +51,7 @@ defmodule Lei.RegistrationTest do
       assert body["tier"] == "free"
     end
 
-    test "returns existing org if slug matches", %{admin_key: key} do
+    test "returns existing org if slug matches", %{operator: key} do
       conn1 =
         conn(:post, "/v1/orgs", Poison.encode!(%{name: "Dupe Org"}))
         |> put_req_header("content-type", "application/json")
@@ -48,7 +69,7 @@ defmodule Lei.RegistrationTest do
       assert body1["id"] == body2["id"]
     end
 
-    test "returns 400 when name missing", %{admin_key: key} do
+    test "returns 400 when name missing", %{operator: key} do
       conn =
         conn(:post, "/v1/orgs", Poison.encode!(%{}))
         |> put_req_header("content-type", "application/json")
