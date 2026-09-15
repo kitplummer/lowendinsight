@@ -1611,6 +1611,15 @@
       "replace": "config :lowendinsight,\n  stripe_secret_key: System.get_env(\"STRIPE_SECRET_KEY\"),",
       "guarded_by": "test/library_env_test.exs",
       "app": "apps/lowendinsight"
+    },
+    {
+      "id": "library-undeclared-dependency",
+      "bug": "The library called Jason without declaring it; the umbrella's shared deps directory hid it, so a project using the library from Hex could not decode a manifest (found by the ADR-003 isolation check).",
+      "file": "apps/lowendinsight/mix.exs",
+      "find": "      {:jason, \"~> 1.4\"},\n",
+      "replace": "",
+      "guarded_by": "test/declared_dependencies_test.exs",
+      "app": "apps/lowendinsight"
     }
   ]
 }

@@ -45,7 +45,11 @@ fail to boot without the service's database configuration.
   2. Prove the library stands alone: a CI job that builds a fresh project
      depending only on `lowendinsight`, boots it with no configuration, and
      analyzes a local repository; `mix hex.build` shows only analyzer
-     dependencies.
+     dependencies (done: `scripts/library-isolation.sh`, run by preflight and
+     the `library-isolation` CI job). Its first run found the library calling
+     `Jason` without declaring it and shipping `ex_doc` as a runtime
+     dependency; both are fixed, and `declared_dependencies_test.exs` checks
+     every module the library calls belongs to a declared dependency.
   3. Rename the service app from `lowendinsight_get` to `lei_service` (done:
      modules `LeiService.*`, OTP app `:lei_service`, release `lei_service`).
      `LowendinsightGet.AnalysisWorker` remains as a delegating module so Oban
