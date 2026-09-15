@@ -92,6 +92,7 @@ defmodule AnalyzerModule do
           false ->
             {:ok, sbom_risk_level} = RiskLogic.sbom_risk()
             sbom_risk_level
+
           true ->
             "low"
         end
@@ -160,7 +161,7 @@ defmodule AnalyzerModule do
           library_version: library_version
         },
         data: %{
-          config: Helpers.convert_config_to_list(config),
+          config: Helpers.report_config(config),
           repo: url,
           files: files_analysis,
           git: %{

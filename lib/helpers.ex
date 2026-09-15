@@ -119,16 +119,14 @@ defmodule Helpers do
     try do
       if !is_list(urls), do: throw(:break)
 
-      bad_urls = Enum.filter(urls, fn url ->
-
-        if validate_url(url) != :ok do
+      bad_urls =
+        Enum.filter(urls, fn url ->
+          if validate_url(url) != :ok do
             url
-
-        end
-      end)
+          end
+        end)
 
       if Enum.count(bad_urls) == 0, do: :ok, else: throw(bad_urls)
-
     catch
       :break -> {:error, "invalid URI"}
       bad_urls -> {:error, %{:message => "invalid URI", :urls => bad_urls}}
@@ -184,6 +182,40 @@ defmodule Helpers do
         end
     end
   end
+
+  # The only configuration a report may publish: the thresholds that explain how
+  # it was scored. An allowlist, deliberately. Reports embedded the whole
+  # :lowendinsight application env minus one key, so any token, key or password
+  # an application configured there was published in every report. A setting
+  # added later is not published unless it is added here.
+  @report_config_keys [
+    :sbom_risk_level,
+    :critical_contributor_level,
+    :high_contributor_level,
+    :medium_contributor_level,
+    :critical_currency_level,
+    :high_currency_level,
+    :medium_currency_level,
+    :critical_large_commit_level,
+    :high_large_commit_level,
+    :medium_large_commit_level,
+    :critical_functional_contributors_level,
+    :high_functional_contributors_level,
+    :medium_functional_contributors_level
+  ]
+
+  @doc """
+  report_config/1: the configuration embedded in an analysis report -- scoring
+  thresholds only, never the rest of the application environment.
+  """
+  @spec report_config(keyword() | map()) :: map()
+  def report_config(config) when is_list(config) or is_map(config) do
+    config
+    |> Enum.filter(fn {k, _v} -> k in @report_config_keys end)
+    |> Enum.into(%{})
+  end
+
+  def report_config(_config), do: %{}
 
   @doc """
   convert_config_to_list/1: takes in Application.get_all_env(:app) and returns a list of
