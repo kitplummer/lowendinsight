@@ -66,30 +66,46 @@ defmodule Lei.Web.Router do
     # immediately after payment, so the raise surfaced as a 500 on the one page
     # a paying customer is guaranteed to see.
     conn = fetch_session(conn)
-
-    _session_id = conn.params["session_id"]
     org_id = get_session(conn, "pending_org_id")
 
-    cond do
-      is_nil(org_id) ->
+    # Arriving here proves nothing: the URL can be requested without ever
+    # visiting Stripe. Payment is confirmed with Stripe itself (Lei.Signup).
+    with {:org, %Lei.Org{} = org} <- {:org, org_id && Lei.Repo.get(Lei.Org, org_id)},
+         {:ok, org} <- Lei.Signup.confirm_paid_checkout(org, conn.params["session_id"]),
+         {:ok, {org, raw_key, recovery_code}} <- Lei.Signup.issue_first_credentials(org) do
+      conn
+      |> delete_session("pending_org_id")
+      |> render_page("signup_success.html.eex",
+        org_name: org.name,
+        raw_key: raw_key,
+        recovery_code: recovery_code
+      )
+    else
+      {:org, _} ->
         render_page(conn, "signup.html.eex",
           flash_error: "No pending signup found. Please try again."
         )
 
-      true ->
-        case Lei.Repo.get(Lei.Org, org_id) do
-          nil ->
-            render_page(conn, "signup.html.eex", flash_error: "Organization not found.")
+      {:error, :already_issued} ->
+        conn
+        |> delete_session("pending_org_id")
+        |> render_page("login.html.eex",
+          flash_error:
+            "Credentials for this organization were already issued. Log in with your API key, or use your recovery code."
+        )
 
-          %Lei.Org{status: "active"} = org ->
-            # Already activated by webhook, show credentials
-            show_signup_success(conn, org)
+      {:error, :suspended} ->
+        render_page(conn, "signup.html.eex",
+          flash_error: "This organization is suspended. Contact support to reactivate it."
+        )
 
-          %Lei.Org{} = org ->
-            # Webhook hasn't fired yet — activate now (Stripe success URL is reliable)
-            {:ok, org} = Lei.ApiKeys.activate_org(org)
-            show_signup_success(conn, org)
-        end
+      {:error, reason} ->
+        Logger.info("signup success not confirmed: #{inspect(reason)}")
+
+        render_page(conn, "signup.html.eex",
+          flash_error:
+            "We could not confirm your payment yet. If you completed checkout, refresh this page in a minute."
+        )
     end
   end
 
@@ -658,27 +674,6 @@ defmodule Lei.Web.Router do
       {:error, _changeset} ->
         render_page(conn, "signup.html.eex",
           flash_error: "Failed to create organization. Please try again."
-        )
-    end
-  end
-
-  defp show_signup_success(conn, org) do
-    case Lei.ApiKeys.create_api_key(org, "admin", ["admin", "analyze"]) do
-      {:ok, raw_key, _api_key} ->
-        {:ok, recovery_code} = Lei.ApiKeys.generate_recovery_code(org)
-
-        conn
-        |> fetch_session()
-        |> delete_session("pending_org_id")
-        |> render_page("signup_success.html.eex",
-          org_name: org.name,
-          raw_key: raw_key,
-          recovery_code: recovery_code
-        )
-
-      {:error, _} ->
-        render_page(conn, "signup.html.eex",
-          flash_error: "Failed to create API key. Please try again."
         )
     end
   end

@@ -41,8 +41,8 @@
       "id": "signup-success-session",
       "bug": "Every completed Pro checkout ended on a 500; get_session/2 was called without fetching the session (#90)",
       "file": "apps/lowendinsight/lib/lei/web/router.ex",
-      "find": "    conn = fetch_session(conn)\n\n    _session_id = conn.params[\"session_id\"]",
-      "replace": "    _session_id = conn.params[\"session_id\"]",
+      "find": "    conn = fetch_session(conn)\n    org_id = get_session(conn, \"pending_org_id\")",
+      "replace": "    org_id = get_session(conn, \"pending_org_id\")",
       "guarded_by": "test/lei/web/signup_success_test.exs",
       "app": "apps/lowendinsight"
     },
@@ -1116,6 +1116,60 @@
       "replace": "      {method, _} when method == :never ->",
       "guarded_by": "test/lowendinsight_get/tenant_isolation_test.exs",
       "app": "apps/lowendinsight_get"
+    },
+    {
+      "id": "signup-success-activates-without-stripe",
+      "bug": "GET /signup/success activated a pending Pro org and issued an admin key without asking Stripe whether the checkout was paid (security, 2026-09-14).",
+      "file": "apps/lowendinsight/lib/lei/web/router.ex",
+      "find": "{:ok, org} <- Lei.Signup.confirm_paid_checkout(org, conn.params[\"session_id\"]),",
+      "replace": "{:ok, org} <- Lei.ApiKeys.activate_org(org),",
+      "guarded_by": "test/lei/web/signup_success_test.exs",
+      "app": "apps/lowendinsight"
+    },
+    {
+      "id": "checkout-paid-status-ignored",
+      "bug": "An open or unpaid Checkout Session was accepted as payment (security, 2026-09-14).",
+      "file": "apps/lowendinsight/lib/lei/signup.ex",
+      "find": "  defp settled(_), do: {:error, :not_paid}",
+      "replace": "  defp settled(_), do: :ok",
+      "guarded_by": "test/lei/web/signup_success_test.exs",
+      "app": "apps/lowendinsight"
+    },
+    {
+      "id": "checkout-for-other-org-accepted",
+      "bug": "A paid Checkout Session for one org activated a different org (security, 2026-09-14).",
+      "file": "apps/lowendinsight/lib/lei/signup.ex",
+      "find": "      else: {:error, :checkout_for_other_org}",
+      "replace": "      else: :ok",
+      "guarded_by": "test/lei/web/signup_success_test.exs",
+      "app": "apps/lowendinsight"
+    },
+    {
+      "id": "suspended-org-reactivated-by-success-page",
+      "bug": "Revisiting the success page re-activated an org suspended for cancellation or failed payment (security, 2026-09-14).",
+      "file": "apps/lowendinsight/lib/lei/signup.ex",
+      "find": "  defp activate(%Org{status: \"suspended\"}, _checkout), do: {:error, :suspended}\n",
+      "replace": "",
+      "guarded_by": "test/lei/web/signup_success_test.exs",
+      "app": "apps/lowendinsight"
+    },
+    {
+      "id": "signup-credentials-minted-on-every-visit",
+      "bug": "Replaying the signup session cookie minted a fresh admin key and recovery code on every visit (security, 2026-09-14).",
+      "file": "apps/lowendinsight/lib/lei/signup.ex",
+      "find": "      if Repo.exists?(from(k in ApiKey, where: k.org_id == ^org_id)) do",
+      "replace": "      if false and Repo.exists?(from(k in ApiKey, where: k.org_id == ^org_id)) do",
+      "guarded_by": "test/lei/web/signup_success_test.exs",
+      "app": "apps/lowendinsight"
+    },
+    {
+      "id": "checkout-read-permission-unchecked",
+      "bug": "A Stripe key that cannot read Checkout Sessions passed the object check, so Pro activation would fail for every paying customer with no signal (2026-09-14).",
+      "file": "apps/lowendinsight/lib/lei/stripe/object_check.ex",
+      "find": "      {:error, {status, _body}} when status in [401, 403] -> \"unauthorized\"\n      _ -> \"unreachable\"\n    end\n  end\n\n  # --- GenServer ---",
+      "replace": "      {:error, {status, _body}} when status in [401, 403] -> \"ok\"\n      _ -> \"unreachable\"\n    end\n  end\n\n  # --- GenServer ---",
+      "guarded_by": "test/lei/stripe/object_check_test.exs",
+      "app": "apps/lowendinsight"
     }
   ]
 }

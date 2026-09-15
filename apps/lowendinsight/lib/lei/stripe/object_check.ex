@@ -15,7 +15,8 @@ defmodule Lei.Stripe.ObjectCheck do
 
   ## Results
 
-    * `"ok"` -- every configured price retrieved and active
+    * `"ok"` -- every configured price retrieved and active, and the key may
+      read Checkout Sessions
     * `"mismatch"` -- a price does not exist for this key: the half-flip
     * `"inactive"` -- a price exists but is archived, so Checkout would refuse it
     * `"unauthorized"` -- the key itself was rejected. Rolled keys expire; this
@@ -118,6 +119,7 @@ defmodule Lei.Stripe.ObjectCheck do
       _mode ->
         configured
         |> Enum.map(&retrieve(stripe_module, &1))
+        |> Kernel.++([checkout_readable(stripe_module)])
         |> worst()
     end
   end
@@ -147,6 +149,22 @@ defmodule Lei.Stripe.ObjectCheck do
       {:ok, %{"active" => true}} -> "ok"
       {:ok, %{"active" => false}} -> "inactive"
       {:error, {404, _body}} -> "mismatch"
+      {:error, {status, _body}} when status in [401, 403] -> "unauthorized"
+      _ -> "unreachable"
+    end
+  end
+
+  # Pro activation confirms payment by retrieving the Checkout Session
+  # (Lei.Signup). A restricted key without that permission would strand every
+  # paying customer on "could not confirm your payment" while prices, and so
+  # this check, looked fine. No real session is needed to tell: an id that does
+  # not exist is a 404 to a key that may read sessions and a 403 to one that
+  # may not.
+  @probe_session "cs_lei_permission_probe"
+
+  defp checkout_readable(stripe_module) do
+    case stripe_module.retrieve_checkout_session(@probe_session) do
+      {:error, {404, _body}} -> "ok"
       {:error, {status, _body}} when status in [401, 403] -> "unauthorized"
       _ -> "unreachable"
     end

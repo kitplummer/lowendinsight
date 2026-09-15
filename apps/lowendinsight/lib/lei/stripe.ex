@@ -8,6 +8,8 @@ defmodule Lei.StripeBehaviour do
   @callback report_meter_event(String.t(), integer(), integer(), String.t()) ::
               {:ok, map()} | {:error, term()}
   @callback retrieve_subscription(String.t()) :: {:ok, map()} | {:error, term()}
+  @callback retrieve_checkout_session(String.t()) ::
+              {:ok, map()} | {:error, {pos_integer(), map()}} | {:error, term()}
   # Errors carry the HTTP status, unlike the callbacks above: the caller tells
   # "no such price" (404) from "bad key" (401) by it, and the bodies do not.
   # Crypto deposit addresses and transaction verification are preview APIs:
@@ -374,6 +376,11 @@ defmodule Lei.Stripe do
     do: {:error, {status, decode_or_raw(body)}}
 
   defp json_result({:error, reason}), do: {:error, reason}
+
+  @impl true
+  def retrieve_checkout_session(session_id) do
+    get_json("/v1/checkout/sessions/#{URI.encode_www_form(session_id)}", headers())
+  end
 
   @impl true
   def retrieve_price(price_id) do
