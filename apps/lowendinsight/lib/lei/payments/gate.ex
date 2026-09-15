@@ -69,6 +69,8 @@ defmodule Lei.Payments.Gate do
   the response already sent.
 
   `:required_credits` is what the request will cost, when the caller can say.
+  `:analyses` is how many analyses it will run, which is what a free org's
+  monthly allowance counts.
   A credit-funded org holding less is asked to top up by at least the
   shortfall, rather than admitted and run into debt: an SBOM naming hundreds of
   uncached repositories costs far more than one block (#152).
@@ -79,6 +81,7 @@ defmodule Lei.Payments.Gate do
 
   def admit(conn, opts) do
     required = Keyword.get(opts, :required_credits, 0)
+    analyses = Keyword.get(opts, :analyses, 0)
 
     case billing_context(conn) do
       {nil, _, _} = context ->
@@ -92,36 +95,69 @@ defmodule Lei.Payments.Gate do
         {:ok, conn, context}
 
       {org_id, _, _} = context ->
-        case Lei.UsageTracker.check_free_tier_quota(org_id) do
-          # For a wallet org the value is its credit balance, and the balance
-          # is the whole gate.
-          {:ok, balance} when required > 0 and balance < required ->
-            if credit_funded?(org_id) do
-              {:halt, Http.challenge(conn, org_id, top_up(balance, required))}
-            else
-              {:ok, conn, context}
-            end
-
-          {:ok, _remaining} ->
-            {:ok, conn, context}
-
-          {:error, :quota_exceeded, info} ->
-            {:halt,
-             json(conn, 402, %{
-               error: "free_tier_quota_exceeded",
-               used: info.used,
-               limit: info.limit,
-               upgrade_url: "https://lowendinsight.fly.dev/signup?tier=pro"
-             })}
-
-          # A 402 carrying real payment requirements, not just a balance.
-          {:error, :insufficient_credits, %{balance: balance}} ->
-            {:halt, Http.challenge(conn, org_id, top_up(balance, required))}
-
-          {:error, _} ->
-            {:ok, conn, context}
-        end
+        # Two different allowances, in two different units, and the answer
+        # from check_free_tier_quota/1 means a different thing for each: a
+        # wallet org's credit balance, or a free org's analyses remaining. The
+        # gate compared the second against a price in credits and then admitted
+        # the request anyway, so the monthly limit never bounded a request --
+        # only whether one could start.
+        if credit_funded?(org_id),
+          do: admit_credit_funded(conn, context, required),
+          else: admit_free(conn, context, analyses)
     end
+  end
+
+  defp admit_credit_funded(conn, {org_id, _, _} = context, required) do
+    case Lei.UsageTracker.check_free_tier_quota(org_id) do
+      {:ok, balance} when is_integer(balance) and balance < required ->
+        {:halt, Http.challenge(conn, org_id, top_up(balance, required))}
+
+      {:ok, _balance} ->
+        {:ok, conn, context}
+
+      # A 402 carrying real payment requirements, not just a balance.
+      {:error, :insufficient_credits, %{balance: balance}} ->
+        {:halt, Http.challenge(conn, org_id, top_up(balance, required))}
+
+      {:error, _} ->
+        {:halt, Http.challenge(conn, org_id, top_up(0, required))}
+    end
+  end
+
+  defp admit_free(conn, {org_id, _, _} = context, analyses) do
+    case Lei.UsageTracker.check_free_tier_quota(org_id) do
+      {:ok, remaining} when is_integer(remaining) and analyses > remaining ->
+        limit_reached(conn, %{requested: analyses, remaining: remaining})
+
+      {:ok, _remaining} ->
+        {:ok, conn, context}
+
+      {:error, :quota_exceeded, info} ->
+        limit_reached(conn, %{
+          used: info.used,
+          limit: info.limit,
+          requested: analyses,
+          remaining: 0
+        })
+
+      {:error, _} ->
+        {:ok, conn, context}
+    end
+  end
+
+  defp limit_reached(conn, detail) do
+    {:halt,
+     json(
+       conn,
+       402,
+       Map.merge(
+         %{
+           error: "free_tier_quota_exceeded",
+           upgrade_url: "https://lowendinsight.fly.dev/signup?tier=pro"
+         },
+         detail
+       )
+     )}
   end
 
   @doc "`{org_id, api_key_id, tier}` for the request, from its key or its payment."
