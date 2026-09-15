@@ -1,0 +1,21 @@
+# Security advisories acknowledged after checking they cannot be fixed within
+# our dependency constraints today. Read by scripts/dependency-audit.sh, which
+# fails on any advisory not listed here and on any entry that no longer matches
+# a locked dependency, so this file can only shrink by deleting lines.
+#
+# One advisory ID per line, then " # " and the reason. Every entry needs one.
+
+# hackney 1.25.0, via httpoison ~> 1.8 in the library. Fixed in hackney 4.x,
+# which needs httpoison 3.x: a breaking change planned for lowendinsight 0.10.0.
+EEF-CVE-2026-47071 # HIGH SOCKS5 TLS upgrade ignores timeout; remove with httpoison 3
+EEF-CVE-2026-47075 # MEDIUM CRLF in query parameter; remove with httpoison 3
+EEF-CVE-2026-47076 # MEDIUM SSRF allowlist bypass; remove with httpoison 3
+EEF-CVE-2026-47069 # LOW CRLF in cookie domain/path; remove with httpoison 3
+
+# decimal 2.4.1: fixed only in decimal 3.0, and ecto 3.13 requires ~> 2.0.
+EEF-CVE-2026-32686 # MEDIUM unbounded exponent; decimals come only from Postgres numeric columns and internal arithmetic, no request input is cast to :decimal
+
+# cowlib 2.20.0 is the latest release; no fix published.
+EEF-CVE-2026-43971 # MEDIUM cow_link:link/1, not called by cowboy, plug_cowboy, plug or this code
+EEF-CVE-2026-43966 # MEDIUM cow_http_struct_hd:escape_string/2, not called by cowboy, plug_cowboy, plug or this code
+EEF-CVE-2026-43969 # LOW cow_cookie:cookie/1 (request encoder), not called by cowboy, plug_cowboy, plug or this code

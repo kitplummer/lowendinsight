@@ -17,8 +17,8 @@ Postgres and Redis must be running locally. `config/test.exs` expects
 scripts/preflight.sh
 ```
 
-Eight stages: format, compile (warnings are errors), databases, suite, guards,
-library isolation, seed sweep, backup grants. CI runs the same script. When local and CI disagree
+Nine stages: format, compile (warnings are errors), databases, suite, guards,
+library isolation, dependency audit, seed sweep, backup grants. CI runs the same script. When local and CI disagree
 about what "passing" means, the weaker one wins by default and nobody notices.
 
 `--quick` skips the seed sweep and grant check for iteration. Do not open a PR
@@ -86,6 +86,7 @@ is "passes", it is not a check.
 | `guard-verification` | would the tests catch the bug coming back |
 | `backup-grants` | can the backup role dump what migrations create |
 | `library-isolation` | does the library work for a project that has only it |
+| `audit` | does a locked dependency have an advisory nobody acknowledged |
 | `deploy` | does it work in production |
 | `monitor` | is it still working, every 15 minutes |
 

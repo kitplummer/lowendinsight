@@ -17,6 +17,7 @@
 #   guards           would the tests catch the bug coming back
 #   backup grants    can the backup role still dump what migrations create
 #   library isolation does the library work for a project that has only it
+#   dependency audit does any locked dependency have an unacknowledged advisory
 #
 # A stage that cannot run is a failure, not a skip. Reporting success for work
 # not done is the specific fault this script exists to prevent.
@@ -160,6 +161,14 @@ check_library_isolation() {
   grep -q "The library stands alone." /tmp/preflight-isolation.out && dim "   library stands alone"
 }
 
+check_dependency_audit() {
+  ./scripts/dependency-audit.sh >/tmp/preflight-audit.out 2>&1 || {
+    tail -25 /tmp/preflight-audit.out
+    return 1
+  }
+  grep -q "Dependency audit passed" /tmp/preflight-audit.out && dim "   no unacknowledged advisories"
+}
+
 check_backup_grants() {
   ./scripts/verify-backup-grants.sh >/tmp/preflight-grants.out 2>&1 || {
     tail -25 /tmp/preflight-grants.out
@@ -179,6 +188,7 @@ stage "databases" check_databases
 stage "suite"    check_suite
 stage "guards"   check_guards
 stage "library isolation" check_library_isolation
+stage "dependency audit"  check_dependency_audit
 
 if [ "$QUICK" -eq 1 ]; then
   SKIPPED+=("seed sweep" "backup grants")
