@@ -33,11 +33,10 @@ defmodule Lei.UsageTracker do
     # than against a gap this function creates on every failure.
     result =
       Repo.transaction(fn ->
-        with {:ok, usage} <-
-               upsert_usage(org_id, api_key_id, period_start, cache_hits, cache_misses, cost),
-             :ok <- debit_credits(usage, cache_hits, cache_misses) do
-          usage
-        else
+        lock_org!(org_id)
+
+        case write_usage(org_id, api_key_id, period_start, cache_hits, cache_misses, cost) do
+          {:ok, usage} -> usage
           {:error, reason} -> Repo.rollback(reason)
         end
       end)
@@ -52,6 +51,91 @@ defmodule Lei.UsageTracker do
     end
 
     result
+  end
+
+  @doc """
+  Admits a request and records what it will consume, in one transaction.
+
+  The org's row is locked first, so requests for one org are admitted one at a
+  time: each sees the balance, or the analyses remaining, after every request
+  admitted before it. Checking in one call and debiting in another -- after
+  the analysis -- let N simultaneous requests all pass a check that one of them
+  could afford (security review, 2026-09-14).
+
+  Charged at admission: the price comes from the cache split known now, and
+  input that cannot be analysed is refused by the caller before this is called
+  (decided 2026-09-15).
+
+  Returns `{:ok, usage}`, `{:error, {:insufficient_credits, balance}}`,
+  `{:error, {:quota_exceeded, info}}` or `{:error, reason}`.
+  """
+  def admit_usage(org_id, api_key_id, cache_hits, cache_misses, required_credits) do
+    period_start = current_period_start()
+    cost = calculate_cost(cache_hits, cache_misses)
+
+    result =
+      Repo.transaction(fn ->
+        org = lock_org!(org_id)
+
+        with :ok <- allowance(org, cache_hits + cache_misses, required_credits),
+             {:ok, usage} <-
+               write_usage(org_id, api_key_id, period_start, cache_hits, cache_misses, cost) do
+          usage
+        else
+          {:error, reason} -> Repo.rollback(reason)
+        end
+      end)
+
+    with {:ok, usage} <- result do
+      report_meter_event(org_id, cost, usage)
+    end
+
+    result
+  end
+
+  # Taken first in every transaction that reads or changes what an org has
+  # used or holds. Postgres serialises the holders; each reads what the one
+  # before it committed.
+  defp lock_org!(org_id) do
+    Repo.one!(from(o in Org, where: o.id == ^org_id, lock: "FOR UPDATE"))
+  end
+
+  defp allowance(%Org{} = org, analyses, required_credits) do
+    cond do
+      prepaid?(org) ->
+        balance = Credits.balance(org.id)
+
+        if balance > 0 and balance >= required_credits,
+          do: :ok,
+          else: {:error, {:insufficient_credits, balance}}
+
+      org.tier == "pro" ->
+        :ok
+
+      true ->
+        usage = get_current_usage(org.id)
+        used = usage.cache_hits + usage.cache_misses
+        limit = org.free_tier_analyses_limit || free_tier_limit()
+
+        if used < limit and used + analyses <= limit,
+          do: :ok,
+          else:
+            {:error,
+             {:quota_exceeded,
+              %{used: used, limit: limit, requested: analyses, remaining: max(limit - used, 0)}}}
+    end
+  end
+
+  defp prepaid?(%Org{prepaid: true}), do: true
+  defp prepaid?(%Org{wallet_address: w}) when is_binary(w) and w != "", do: true
+  defp prepaid?(_), do: false
+
+  defp write_usage(org_id, api_key_id, period_start, cache_hits, cache_misses, cost) do
+    with {:ok, usage} <-
+           upsert_usage(org_id, api_key_id, period_start, cache_hits, cache_misses, cost),
+         :ok <- debit_credits(usage, cache_hits, cache_misses) do
+      {:ok, usage}
+    end
   end
 
   defp upsert_usage(org_id, api_key_id, period_start, cache_hits, cache_misses, cost) do

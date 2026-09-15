@@ -153,6 +153,19 @@ defmodule LowendinsightGet.RemoteUrlTest do
       assert conn.status == 422
     end
 
+    test "process_urls refuses a private address itself, not only through its routes" do
+      # The analyze routes now check URLs before admission, so a route test no
+      # longer notices if this layer stops checking; its guard came back
+      # unguarded until this was added.
+      assert {:error, _} =
+               LowendinsightGet.Analysis.process_urls(
+                 ["https://127.0.0.1/owner/repo"],
+                 UUID.uuid1(),
+                 DateTime.utc_now(),
+                 %{cache_mode: "blocking"}
+               )
+    end
+
     test "the analysis entry point refuses what the routes would" do
       assert {:error, _} =
                LowendinsightGet.Analysis.analyze("file:///etc", "lei-get", %{types: false})

@@ -104,8 +104,8 @@
       "id": "credit-debit-atomicity",
       "bug": "The usage row and its ledger debit are one transaction because they describe the same event: a committed usage row with no debit is an analysis delivered and never accounted for, findable only by reconciliation after the fact. Letting a failed debit fall through instead of rolling back recreates that gap on every failure.",
       "file": "apps/lowendinsight/lib/lei/usage_tracker.ex",
-      "find": "          {:error, reason} -> Repo.rollback(reason)",
-      "replace": "          {:error, reason} -> {:error, reason}",
+      "find": "        case write_usage(org_id, api_key_id, period_start, cache_hits, cache_misses, cost) do\n          {:ok, usage} -> usage\n          {:error, reason} -> Repo.rollback(reason)",
+      "replace": "        case write_usage(org_id, api_key_id, period_start, cache_hits, cache_misses, cost) do\n          {:ok, usage} -> usage\n          {:error, reason} -> {:error, reason}",
       "guarded_by": "test/lei/credit_debit_test.exs",
       "app": "apps/lowendinsight"
     },
@@ -113,8 +113,8 @@
       "id": "credit-debit-missing",
       "bug": "Anticipated: dropping the ledger debit from the usage path leaves analyses consumed with no internal record of what they cost, which is the state ADR-002 exists to end.",
       "file": "apps/lowendinsight/lib/lei/usage_tracker.ex",
-      "find": "             :ok <- debit_credits(usage, cache_hits, cache_misses) do",
-      "replace": "             :ok <- :ok do",
+      "find": "         :ok <- debit_credits(usage, cache_hits, cache_misses) do",
+      "replace": "         :ok <- :ok do",
       "guarded_by": "test/lei/credit_debit_test.exs",
       "app": "apps/lowendinsight"
     },
@@ -670,9 +670,9 @@
     {
       "id": "analyze-bills-key-not-payer",
       "bug": "POST /v1/analyze bills only an API key's org. An agent that pays on the request has no key, so it is served with its balance never debited. (#147)",
-      "file": "apps/lowendinsight_get/lib/lowendinsight_get/endpoint.ex",
-      "find": "            {:ok, result} ->\n              record_usage(billing, split)\n",
-      "replace": "            {:ok, result} ->\n              record_usage({nil, nil, nil}, split)\n",
+      "file": "apps/lowendinsight/lib/lei/payments/gate.ex",
+      "find": "        case conn.assigns[:payment_org_id] && Lei.Repo.get(Lei.Org, conn.assigns[:payment_org_id]) do",
+      "replace": "        case nil && conn.assigns[:payment_org_id] && Lei.Repo.get(Lei.Org, conn.assigns[:payment_org_id]) do",
       "guarded_by": "test/lowendinsight_get/agent_payment_test.exs",
       "app": "apps/lowendinsight_get"
     },
@@ -788,8 +788,8 @@
       "id": "sbom-analysis-unbilled",
       "bug": "POST /v1/analyze/sbom runs the analysis without debiting it: every repository an SBOM names, free. (#152)",
       "file": "apps/lowendinsight_get/lib/lowendinsight_get/endpoint.ex",
-      "find": "              {:ok, result} ->\n                record_usage(billing, split)\n",
-      "replace": "              {:ok, result} ->\n",
+      "find": "         {:ok, conn, _billing} <- Lei.Payments.Gate.admit(conn, admission(split)) do",
+      "replace": "         {:ok, conn, _billing} <- Lei.Payments.Gate.admit(conn, admission({0, 0})) do",
       "guarded_by": "test/lowendinsight_get/unbilled_paths_test.exs",
       "app": "apps/lowendinsight_get"
     },
@@ -797,8 +797,8 @@
       "id": "sbom-not-gated",
       "bug": "POST /v1/analyze/sbom admits any key without checking balance or quota, so a wallet org with no credits is served. (#152)",
       "file": "apps/lowendinsight_get/lib/lowendinsight_get/endpoint.ex",
-      "find": "        case Lei.Payments.Gate.admit(conn, admission(split)) do\n          {:halt, conn} ->\n            conn\n\n          {:ok, conn, billing} ->\n            opts = %{cache_mode: cache_mode, cache_timeout: cache_timeout}",
-      "replace": "        case {:ok, conn, Lei.Payments.Gate.billing_context(conn)} do\n          {:halt, conn} ->\n            conn\n\n          {:ok, conn, billing} ->\n            opts = %{cache_mode: cache_mode, cache_timeout: cache_timeout}",
+      "find": "         {:ok, conn, _billing} <- Lei.Payments.Gate.admit(conn, admission(split)) do",
+      "replace": "         {:ok, conn, _billing} <- {:ok, conn, admission(split)} do",
       "guarded_by": "test/lowendinsight_get/unbilled_paths_test.exs",
       "app": "apps/lowendinsight_get"
     },
@@ -806,17 +806,17 @@
       "id": "analyze-billed-from-response",
       "bug": "/v1/analyze bills from nothing the request knew in advance -- an async analysis of an uncached repository is recorded as zero and collected later for free. (#152)",
       "file": "apps/lowendinsight_get/lib/lowendinsight_get/endpoint.ex",
-      "find": "            {:ok, result} ->\n              record_usage(billing, split)\n",
-      "replace": "            {:ok, result} ->\n              record_usage(billing, {0, 0})\n",
+      "find": "         {:ok, conn, billing} <- Lei.Payments.Gate.admit(conn, admission(split)) do",
+      "replace": "         {:ok, conn, billing} <- Lei.Payments.Gate.admit(conn, admission({0, 0})) do",
       "guarded_by": "test/lowendinsight_get/unbilled_paths_test.exs",
       "app": "apps/lowendinsight_get"
     },
     {
       "id": "required-credits-ignored",
       "bug": "A credit-funded org holding less than a request costs is admitted and run into debt: an SBOM of hundreds of uncached repositories on a balance of five credits. (#152)",
-      "file": "apps/lowendinsight/lib/lei/payments/gate.ex",
-      "find": "      {:ok, balance} when is_integer(balance) and balance < required ->",
-      "replace": "      {:ok, balance} when is_integer(balance) and false and balance < required ->",
+      "file": "apps/lowendinsight/lib/lei/usage_tracker.ex",
+      "find": "        if balance > 0 and balance >= required_credits,",
+      "replace": "        if balance > 0,",
       "guarded_by": "test/lowendinsight_get/unbilled_paths_test.exs",
       "app": "apps/lowendinsight_get"
     },
@@ -1174,9 +1174,9 @@
     {
       "id": "free-tier-limit-not-per-request",
       "bug": "A free org with one analysis left could submit thousands of URLs in one request: the gate compared analyses remaining with a price in credits and admitted anyway (security, 2026-09-14).",
-      "file": "apps/lowendinsight/lib/lei/payments/gate.ex",
-      "find": "      {:ok, remaining} when is_integer(remaining) and analyses > remaining ->",
-      "replace": "      {:ok, remaining} when is_integer(remaining) and false and analyses > remaining ->",
+      "file": "apps/lowendinsight/lib/lei/usage_tracker.ex",
+      "find": "        if used < limit and used + analyses <= limit,",
+      "replace": "        if used < limit,",
       "guarded_by": "test/lowendinsight_get/per_request_quota_test.exs",
       "app": "apps/lowendinsight_get"
     },
@@ -1184,8 +1184,8 @@
       "id": "analyze-routes-omit-analysis-count",
       "bug": "/v1/analyze and /v1/analyze/sbom did not tell the gate how many analyses a request would run (security, 2026-09-14).",
       "file": "apps/lowendinsight_get/lib/lowendinsight_get/endpoint.ex",
-      "find": "    do: [required_credits: credits_for(split), analyses: hits + misses]",
-      "replace": "    do: [required_credits: credits_for(split), analyses: 0 * (hits + misses)]",
+      "find": "  defp admission(split), do: [required_credits: credits_for(split), usage: split]",
+      "replace": "  defp admission(split), do: [required_credits: credits_for(split), usage: {0, 0}]",
       "guarded_by": "test/lowendinsight_get/per_request_quota_test.exs",
       "app": "apps/lowendinsight_get"
     },
@@ -1394,6 +1394,33 @@
       "find": " and :ok == LowendinsightGet.RemoteUrl.validate_all(urls)",
       "replace": "",
       "guarded_by": "test/lowendinsight_get/remote_url_test.exs",
+      "app": "apps/lowendinsight_get"
+    },
+    {
+      "id": "admission-without-org-lock",
+      "bug": "Admission and usage writes did not lock the org, so simultaneous requests spent one balance or allowance many times and usage writes lost debits (security, 2026-09-15).",
+      "file": "apps/lowendinsight/lib/lei/usage_tracker.ex",
+      "find": "    Repo.one!(from(o in Org, where: o.id == ^org_id, lock: \"FOR UPDATE\"))",
+      "replace": "    Repo.one!(from(o in Org, where: o.id == ^org_id))",
+      "guarded_by": "test/lei/admission_concurrency_test.exs",
+      "app": "apps/lowendinsight"
+    },
+    {
+      "id": "invalid-input-charged-at-admission",
+      "bug": "A request the analyzer refuses was admitted, and so charged, before being refused (2026-09-15).",
+      "file": "apps/lowendinsight_get/lib/lowendinsight_get/endpoint.ex",
+      "find": "    with :ok <- analyzable(conn.body_params),",
+      "replace": "    with _ <- analyzable(conn.body_params),",
+      "guarded_by": "test/lowendinsight_get/unbilled_paths_test.exs",
+      "app": "apps/lowendinsight_get"
+    },
+    {
+      "id": "admission-checks-but-does-not-charge",
+      "bug": "Admission checked the allowance but recorded usage only after the analysis, leaving the check-then-spend race (security, 2026-09-15).",
+      "file": "apps/lowendinsight/lib/lei/payments/gate.ex",
+      "find": "        case Lei.UsageTracker.admit_usage(org_id, api_key_id, hits, misses, required) do",
+      "replace": "        case Lei.UsageTracker.admit_usage(org_id, api_key_id, 0, 0, required) do",
+      "guarded_by": "test/lowendinsight_get/unbilled_paths_test.exs",
       "app": "apps/lowendinsight_get"
     }
   ]
