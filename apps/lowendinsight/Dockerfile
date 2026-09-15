@@ -1,6 +1,9 @@
-ARG ALPINE_VERSION=3.16
+# Versions must match .tool-versions; scripts/check-toolchain.sh enforces it.
+ARG ELIXIR_VERSION=1.20.4
+ARG ERLANG_VERSION=28.5.0.6
+ARG ALPINE_VERSION=3.24.1
 
-FROM elixir:1.14.1-alpine AS builder
+FROM hexpm/elixir:${ELIXIR_VERSION}-erlang-${ERLANG_VERSION}-alpine-${ALPINE_VERSION} AS builder
 
 ARG MIX_ENV=gha
 

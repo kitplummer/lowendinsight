@@ -128,10 +128,8 @@ defmodule Mix.Tasks.Lei.Cache.Export do
         |> Enum.map(fn url ->
           Mix.shell().info("  Analyzing #{url}...")
 
-          case AnalyzerModule.analyze(url, "lei cache export", %{types: true}) do
-            {:ok, report} -> report
-            _ -> nil
-          end
+          {:ok, report} = AnalyzerModule.analyze(url, "lei cache export", %{types: true})
+          report
         end)
         |> Enum.reject(&is_nil/1)
 

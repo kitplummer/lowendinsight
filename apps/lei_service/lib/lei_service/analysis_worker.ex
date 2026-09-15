@@ -8,9 +8,8 @@ defmodule LeiService.AnalysisWorker do
   def perform(%Oban.Job{args: %{"uuid" => uuid, "urls" => urls, "start_time" => start_time_str}}) do
     {:ok, start_time, _} = DateTime.from_iso8601(start_time_str)
 
-    case LeiService.Analysis.process(uuid, urls, start_time) do
-      {:ok, _report} -> :ok
-      {:error, reason} -> {:error, reason}
-    end
+    # process/3 raises on failure, which Oban records and retries.
+    {:ok, _report} = LeiService.Analysis.process(uuid, urls, start_time)
+    :ok
   end
 end

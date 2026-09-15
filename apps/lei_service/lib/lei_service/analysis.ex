@@ -180,14 +180,12 @@ defmodule LeiService.Analysis do
       partial_report = Map.replace!(empty, :report, %{:repos => repos})
       LeiService.Datastore.write_job(uuid, partial_report)
 
-      case LeiService.AnalysisSupervisor.perform_analysis(uuid, uncached_urls, start_time) do
-        {:ok, task} ->
-          Logger.info(task)
-          {:ok, Poison.encode!(partial_report)}
+      # perform_analysis/3 raises when it cannot queue or start the work.
+      {:ok, task} =
+        LeiService.AnalysisSupervisor.perform_analysis(uuid, uncached_urls, start_time)
 
-        {:error, error} ->
-          {:error, error}
-      end
+      Logger.info(task)
+      {:ok, Poison.encode!(partial_report)}
     end
   end
 
@@ -243,18 +241,15 @@ defmodule LeiService.Analysis do
       partial_report = Map.replace!(empty, :report, %{:repos => repos})
       LeiService.Datastore.write_job(uuid, partial_report)
 
-      case LeiService.AnalysisSupervisor.perform_analysis(uuid, uncached_urls, start_time) do
-        {:ok, _task} ->
-          case poll_job(uuid, timeout) do
-            {:ok, report_json} ->
-              {:ok, report_json}
+      {:ok, _task} =
+        LeiService.AnalysisSupervisor.perform_analysis(uuid, uncached_urls, start_time)
 
-            {:timeout, uuid} ->
-              {:timeout, uuid}
-          end
+      case poll_job(uuid, timeout) do
+        {:ok, report_json} ->
+          {:ok, report_json}
 
-        {:error, error} ->
-          {:error, error}
+        {:timeout, uuid} ->
+          {:timeout, uuid}
       end
     end
   end
@@ -412,18 +407,15 @@ defmodule LeiService.Analysis do
       partial_report = Map.replace!(job, "report", %{:repos => repos})
       LeiService.Datastore.write_job(uuid, partial_report)
 
-      case LeiService.AnalysisSupervisor.perform_analysis(
-             uuid,
-             urls,
-             job["metadata"]["times"]["start_time"]
-           ) do
-        {:ok, task} ->
-          Logger.info(task)
-          partial_report
+      {:ok, task} =
+        LeiService.AnalysisSupervisor.perform_analysis(
+          uuid,
+          urls,
+          job["metadata"]["times"]["start_time"]
+        )
 
-        {:error, error} ->
-          {:error, error}
-      end
+      Logger.info(task)
+      partial_report
     end
   end
 end

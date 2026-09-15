@@ -9,7 +9,6 @@ defmodule LeiService.RequestLogger do
   """
 
   use GenServer
-  require Logger
 
   @max_entries 1000
   @table :lei_request_log

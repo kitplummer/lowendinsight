@@ -5,9 +5,14 @@
 # Build context: repo root (../../)
 # Usage: docker build -f apps/lei_service/Dockerfile .
 
-ARG ALPINE_VERSION=3.18
+# Builder and runtime share one Alpine release so the release's ERTS links
+# against the same musl and OpenSSL it runs with. Versions must match
+# .tool-versions; scripts/check-toolchain.sh enforces it.
+ARG ELIXIR_VERSION=1.20.4
+ARG ERLANG_VERSION=28.5.0.6
+ARG ALPINE_VERSION=3.24.1
 
-FROM elixir:1.15.7-alpine AS builder
+FROM hexpm/elixir:${ELIXIR_VERSION}-erlang-${ERLANG_VERSION}-alpine-${ALPINE_VERSION} AS builder
 
 ARG MIX_ENV=prod
 

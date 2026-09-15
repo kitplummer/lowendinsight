@@ -115,15 +115,15 @@ defmodule GitHelper do
   # cost is one pass however many bytes need repairing.
   defp repair_utf8(binary, start, pos, acc) do
     case binary do
-      <<_::binary-size(pos)>> ->
+      <<_::binary-size(^pos)>> ->
         [binary_part(binary, start, pos - start) | acc]
         |> :lists.reverse()
         |> IO.iodata_to_binary()
 
-      <<_::binary-size(pos), codepoint::utf8, _::binary>> ->
+      <<_::binary-size(^pos), codepoint::utf8, _::binary>> ->
         repair_utf8(binary, start, pos + utf8_width(codepoint), acc)
 
-      <<_::binary-size(pos), byte, _::binary>> ->
+      <<_::binary-size(^pos), byte, _::binary>> ->
         acc = [<<byte::utf8>>, binary_part(binary, start, pos - start) | acc]
         repair_utf8(binary, pos + 1, pos + 1, acc)
     end

@@ -11,12 +11,14 @@
 #
 # Each stage answers a different question:
 #
+#   toolchain        do CI, Docker and .tool-versions pin the same Elixir/OTP
 #   compile          does it build without new warnings
 #   suite            does the code do what the tests say
 #   seed sweep       does it still, in a different order
 #   guards           would the tests catch the bug coming back
 #   backup grants    can the backup role still dump what migrations create
 #   library isolation does the library work for a project that has only it
+#   dependency audit does any locked dependency have an unacknowledged advisory
 #
 # A stage that cannot run is a failure, not a skip. Reporting success for work
 # not done is the specific fault this script exists to prevent.
@@ -97,6 +99,10 @@ check_format() {
   return "${PIPESTATUS[0]}"
 }
 
+check_toolchain() {
+  ./scripts/check-toolchain.sh
+}
+
 check_compile() {
   # Warnings as errors. A warning is the compiler noticing something you did
   # not mean; letting them accumulate means the one that matters is invisible.
@@ -160,6 +166,14 @@ check_library_isolation() {
   grep -q "The library stands alone." /tmp/preflight-isolation.out && dim "   library stands alone"
 }
 
+check_dependency_audit() {
+  ./scripts/dependency-audit.sh >/tmp/preflight-audit.out 2>&1 || {
+    tail -25 /tmp/preflight-audit.out
+    return 1
+  }
+  grep -q "Dependency audit passed" /tmp/preflight-audit.out && dim "   no unacknowledged advisories"
+}
+
 check_backup_grants() {
   ./scripts/verify-backup-grants.sh >/tmp/preflight-grants.out 2>&1 || {
     tail -25 /tmp/preflight-grants.out
@@ -174,11 +188,13 @@ bold "=== preflight ==="
 echo
 
 stage "format"   check_format
+stage "toolchain" check_toolchain
 stage "compile"  check_compile
 stage "databases" check_databases
 stage "suite"    check_suite
 stage "guards"   check_guards
 stage "library isolation" check_library_isolation
+stage "dependency audit"  check_dependency_audit
 
 if [ "$QUICK" -eq 1 ]; then
   SKIPPED+=("seed sweep" "backup grants")

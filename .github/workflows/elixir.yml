@@ -16,13 +16,15 @@ jobs:
     - uses: actions/checkout@v4
     - uses: erlef/setup-beam@v1
       with:
-        elixir-version: 1.16.3
-        otp-version: 26.2
+        elixir-version: 1.20.4
+        otp-version: 28.5.0.6
     - name: Install dependencies
       run: |
         mix local.rebar --force
         mix local.hex --force
         mix deps.get
+    - name: Toolchain pins agree
+      run: scripts/check-toolchain.sh
     - name: Check formatting
       run: mix format --check-formatted
     - name: Compile with warnings as errors
@@ -76,8 +78,8 @@ jobs:
     - uses: actions/checkout@v4
     - uses: erlef/setup-beam@v1
       with:
-        elixir-version: 1.16.3
-        otp-version: 26.2
+        elixir-version: 1.20.4
+        otp-version: 28.5.0.6
     - name: Install dependencies
       run: |
         mix local.rebar --force
@@ -94,8 +96,8 @@ jobs:
     - uses: actions/checkout@v4
     - uses: erlef/setup-beam@v1
       with:
-        elixir-version: 1.16.3
-        otp-version: 26.2
+        elixir-version: 1.20.4
+        otp-version: 28.5.0.6
     - name: Install Hex and rebar
       run: |
         mix local.rebar --force
@@ -130,8 +132,8 @@ jobs:
     - name: Setup Elixir
       uses: erlef/setup-beam@v1
       with:
-        elixir-version: 1.16.3
-        otp-version: 26.2
+        elixir-version: 1.20.4
+        otp-version: 28.5.0.6
     - name: Install Dependencies
       run: |
         mix local.rebar --force
@@ -219,8 +221,8 @@ jobs:
     - name: Setup Elixir
       uses: erlef/setup-beam@v1
       with:
-        elixir-version: 1.16.3
-        otp-version: 26.2
+        elixir-version: 1.20.4
+        otp-version: 28.5.0.6
     - uses: actions/setup-node@v4
       with:
         node-version: 20
@@ -275,8 +277,8 @@ jobs:
     - uses: actions/checkout@v4
     - uses: erlef/setup-beam@v1
       with:
-        elixir-version: 1.16.3
-        otp-version: 26.2
+        elixir-version: 1.20.4
+        otp-version: 28.5.0.6
     - name: Install dependencies
       run: |
         mix local.rebar --force
@@ -300,23 +302,27 @@ jobs:
         fi
         echo "Working tree clean."
 
-  # Dependency audit
+  # Dependency audit. mix_audit (deps.audit) reported nothing while the lock
+  # held HIGH advisories in plug, cowboy, cowlib, postgrex and hackney; its
+  # advisory data did not have them. scripts/dependency-audit.sh runs
+  # `mix hex.audit` against Hex's advisory data and fails on anything not
+  # acknowledged in scripts/acknowledged-advisories.txt.
   audit:
     runs-on: ubuntu-latest
     env:
       MIX_ENV: test
-      GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-    container:
-      image: elixir:1.16.3-alpine
-
     steps:
     - uses: actions/checkout@v4
+    - uses: erlef/setup-beam@v1
+      with:
+        elixir-version: 1.20.4
+        otp-version: 28.5.0.6
     - name: Install Dependencies
       run: |
-        apk add git
         mix local.rebar --force
         mix local.hex --force
         mix deps.get
-    - name: Run Audit
-      run: |
-        MIX_ENV=test mix deps.audit
+    - name: Hex advisories
+      run: scripts/dependency-audit.sh
+    - name: mix_audit
+      run: mix deps.audit
