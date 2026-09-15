@@ -1638,6 +1638,15 @@
       "replace": "if n <= max_attempts and transient?(result) do",
       "guarded_by": "test/lei/http/retry_test.exs",
       "app": "apps/lowendinsight"
+    },
+    {
+      "id": "npm-replicate-endpoint",
+      "bug": "The npm scanner queried replicate.npmjs.com, which answers 404 for every package, so npm scans analysed bare package names instead of repositories while the scan tests (which count reports) passed.",
+      "file": "apps/lowendinsight/lib/npm/npm_scanner.ex",
+      "find": "  @registry \"https://registry.npmjs.org/\"",
+      "replace": "  @registry \"https://replicate.npmjs.com/\"",
+      "guarded_by": "test/npm_registry_test.exs",
+      "app": "apps/lowendinsight"
     }
   ]
 }

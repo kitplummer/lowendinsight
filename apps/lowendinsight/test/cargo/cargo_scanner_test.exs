@@ -56,6 +56,10 @@ defmodule CargoScannerTest do
       File.rm_rf!(tmp_dir)
     end
 
+    # Clones every crate's repository from GitHub. It timed out at 60s in two
+    # full preflight runs (stack in git clone) and passed in 7s alone, so it
+    # measures the network, not the scanner; its assertions are only shapes.
+    @tag :network
     test "scans with both Cargo.toml and Cargo.lock from fixtures" do
       cargo_toml_path = Path.join(@fixtures_path, "cargotoml")
       cargo_lock_path = Path.join(@fixtures_path, "cargolock")
