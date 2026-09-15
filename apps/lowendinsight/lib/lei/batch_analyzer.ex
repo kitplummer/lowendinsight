@@ -60,6 +60,15 @@ defmodule Lei.BatchAnalyzer do
     }
   end
 
+  @doc """
+  `{hits, misses}` for a batch, before any work: what admission prices it at.
+  The same lookup `analyze/2` partitions on.
+  """
+  def cache_split(dependencies) do
+    {cached, misses} = partition_by_cache(dependencies)
+    {length(cached), length(misses)}
+  end
+
   defp partition_by_cache(dependencies) do
     dependencies
     |> Enum.reduce({[], []}, fn dep, {cached, misses} ->

@@ -797,8 +797,8 @@
       "id": "sbom-not-gated",
       "bug": "POST /v1/analyze/sbom admits any key without checking balance or quota, so a wallet org with no credits is served. (#152)",
       "file": "apps/lowendinsight_get/lib/lowendinsight_get/endpoint.ex",
-      "find": "        case Lei.Payments.Gate.admit(conn, required_credits: credits_for(split)) do\n",
-      "replace": "        case {:ok, conn, Lei.Payments.Gate.billing_context(conn)} do\n",
+      "find": "        case Lei.Payments.Gate.admit(conn, admission(split)) do\n          {:halt, conn} ->\n            conn\n\n          {:ok, conn, billing} ->\n            opts = %{cache_mode: cache_mode, cache_timeout: cache_timeout}",
+      "replace": "        case {:ok, conn, Lei.Payments.Gate.billing_context(conn)} do\n          {:halt, conn} ->\n            conn\n\n          {:ok, conn, billing} ->\n            opts = %{cache_mode: cache_mode, cache_timeout: cache_timeout}",
       "guarded_by": "test/lowendinsight_get/unbilled_paths_test.exs",
       "app": "apps/lowendinsight_get"
     },
@@ -815,8 +815,8 @@
       "id": "required-credits-ignored",
       "bug": "A credit-funded org holding less than a request costs is admitted and run into debt: an SBOM of hundreds of uncached repositories on a balance of five credits. (#152)",
       "file": "apps/lowendinsight/lib/lei/payments/gate.ex",
-      "find": "          {:ok, balance} when required > 0 and balance < required ->",
-      "replace": "          {:ok, balance} when false and balance < required ->",
+      "find": "      {:ok, balance} when is_integer(balance) and balance < required ->",
+      "replace": "      {:ok, balance} when is_integer(balance) and false and balance < required ->",
       "guarded_by": "test/lowendinsight_get/unbilled_paths_test.exs",
       "app": "apps/lowendinsight_get"
     },
@@ -1169,6 +1169,33 @@
       "find": "      {:error, {status, _body}} when status in [401, 403] -> \"unauthorized\"\n      _ -> \"unreachable\"\n    end\n  end\n\n  # --- GenServer ---",
       "replace": "      {:error, {status, _body}} when status in [401, 403] -> \"ok\"\n      _ -> \"unreachable\"\n    end\n  end\n\n  # --- GenServer ---",
       "guarded_by": "test/lei/stripe/object_check_test.exs",
+      "app": "apps/lowendinsight"
+    },
+    {
+      "id": "free-tier-limit-not-per-request",
+      "bug": "A free org with one analysis left could submit thousands of URLs in one request: the gate compared analyses remaining with a price in credits and admitted anyway (security, 2026-09-14).",
+      "file": "apps/lowendinsight/lib/lei/payments/gate.ex",
+      "find": "      {:ok, remaining} when is_integer(remaining) and analyses > remaining ->",
+      "replace": "      {:ok, remaining} when is_integer(remaining) and false and analyses > remaining ->",
+      "guarded_by": "test/lowendinsight_get/per_request_quota_test.exs",
+      "app": "apps/lowendinsight_get"
+    },
+    {
+      "id": "analyze-routes-omit-analysis-count",
+      "bug": "/v1/analyze and /v1/analyze/sbom did not tell the gate how many analyses a request would run (security, 2026-09-14).",
+      "file": "apps/lowendinsight_get/lib/lowendinsight_get/endpoint.ex",
+      "find": "    do: [required_credits: credits_for(split), analyses: hits + misses]",
+      "replace": "    do: [required_credits: credits_for(split), analyses: 0 * (hits + misses)]",
+      "guarded_by": "test/lowendinsight_get/per_request_quota_test.exs",
+      "app": "apps/lowendinsight_get"
+    },
+    {
+      "id": "batch-admitted-without-price",
+      "bug": "POST /v1/analyze/batch called the gate with no price, so a batch of any size was admitted to an org that could afford one analysis (security, 2026-09-14).",
+      "file": "apps/lowendinsight/lib/lei/web/router.ex",
+      "find": "        case Lei.Payments.Gate.admit(conn, admission) do",
+      "replace": "        _ = admission\n        case Lei.Payments.Gate.admit(conn) do",
+      "guarded_by": "test/lei/web/batch_admission_test.exs",
       "app": "apps/lowendinsight"
     }
   ]

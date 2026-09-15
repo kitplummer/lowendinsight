@@ -235,7 +235,7 @@ defmodule LowendinsightGet.Endpoint do
     conn = Lei.Payments.Gate.settle(conn)
     split = cache_split(conn.body_params["urls"])
 
-    case Lei.Payments.Gate.admit(conn, required_credits: credits_for(split)) do
+    case Lei.Payments.Gate.admit(conn, admission(split)) do
       {:halt, conn} ->
         conn
 
@@ -314,7 +314,7 @@ defmodule LowendinsightGet.Endpoint do
       {:ok, urls, cache_mode, cache_timeout} ->
         split = cache_split(urls)
 
-        case Lei.Payments.Gate.admit(conn, required_credits: credits_for(split)) do
+        case Lei.Payments.Gate.admit(conn, admission(split)) do
           {:halt, conn} ->
             conn
 
@@ -390,6 +390,9 @@ defmodule LowendinsightGet.Endpoint do
   end
 
   defp cache_split(_), do: {0, 0}
+
+  defp admission({hits, misses} = split),
+    do: [required_credits: credits_for(split), analyses: hits + misses]
 
   defp credits_for({hits, misses}) do
     Lei.UsageTracker.calculate_cost(hits, misses)

@@ -313,8 +313,17 @@ defmodule Lei.Web.Router do
     case validate_batch_request(conn.body_params) do
       {:ok, dependencies, opts} ->
         # Refusals -- free tier exhausted, credits exhausted, or no org at all --
-        # are sent by the gate, with payment challenges where one applies.
-        case Lei.Payments.Gate.admit(conn) do
+        # are sent by the gate, with payment challenges where one applies. It
+        # was called with no price, so a batch of any size was admitted to an
+        # org that could afford one analysis.
+        {hits, misses} = Lei.BatchAnalyzer.cache_split(dependencies)
+
+        admission = [
+          required_credits: Lei.Credits.cost_in_credits(hits, misses),
+          analyses: hits + misses
+        ]
+
+        case Lei.Payments.Gate.admit(conn, admission) do
           {:halt, conn} ->
             conn
 
