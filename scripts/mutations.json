@@ -1458,6 +1458,69 @@
       "replace": "",
       "guarded_by": "test/lowendinsight_get/canary_secret_scan_wiring_test.exs",
       "app": "apps/lowendinsight_get"
+    },
+    {
+      "id": "webhook-timestamp-unchecked",
+      "bug": "Stripe webhook signatures were accepted whatever their t= timestamp, so a captured signed delivery could be replayed forever (security, 2026-09-15).",
+      "file": "apps/lowendinsight/lib/lei/stripe.ex",
+      "find": "    abs(System.system_time(:second) - timestamp) <= @webhook_tolerance_seconds",
+      "replace": "    is_integer(timestamp)",
+      "guarded_by": "test/lei/stripe_webhook_hardening_test.exs",
+      "app": "apps/lowendinsight"
+    },
+    {
+      "id": "webhook-first-v1-only",
+      "bug": "Only the first v1 signature was compared, so deliveries failed during a signing-secret rotation (2026-09-15).",
+      "file": "apps/lowendinsight/lib/lei/stripe.ex",
+      "find": "         true <- Enum.any?(v1_sigs, &secure_compare(expected, &1)) || :invalid_signature,",
+      "replace": "         true <- secure_compare(expected, hd(v1_sigs)) || :invalid_signature,",
+      "guarded_by": "test/lei/stripe_webhook_hardening_test.exs",
+      "app": "apps/lowendinsight"
+    },
+    {
+      "id": "webhook-events-not-deduplicated",
+      "bug": "Stripe event ids were not recorded, so a redelivered or replayed event was applied again (security, 2026-09-15).",
+      "file": "apps/lowendinsight/lib/lei/stripe_webhook_handler.ex",
+      "find": "        {0, _} ->\n          :duplicate",
+      "replace": "        {0, _} ->\n          handle_event(event)\n          :processed",
+      "guarded_by": "test/lei/stripe_webhook_hardening_test.exs",
+      "app": "apps/lowendinsight"
+    },
+    {
+      "id": "webhook-completed-ignores-payment-status",
+      "bug": "checkout.session.completed activated the org without checking payment_status (security, 2026-09-15).",
+      "file": "apps/lowendinsight/lib/lei/stripe_webhook_handler.ex",
+      "find": "      session[\"payment_status\"] not in [\"paid\", \"no_payment_required\"] ->",
+      "replace": "      false ->",
+      "guarded_by": "test/lei/stripe_webhook_hardening_test.exs",
+      "app": "apps/lowendinsight"
+    },
+    {
+      "id": "webhook-reactivates-suspended-org",
+      "bug": "A checkout completion re-activated an org suspended for cancellation or failed payment (security, 2026-09-15).",
+      "file": "apps/lowendinsight/lib/lei/stripe_webhook_handler.ex",
+      "find": "  defp activate_paid(%Org{status: \"suspended\"} = org, _session) do",
+      "replace": "  defp activate_paid(%Org{status: \"never-matches\"} = org, _session) do",
+      "guarded_by": "test/lei/stripe_webhook_hardening_test.exs",
+      "app": "apps/lowendinsight"
+    },
+    {
+      "id": "webhook-failure-acknowledged",
+      "bug": "The webhook route answered 200 when an event failed to apply, so Stripe never retried it (2026-09-15).",
+      "file": "apps/lowendinsight/lib/lei/web/router.ex",
+      "find": "          {500, %{error: \"event could not be applied\"}}",
+      "replace": "          {200, %{status: \"ok\"}}",
+      "guarded_by": "test/lei/stripe_webhook_hardening_test.exs",
+      "app": "apps/lowendinsight"
+    },
+    {
+      "id": "stale-webhook-counted-as-invalid",
+      "bug": "A replayed or clock-skewed Stripe delivery was counted as a signing-secret mismatch, raising the monitor's rotation alarm for something that is not one (2026-09-15).",
+      "file": "apps/lowendinsight/lib/lei/web/router.ex",
+      "find": "            Lei.WebhookStats.record(:stale)",
+      "replace": "            Lei.WebhookStats.record(:invalid)",
+      "guarded_by": "test/lei/stripe_webhook_hardening_test.exs",
+      "app": "apps/lowendinsight"
     }
   ]
 }

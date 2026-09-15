@@ -2,37 +2,59 @@ defmodule Lei.StripeWebhookHandler do
   require Logger
   alias Lei.{Repo, Org}
 
-  def handle_event(%{"type" => "checkout.session.completed"} = event) do
+  @doc """
+  Applies a verified event once.
+
+  The event id is recorded in the same transaction as the event's effects, so
+  an event is applied and recorded, or neither. A redelivery -- Stripe delivers
+  at least once, and a signed delivery can be captured and resent within the
+  signature's tolerance -- finds the record and is skipped.
+
+  Returns `{:ok, :processed}`, `{:ok, :duplicate}` or `{:error, :missing_event_id}`.
+  Anything the handler raises rolls back, so the delivery is not recorded and
+  Stripe's retry is processed.
+  """
+  def process(%{"id" => id, "type" => type} = event) when is_binary(id) and id != "" do
+    Repo.transaction(fn ->
+      # The row count, not a struct: with on_conflict: :nothing, Repo.insert/2
+      # returns {:ok, struct} whether or not a row was written.
+      row = %{id: id, type: to_string(type), inserted_at: NaiveDateTime.utc_now(:second)}
+
+      case Repo.insert_all(Lei.StripeEvent, [row], on_conflict: :nothing, conflict_target: :id) do
+        {0, _} ->
+          :duplicate
+
+        {1, _} ->
+          result = handle_event(event)
+          Logger.info("Stripe webhook #{type} #{id}: #{inspect(outcome(result))}")
+          :processed
+      end
+    end)
+  end
+
+  def process(_event), do: {:error, :missing_event_id}
+
+  defp outcome({:ok, %Org{} = org}), do: {:ok, org.id}
+  defp outcome(other), do: other
+
+  # checkout.session.completed arrives for every finished checkout, paid or not:
+  # an asynchronous payment method completes the session with payment_status
+  # "unpaid" and settles later, as checkout.session.async_payment_succeeded.
+  def handle_event(%{"type" => type} = event)
+      when type in ["checkout.session.completed", "checkout.session.async_payment_succeeded"] do
     session = event["data"]["object"]
     org_id = get_in(session, ["metadata", "org_id"])
 
-    if org_id do
-      case Repo.get(Org, org_id) do
-        nil ->
-          Logger.warning("Stripe webhook: org #{org_id} not found")
-          {:error, :org_not_found}
+    cond do
+      is_nil(org_id) ->
+        Logger.warning("Stripe webhook: missing org_id in session metadata")
+        {:error, :missing_org_id}
 
-        org ->
-          subscription_id = session["subscription"]
+      session["payment_status"] not in ["paid", "no_payment_required"] ->
+        {:ok, :not_paid}
 
-          # Extract subscription_item_id if available in the session
-          subscription_item_id = extract_subscription_item_id(session)
-
-          attrs =
-            %{
-              status: "active",
-              stripe_customer_id: session["customer"],
-              stripe_subscription_id: subscription_id
-            }
-            |> maybe_put(:stripe_metered_subscription_item_id, subscription_item_id)
-
-          org
-          |> Org.stripe_changeset(attrs)
-          |> Repo.update()
-      end
-    else
-      Logger.warning("Stripe webhook: missing org_id in session metadata")
-      {:error, :missing_org_id}
+      true ->
+        activate_paid(Repo.get(Org, org_id), session)
     end
   end
 
@@ -73,6 +95,32 @@ defmodule Lei.StripeWebhookHandler do
   def handle_event(%{"type" => type}) do
     Logger.debug("Stripe webhook: ignoring event type #{type}")
     :ok
+  end
+
+  defp activate_paid(nil, session) do
+    Logger.warning("Stripe webhook: org #{get_in(session, ["metadata", "org_id"])} not found")
+    {:error, :org_not_found}
+  end
+
+  # Never re-activates a suspended org: an old completion replayed after a
+  # cancellation or a failed payment would otherwise undo the suspension.
+  defp activate_paid(%Org{status: "suspended"} = org, _session) do
+    Logger.warning("Stripe webhook: org #{org.id} is suspended; checkout completion ignored")
+    {:ok, :suspended}
+  end
+
+  defp activate_paid(%Org{} = org, session) do
+    attrs =
+      %{
+        status: "active",
+        stripe_customer_id: session["customer"],
+        stripe_subscription_id: session["subscription"]
+      }
+      |> maybe_put(:stripe_metered_subscription_item_id, extract_subscription_item_id(session))
+
+    org
+    |> Org.stripe_changeset(attrs)
+    |> Repo.update()
   end
 
   defp find_org_by_customer(customer_id) when is_binary(customer_id) do

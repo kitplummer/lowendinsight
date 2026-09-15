@@ -99,39 +99,50 @@ defmodule Lei.Stripe do
   end
 
   @impl true
+  # Stripe's own libraries allow five minutes. Beyond it a signed delivery is
+  # treated as a replay: the signature proves Stripe sent it once, not that it
+  # is being sent now.
+  @webhook_tolerance_seconds 300
+
   def construct_webhook_event(payload, signature, webhook_secret) do
-    # Verify Stripe webhook signature
-    timestamp_and_sigs = String.split(signature, ",")
+    parts =
+      signature
+      |> String.split(",")
+      |> Enum.map(&String.split(&1, "=", parts: 2))
 
     timestamp =
-      Enum.find_value(timestamp_and_sigs, fn part ->
-        case String.split(part, "=", parts: 2) do
-          ["t", ts] -> ts
-          _ -> nil
-        end
+      Enum.find_value(parts, fn
+        [k, v] when k == "t" -> v
+        _ -> nil
       end)
 
-    v1_sig =
-      Enum.find_value(timestamp_and_sigs, fn part ->
-        case String.split(part, "=", parts: 2) do
-          ["v1", sig] -> sig
-          _ -> nil
-        end
-      end)
+    # Every v1, not the first. During a secret rotation Stripe signs with both
+    # the old and the new secret, and either may come first.
+    v1_sigs = for [k, v] <- parts, k == "v1", do: v
 
-    if is_nil(timestamp) or is_nil(v1_sig) do
-      {:error, :invalid_signature}
+    with ts when is_binary(ts) <- timestamp,
+         [_ | _] <- v1_sigs,
+         {ts_int, ""} <- Integer.parse(ts),
+         expected =
+           :crypto.mac(:hmac, :sha256, webhook_secret, "#{ts}.#{payload}")
+           |> Base.encode16(case: :lower),
+         true <- Enum.any?(v1_sigs, &secure_compare(expected, &1)) || :invalid_signature,
+         true <- within_tolerance?(ts_int) || :timestamp_outside_tolerance do
+      decode_event(payload)
     else
-      signed_payload = "#{timestamp}.#{payload}"
+      :timestamp_outside_tolerance -> {:error, :timestamp_outside_tolerance}
+      _ -> {:error, :invalid_signature}
+    end
+  end
 
-      expected =
-        :crypto.mac(:hmac, :sha256, webhook_secret, signed_payload) |> Base.encode16(case: :lower)
+  defp within_tolerance?(timestamp) do
+    abs(System.system_time(:second) - timestamp) <= @webhook_tolerance_seconds
+  end
 
-      if secure_compare(expected, v1_sig) do
-        {:ok, Poison.decode!(payload)}
-      else
-        {:error, :invalid_signature}
-      end
+  defp decode_event(payload) do
+    case Poison.decode(payload) do
+      {:ok, %{} = event} -> {:ok, event}
+      _ -> {:error, :invalid_payload}
     end
   end
 

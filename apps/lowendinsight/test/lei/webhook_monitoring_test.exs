@@ -94,7 +94,8 @@ defmodule Lei.WebhookMonitoringTest do
 
     test "a correctly signed request counts as ok" do
       Application.put_env(:lowendinsight, :stripe_webhook_secret, @secret)
-      body = ~s({"type":"some.unhandled.event","data":{"object":{}}})
+      # Real Stripe events always carry an id; one without is now refused.
+      body = ~s({"id":"evt_monitoring_ok","type":"some.unhandled.event","data":{"object":{}}})
 
       conn = post_webhook(body, sign(body, @secret))
 

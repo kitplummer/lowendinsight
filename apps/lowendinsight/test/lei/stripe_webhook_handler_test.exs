@@ -17,6 +17,7 @@ defmodule Lei.StripeWebhookHandlerTest do
         "type" => "checkout.session.completed",
         "data" => %{
           "object" => %{
+            "payment_status" => "paid",
             "metadata" => %{"org_id" => to_string(org.id)},
             "customer" => "cus_test_123",
             "subscription" => "sub_test_456"
@@ -37,6 +38,7 @@ defmodule Lei.StripeWebhookHandlerTest do
         "type" => "checkout.session.completed",
         "data" => %{
           "object" => %{
+            "payment_status" => "paid",
             "metadata" => %{"org_id" => to_string(org.id)},
             "customer" => "cus_item_123",
             "subscription" => "sub_item_456",
@@ -70,6 +72,7 @@ defmodule Lei.StripeWebhookHandlerTest do
         "type" => "checkout.session.completed",
         "data" => %{
           "object" => %{
+            "payment_status" => "paid",
             "metadata" => %{"org_id" => "999999"},
             "customer" => "cus_test_123"
           }
