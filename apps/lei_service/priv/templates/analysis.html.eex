@@ -86,7 +86,7 @@
     <% {:ok, slug} = Helpers.get_slug(url) %>
     <section class="section report-detail" id="report">
       <div class="container">
-        <%# Not <header>: endpoints.css fixes every header at 50px tall. %>
+        <%!-- Not <header>: endpoints.css fixes every header at 50px tall. --%>
         <div class="report-head">
           <p class="report-kicker">Repository report</p>
           <h2 class="title is-3 report-title">
@@ -185,7 +185,7 @@
           <pre><%= v.pretty_json(r) %></pre>
         </details>
 
-        <%# Machine-readable copy: scripts/canary.sh reads the report from here. %>
+        <%!-- Machine-readable copy: scripts/canary.sh reads the report from here. --%>
         <script type="application/json" id="report-data"><%= Lei.Web.HTML.script_json(r) %></script>
       </div>
     </section>

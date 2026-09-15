@@ -3,8 +3,6 @@
 # the BSD 3-Clause license. See the LICENSE file for details.
 
 defmodule Npm.Scanner do
-  require HTTPoison.Retry
-
   @moduledoc """
   Scanner scans for node dependencies to run analysis on.
   """
@@ -102,13 +100,9 @@ defmodule Npm.Scanner do
     HTTPoison.start()
 
     {:ok, response} =
-      HTTPoison.get("https://replicate.npmjs.com/" <> encoded_id)
-      |> HTTPoison.Retry.autoretry(
-        max_attempts: 5,
-        wait: 15000,
-        include_404s: false,
-        retry_unknown_errors: false
-      )
+      Lei.HTTP.Retry.request(fn ->
+        HTTPoison.get("https://replicate.npmjs.com/" <> encoded_id)
+      end)
 
     case response.status_code do
       200 ->

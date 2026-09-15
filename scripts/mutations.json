@@ -1620,6 +1620,24 @@
       "replace": "",
       "guarded_by": "test/declared_dependencies_test.exs",
       "app": "apps/lowendinsight"
+    },
+    {
+      "id": "retry-any-status",
+      "bug": "A retry policy that retries every response re-sends requests that failed for good (404, 403) and waits 15s each time, stalling a scan for a minute per missing package.",
+      "file": "apps/lowendinsight/lib/lei/http/retry.ex",
+      "find": "def transient?({:ok, %HTTPoison.Response{status_code: 500}}), do: true",
+      "replace": "def transient?({:ok, %HTTPoison.Response{status_code: _}}), do: true",
+      "guarded_by": "test/lei/http/retry_test.exs",
+      "app": "apps/lowendinsight"
+    },
+    {
+      "id": "retry-one-extra-attempt",
+      "bug": "Off-by-one in the attempt count: max_attempts calls become max_attempts + 1, so callers' limits are not what they set.",
+      "file": "apps/lowendinsight/lib/lei/http/retry.ex",
+      "find": "if n < max_attempts and transient?(result) do",
+      "replace": "if n <= max_attempts and transient?(result) do",
+      "guarded_by": "test/lei/http/retry_test.exs",
+      "app": "apps/lowendinsight"
     }
   ]
 }

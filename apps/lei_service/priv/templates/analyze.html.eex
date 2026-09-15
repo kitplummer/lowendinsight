@@ -9,7 +9,7 @@
     <link rel="apple-touch-icon" sizes="180x180" href="/images/apple-touch-icon.png">
     <title>LowEndInsight - OSS Supply Chain Risk Analysis</title>
     <meta name="description" content="Open source supply chain risk analysis for any public git repository. Agents pay per use over the Machine Payments Protocol, with no account.">
-    <%# The same guide, as markdown, for agents that read /llms.txt rather than HTML. %>
+    <%!-- The same guide, as markdown, for agents that read /llms.txt rather than HTML. --%>
     <link rel="alternate" type="text/markdown" href="/llms.txt" title="LowEndInsight for agents">
     <link rel="describedby" type="application/json" href="/openapi.json">
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bulma@0.9.4/css/bulma.min.css">
