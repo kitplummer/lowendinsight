@@ -88,13 +88,8 @@ defmodule Lei.BatchAnalyzer do
     |> Enum.reduce({[], []}, fn dep, {pending, failed} ->
       job_id = generate_job_id()
 
-      case schedule_analysis(dep, job_id) do
-        :ok ->
-          {[{dep, job_id} | pending], failed}
-
-        {:error, reason} ->
-          {pending, [{dep, reason} | failed]}
-      end
+      :ok = schedule_analysis(dep, job_id)
+      {[{dep, job_id} | pending], failed}
     end)
     |> then(fn {pending, failed} -> {Enum.reverse(pending), Enum.reverse(failed)} end)
   end

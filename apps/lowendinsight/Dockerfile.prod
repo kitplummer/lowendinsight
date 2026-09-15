@@ -4,14 +4,15 @@
 #
 # Run: docker run --rm -v /path/to/repo:/workspace lei:latest analyze /workspace
 
-ARG ELIXIR_VERSION=1.16.3
-ARG ERLANG_VERSION=26.2
-ARG ALPINE_VERSION=3.19
+# Must match .tool-versions; scripts/check-toolchain.sh enforces it.
+ARG ELIXIR_VERSION=1.20.4
+ARG ERLANG_VERSION=28.5.0.6
+ARG ALPINE_VERSION=3.24.1
 
 # ==============================================================================
 # Stage 1: Builder - compile application and dependencies
 # ==============================================================================
-FROM elixir:${ELIXIR_VERSION}-alpine AS builder
+FROM hexpm/elixir:${ELIXIR_VERSION}-erlang-${ERLANG_VERSION}-alpine-${ALPINE_VERSION} AS builder
 
 ARG MIX_ENV=prod
 
@@ -62,7 +63,7 @@ RUN syft dir:/build -o cyclonedx-json=/build/sbom.cdx.json && \
 # ==============================================================================
 # Stage 3: Runtime - minimal production image
 # ==============================================================================
-FROM elixir:${ELIXIR_VERSION}-alpine AS runtime
+FROM hexpm/elixir:${ELIXIR_VERSION}-erlang-${ERLANG_VERSION}-alpine-${ALPINE_VERSION} AS runtime
 
 ARG MIX_ENV=prod
 

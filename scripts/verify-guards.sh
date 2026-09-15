@@ -51,7 +51,7 @@ PASS=0
 FAIL=0
 STALE=0
 
-# Mix (1.16) recompiles a source only if its size changed, or its mtime is newer
+# Mix recompiles a source only if its size changed, or its mtime is newer
 # than the build manifest *and* its digest changed -- mtimes at one-second
 # resolution. A mutation that keeps the file's size (uuid4 -> uuid1), applied or
 # restored in the same second as the last compile, was not recompiled: the

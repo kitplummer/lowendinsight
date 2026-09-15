@@ -1,6 +1,5 @@
-# Update the VARIANT arg in docker-compose.yml to pick an Elixir version: 1.9, 1.10, 1.10.4
-ARG VARIANT=latest
-FROM elixir:${VARIANT}
+# Must match .tool-versions; scripts/check-toolchain.sh enforces it.
+FROM elixir:1.20.4-otp-28
 
 # This Dockerfile adds a non-root user with sudo access. Update the “remoteUser” property in
 # devcontainer.json to use it. More info: https://aka.ms/vscode-remote/containers/non-root-user.

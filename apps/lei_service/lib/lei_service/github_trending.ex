@@ -4,7 +4,6 @@
 
 defmodule LeiService.GithubTrending do
   require Logger
-  require HTTPoison.Retry
 
   @type language() :: String.t()
 

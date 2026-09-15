@@ -60,14 +60,9 @@ defmodule Mix.Tasks.Lei.ExportCache do
       output_dir =
         output || Path.join(System.tmp_dir!(), "lei-cache-#{Date.to_iso8601(Date.utc_today())}")
 
-      case Lei.Cache.Exporter.export(reports, output_dir) do
-        {:ok, dir} ->
-          Mix.shell().info("Cache exported to #{dir}")
-          Mix.shell().info("  Entries: #{length(reports)}")
-
-        {:error, msg} ->
-          Mix.shell().error("Export failed: #{msg}")
-      end
+      {:ok, dir} = Lei.Cache.Exporter.export(reports, output_dir)
+      Mix.shell().info("Cache exported to #{dir}")
+      Mix.shell().info("  Entries: #{length(reports)}")
     end
   end
 end

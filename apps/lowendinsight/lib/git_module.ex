@@ -7,7 +7,6 @@ defmodule GitModule do
   Collections of functions for interacting with the `git` command to perform queries.
   """
   @behaviour GitModule.Behaviour
-  require Logger
 
   @doc """
   clone_repo/2: clones the repo

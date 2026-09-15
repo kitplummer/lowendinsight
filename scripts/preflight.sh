@@ -11,6 +11,7 @@
 #
 # Each stage answers a different question:
 #
+#   toolchain        do CI, Docker and .tool-versions pin the same Elixir/OTP
 #   compile          does it build without new warnings
 #   suite            does the code do what the tests say
 #   seed sweep       does it still, in a different order
@@ -98,6 +99,10 @@ check_format() {
   return "${PIPESTATUS[0]}"
 }
 
+check_toolchain() {
+  ./scripts/check-toolchain.sh
+}
+
 check_compile() {
   # Warnings as errors. A warning is the compiler noticing something you did
   # not mean; letting them accumulate means the one that matters is invisible.
@@ -183,6 +188,7 @@ bold "=== preflight ==="
 echo
 
 stage "format"   check_format
+stage "toolchain" check_toolchain
 stage "compile"  check_compile
 stage "databases" check_databases
 stage "suite"    check_suite

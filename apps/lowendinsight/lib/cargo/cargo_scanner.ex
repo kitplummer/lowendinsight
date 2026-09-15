@@ -127,12 +127,9 @@ defmodule Cargo.Scanner do
   end
 
   defp run_analysis(url, crate_name) do
-    result = AnalyzerModule.analyze(url, "cargo.scan:#{crate_name}", %{types: true})
-
-    case result do
-      {:ok, report} -> report
-      _ -> nil
-    end
+    # analyze/3 reports failures inside the report, never as {:error, _}.
+    {:ok, report} = AnalyzerModule.analyze(url, "cargo.scan:#{crate_name}", %{types: true})
+    report
   end
 
   @doc """
