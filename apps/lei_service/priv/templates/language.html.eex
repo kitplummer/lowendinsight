@@ -133,7 +133,7 @@
           <tbody>
             <%= for repo <- report["report"]["repos"] do %>
                 <% {:ok, slug} = Helpers.get_slug(repo["data"]["repo"]) %>
-                <%# data-repo is what scripts/canary.sh counts: one per analysed repository. %>
+                <%!-- data-repo is what scripts/canary.sh counts: one per analysed repository. --%>
                 <script defer type="text/javascript" data-repo="<%= repo["data"]["repo"] %>">
                   display_report(<%= Lei.Web.HTML.script_json(slug) %>, <%= Lei.Web.HTML.script_json(repo) %>);
                 </script>

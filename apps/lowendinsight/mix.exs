@@ -10,7 +10,7 @@ defmodule GithubModule.MixProject do
       app: :lowendinsight,
       description: description(),
       version: "0.9.1",
-      elixir: "~> 1.14",
+      elixir: "~> 1.17",
       start_permanent: Mix.env() == :prod,
       build_path: "../../_build",
       config_path: "../../config/config.exs",
@@ -44,8 +44,7 @@ defmodule GithubModule.MixProject do
   # Run "mix help deps" to learn about dependencies.
   defp deps do
     [
-      {:httpoison, "~> 1.8"},
-      {:httpoison_retry, "~> 1.1"},
+      {:httpoison, "~> 3.0"},
       {:git_cli, "~> 0.3"},
       {:poison, "~> 6.0"},
       {:elixir_uuid, "~> 1.2"},

@@ -9,7 +9,7 @@ defmodule LeiService.MixProject do
     [
       app: :lei_service,
       version: "0.9.4",
-      elixir: "~> 1.14",
+      elixir: "~> 1.17",
       start_permanent: Mix.env() == :prod,
       build_path: "../../_build",
       config_path: "../../config/config.exs",
@@ -32,18 +32,19 @@ defmodule LeiService.MixProject do
       {:plug, "~> 1.15"},
       {:joken, "~> 2.5.0"},
       {:elixir_uuid, "~> 1.2"},
+      # Called directly (Stripe, Tempo RPC, GitHub); declared rather than
+      # inherited from the library.
+      {:httpoison, "~> 3.0"},
       {:cowboy, "~> 2.9", override: true},
       {:plug_cowboy, "~> 2.7"},
       {:credo, "~> 1.7", only: [:dev, :test], runtime: false},
       {:redix, ">= 0.0.0"},
       {:quantum, "~> 3.5"},
-      {:timex, "~> 3.7"},
       {:oban, "~> 2.17"},
       {:ecto_sql, "~> 3.11"},
       {:jason, "~> 1.4"},
       {:postgrex, "~> 0.18"},
       {:lowendinsight, in_umbrella: true},
-      {:httpoison_retry, "~> 1.1"},
       {:excoveralls, "~> 0.18", only: :test},
       {:mox, "~> 1.1", only: :test}
     ]

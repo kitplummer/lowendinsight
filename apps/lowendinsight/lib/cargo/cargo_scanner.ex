@@ -3,8 +3,6 @@
 # the BSD 3-Clause license. See the LICENSE file for details.
 
 defmodule Cargo.Scanner do
-  require HTTPoison.Retry
-
   @moduledoc """
   Scanner scans for Cargo/Rust dependencies to run analysis on.
   """
@@ -103,15 +101,12 @@ defmodule Cargo.Scanner do
     HTTPoison.start()
 
     {:ok, response} =
-      HTTPoison.get(
-        "#{@crates_io_api}/#{crate_name}",
-        [{"User-Agent", "lowendinsight/1.0"}]
-      )
-      |> HTTPoison.Retry.autoretry(
+      Lei.HTTP.Retry.request(
+        fn ->
+          HTTPoison.get("#{@crates_io_api}/#{crate_name}", [{"User-Agent", "lowendinsight/1.0"}])
+        end,
         max_attempts: 3,
-        wait: 5000,
-        include_404s: false,
-        retry_unknown_errors: false
+        wait: 5000
       )
 
     case response.status_code do

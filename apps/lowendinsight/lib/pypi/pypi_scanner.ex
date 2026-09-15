@@ -1,6 +1,4 @@
 defmodule Pypi.Scanner do
-  require HTTPoison.Retry
-
   @moduledoc """
   Scanner scans for python dependencies to run analysis on.
   """
@@ -48,13 +46,9 @@ defmodule Pypi.Scanner do
     HTTPoison.start()
 
     {:ok, response} =
-      HTTPoison.get("https://pypi.org/pypi/" <> encoded_id <> "/json")
-      |> HTTPoison.Retry.autoretry(
-        max_attempts: 5,
-        wait: 15000,
-        include_404s: false,
-        retry_unknown_errors: false
-      )
+      Lei.HTTP.Retry.request(fn ->
+        HTTPoison.get("https://pypi.org/pypi/" <> encoded_id <> "/json")
+      end)
 
     case response.status_code do
       200 ->

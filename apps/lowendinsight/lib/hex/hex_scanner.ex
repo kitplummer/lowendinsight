@@ -3,8 +3,6 @@
 # the BSD 3-Clause license. See the LICENSE file for details.
 
 defmodule Hex.Scanner do
-  require HTTPoison.Retry
-
   @moduledoc """
   Scanner scans for mix dependencies to run analysis on.
   """
@@ -39,14 +37,8 @@ defmodule Hex.Scanner do
   defp query_hex(package) do
     HTTPoison.start()
 
-    response =
-      HTTPoison.get!("https://hex.pm/api/packages/#{package}")
-      |> HTTPoison.Retry.autoretry(
-        max_attempts: 5,
-        wait: 15000,
-        include_404s: false,
-        retry_unknown_errors: false
-      )
+    {:ok, response} =
+      Lei.HTTP.Retry.request(fn -> HTTPoison.get("https://hex.pm/api/packages/#{package}") end)
 
     case response.status_code do
       200 ->
