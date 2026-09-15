@@ -16,7 +16,7 @@ name: backup
 #     snapshot would faithfully copy corruption
 #
 # Required secrets:
-#   PG_DUMP_URL        postgres://user:pass@localhost:15432/lowendinsight_get_prod
+#   PG_DUMP_URL        postgres://user:pass@localhost:15432/lei_service_prod
 #                      (host/port must be localhost:15432 -- flyctl proxy below)
 #   BACKUP_PASSPHRASE  symmetric key for the artifact
 #   FLY_DB_TOKEN       Fly token scoped to the DATABASE app:
@@ -50,7 +50,7 @@ name: backup
 #   pg_restore -d <target> -t orgs lei.dump    # single table
 #
 # Full procedure, including volume-snapshot restore and its two gotchas:
-#   apps/lowendinsight_get/docs/OPERATIONS.md -- "Backup & Recovery"
+#   apps/lei_service/docs/OPERATIONS.md -- "Backup & Recovery"
 
 on:
   schedule:

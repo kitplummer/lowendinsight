@@ -179,7 +179,7 @@ jobs:
         env:
           POSTGRES_USER: postgres
           POSTGRES_PASSWORD: postgres
-          POSTGRES_DB: lowendinsight_get_test
+          POSTGRES_DB: lei_service_test
         ports:
           - 5432:5432
         options: >-
@@ -218,7 +218,7 @@ jobs:
         MIX_ENV=test mix ecto.create
         MIX_ENV=test mix ecto.migrate
     - name: Run LEI-get Tests
-      run: cd apps/lowendinsight_get && MIX_ENV=test mix test
+      run: cd apps/lei_service && MIX_ENV=test mix test
 
   # Verify that guard tests actually catch the bugs they were written for.
   # A green run here means every mutation was caught. The failures are consumed
@@ -236,7 +236,7 @@ jobs:
         env:
           POSTGRES_USER: postgres
           POSTGRES_PASSWORD: postgres
-          POSTGRES_DB: lowendinsight_get_test
+          POSTGRES_DB: lei_service_test
         ports:
           - 5432:5432
         options: >-

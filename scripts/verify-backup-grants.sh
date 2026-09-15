@@ -62,7 +62,7 @@ bold "Running migrations as the application role"
 # part that matters: ALTER DEFAULT PRIVILEGES only covers objects created by the
 # role it names, so running migrations as a superuser here would hide the bug.
 (
-  cd "$ROOT/apps/lowendinsight_get"
+  cd "$ROOT/apps/lei_service"
   MIX_ENV=test \
   LEI_TEST_DB="$DB" \
   LEI_TEST_DB_USER="$APP_ROLE" \
@@ -189,5 +189,5 @@ if [ "$failures" -eq 0 ]; then
 fi
 
 bold "=== $failures check(s) failed ==="
-echo "See 'Backup database user' in apps/lowendinsight_get/docs/OPERATIONS.md."
+echo "See 'Backup database user' in apps/lei_service/docs/OPERATIONS.md."
 exit 1

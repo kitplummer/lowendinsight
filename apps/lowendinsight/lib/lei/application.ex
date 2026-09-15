@@ -4,7 +4,7 @@ defmodule Lei.Application do
 
   Starts only what the analyzer itself needs: the ETS-backed batch cache. The
   hosted service's processes -- its database, rate limiter, payment and Stripe
-  checks, and HTTP endpoint -- are started by `LowendinsightGet.Application`,
+  checks, and HTTP endpoint -- are started by `LeiService.Application`,
   so an application depending on this library gets an analyzer, not a service
   (ADR-003).
   """

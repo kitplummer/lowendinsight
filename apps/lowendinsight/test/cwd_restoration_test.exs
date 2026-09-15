@@ -8,7 +8,7 @@ defmodule CwdRestorationTest do
   subsequent relative path fails with "could not get current working directory".
 
   In the test suite this looked like an order-dependent cascade -- one failed
-  scan invalidated whole modules that ran afterwards. In lowendinsight_get it
+  scan invalidated whole modules that ran afterwards. In lei_service it
   means one failed analysis breaks the service until it restarts.
   """
 

@@ -1,0 +1,25 @@
+---
+version: '3'
+services:
+  postgres:
+    image: "postgres:16-alpine"
+    environment:
+      - POSTGRES_USER=postgres
+      - POSTGRES_PASSWORD=postgres
+      - POSTGRES_DB=lei_service_prod
+  redis-master:
+    image: "redis:alpine"
+  lei-get:
+    image: "kitplummer/lei_service:latest"
+    build:
+      context: ../..
+      dockerfile: apps/lei_service/Dockerfile
+    ports:
+      - "4444:4444"
+    environment:
+      - REDIS_URL=redis://redis-master:6379/3
+      - DATABASE_URL=ecto://postgres:postgres@postgres/lei_service_prod
+      - LEI_CHECK_REPO_SIZE=false
+    depends_on:
+      - postgres
+      - redis-master

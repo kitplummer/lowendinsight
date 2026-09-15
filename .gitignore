@@ -21,7 +21,7 @@ erl_crash.dump
 
 # Ignore package tarballs (built via "mix hex.build").
 lowendinsight-*.tar
-lowendinsight_get-*.tar
+lei_service-*.tar
 
 .elixir_ls
 .vscode/

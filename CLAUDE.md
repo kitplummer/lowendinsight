@@ -93,7 +93,7 @@ Each exists because the one above it was green while something was broken.
 ## Conventions
 
 - Migrations run as the `lowendinsight` role in production; the backup role's
-  grants depend on that. See `apps/lowendinsight_get/docs/OPERATIONS.md`.
+  grants depend on that. See `apps/lei_service/docs/OPERATIONS.md`.
 - Money is integer credits, never floats or `Decimal`, in the ledger.
   One credit is $0.001, matching the Stripe meter unit.
 - The ledger is append-only. Balance is a sum, never a column.

@@ -62,8 +62,8 @@ the loop noticed the difference.
 **Resolved in #69, deployed v120.** All eight routes now answer correctly in
 production; `scripts/smoke-test.sh` asserts every one of them.
 
-`LowendinsightGet.Endpoint` only forwarded to `Lei.Web.Router` for paths matching
-`@auth_paths` (`apps/lowendinsight_get/lib/lowendinsight_get/endpoint.ex:16`).
+`LeiService.Endpoint` only forwarded to `Lei.Web.Router` for paths matching
+`@auth_paths` (`apps/lei_service/lib/lei_service/endpoint.ex:16`).
 Everything else fell through to the endpoint's own catch-all 404.
 
 | Route | Live | Cause |
@@ -93,7 +93,7 @@ Previously `fly.toml` set `http_checks = []` and relied solely on `tcp_checks`.
 Fly knew only whether the port accepted TCP; a wedged application with an open
 socket looked healthy.
 
-Neither `apps/lowendinsight_get/k8s/deployment.yaml` nor
+Neither `apps/lei_service/k8s/deployment.yaml` nor
 `apps/lowendinsight/manifests/deployment.yaml` defines a `livenessProbe` or
 `readinessProbe`, so the UDS path would be equally blind for the same reason.
 
@@ -102,7 +102,7 @@ Neither `apps/lowendinsight_get/k8s/deployment.yaml` nor
 There is no `release_command` in `fly.toml`, no migrate step in the Dockerfile
 `CMD`, and no `Release` module. Migrations have only ever been run by hand.
 
-`LowendinsightGet.Repo` and `Lei.Repo` are both configured from the same
+`LeiService.Repo` and `Lei.Repo` are both configured from the same
 `DATABASE_URL` (`config/runtime.exs`), so two migration directories share a
 single `schema_migrations` table.
 
@@ -185,7 +185,7 @@ these endpoints. Stage 0 is a shared prerequisite for both deployment targets.
 | # | Task | Notes |
 |---|---|---|
 | 1.1 | Decide the migration story | Separate databases, or consolidate to one repo. A design decision, and harder to reverse under UDS where the repos may be backed by different operator-managed databases. Resolve while Fly is the only consumer. |
-| 1.2 | Add `LowendinsightGet.Release.migrate/0` | Put the logic in a module, not inline in `fly.toml`. Fly calls it via `release_command`; a Helm `pre-upgrade` hook or Zarf action calls the same function later. Portable by construction. |
+| 1.2 | Add `LeiService.Release.migrate/0` | Put the logic in a module, not inline in `fly.toml`. Fly calls it via `release_command`; a Helm `pre-upgrade` hook or Zarf action calls the same function later. Portable by construction. |
 | 1.3 | Add `release_command` to `fly.toml` | Migrations run before the new version takes traffic. |
 | 1.4 | GH Actions deploy on `main` | build -> deploy -> smoke gate -> auto-rollback on non-zero exit. |
 | 1.5 | Prove the rollback | Deploy something deliberately broken and confirm it rolls back. An untested rollback is not a rollback. |

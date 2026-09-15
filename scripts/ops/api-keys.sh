@@ -33,4 +33,4 @@ if org == nil, do: IO.puts(\"no org ${ORG}\"), else: (for k <- Lei.ApiKeys.list_
 
 # Base64 so the Elixir survives ssh and shell quoting untouched.
 b64=$(printf '%s' "$code" | base64 | tr -d '\n')
-flyctl ssh console -a "$APP" -C "/opt/app/bin/lowendinsight_get rpc 'Code.eval_string(Base.decode64!(\"$b64\"))'"
+flyctl ssh console -a "$APP" -C "/opt/app/bin/lei_service rpc 'Code.eval_string(Base.decode64!(\"$b64\"))'"

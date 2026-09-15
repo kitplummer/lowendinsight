@@ -402,7 +402,7 @@ separate objects.
 # 5. Metered overage. BillingReporter runs daily and only reports above the
 #    included credit (LEI_PRO_TIER_CREDIT_CENTS, default 1500 = $15), so force it:
 flyctl ssh console -a lowendinsight \
-  -C "/opt/app/bin/lowendinsight_get rpc 'Lei.BillingReporter.report_now()'"
+  -C "/opt/app/bin/lei_service rpc 'Lei.BillingReporter.report_now()'"
 ```
 
 Step 5 is the one most likely to be skipped and most likely to be wrong: it is

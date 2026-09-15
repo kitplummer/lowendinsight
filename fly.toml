@@ -6,13 +6,13 @@ kill_timeout = 5
 processes = []
 
 [build]
-  dockerfile = "apps/lowendinsight_get/Dockerfile"
+  dockerfile = "apps/lei_service/Dockerfile"
 
 # Runs in a temporary machine before the new version takes traffic. If it fails,
 # the release is aborted and the current version keeps serving. Migrations had
 # previously only ever been applied by hand.
 [deploy]
-  release_command = "/opt/app/bin/lowendinsight_get eval 'LowendinsightGet.Release.migrate()'"
+  release_command = "/opt/app/bin/lei_service eval 'LeiService.Release.migrate()'"
 
 [env]
   # Lei.Stripe.Mode refuses a live Stripe key anywhere this is not "production".
@@ -20,7 +20,7 @@ processes = []
   ERL_AFLAGS = "-proto_dist inet6_tcp"
   PORT = "8080"
   # git refuses every transport but https, whatever URL reaches it: the
-  # service's own check (LowendinsightGet.RemoteUrl) is the first line, this
+  # service's own check (LeiService.RemoteUrl) is the first line, this
   # is the second, and it also covers redirects to file:// or git://.
   GIT_ALLOW_PROTOCOL = "https"
 

@@ -109,7 +109,7 @@ check_databases() {
   # on a migration error that looks like a code fault and is not one -- which
   # is its own kind of false signal.
   local failed=0
-  for app in apps/lowendinsight_get; do
+  for app in apps/lei_service; do
     dim "   $app"
     (cd "$app" && MIX_ENV=test mix ecto.create --quiet && MIX_ENV=test mix ecto.migrate >/dev/null) || failed=1
   done
@@ -118,7 +118,7 @@ check_databases() {
 
 check_suite() {
   local failed=0
-  for app in apps/lowendinsight apps/lowendinsight_get; do
+  for app in apps/lowendinsight apps/lei_service; do
     dim "   $app"
     (cd "$app" && MIX_ENV=test mix test --exclude network --exclude long) || failed=1
   done

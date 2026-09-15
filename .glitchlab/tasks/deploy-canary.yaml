@@ -6,6 +6,6 @@ tasks:
   depends_on: []
   task_type: deploy
   definition_of_done: |
-    - Deploy succeeds via flyctl with --dockerfile apps/lowendinsight_get/Dockerfile
+    - Deploy succeeds via flyctl with --dockerfile apps/lei_service/Dockerfile
     - All smoke tests pass (scripts/smoke-test.sh returns exit 0)
     - Health check status: healthy
