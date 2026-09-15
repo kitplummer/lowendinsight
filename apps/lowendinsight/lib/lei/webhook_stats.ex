@@ -17,6 +17,9 @@ defmodule Lei.WebhookStats do
     :invalid       - Stripe signed it, our secret disagrees. A rotation
                      problem: the endpoint's secret was rolled and Fly was not
                      updated, or was updated from the wrong endpoint.
+    :stale         - Stripe's signature is valid, but its timestamp is more
+                     than five minutes from the clock. A replayed delivery,
+                     or clock skew. Not a secret problem, so not :invalid.
     :unsigned      - no stripe-signature header at all. That is an internet
                      scanner hitting a public URL, not a Stripe failure, and it
                      must not raise an alarm.
@@ -27,7 +30,7 @@ defmodule Lei.WebhookStats do
   """
 
   @table :lei_webhook_stats
-  @outcomes [:ok, :unconfigured, :invalid, :unsigned]
+  @outcomes [:ok, :unconfigured, :invalid, :stale, :unsigned]
 
   def outcomes, do: @outcomes
 

@@ -297,11 +297,17 @@ defmodule Lei.Web.Router do
         case stripe.construct_webhook_event(raw_body, signature, webhook_secret) do
           {:ok, event} ->
             Lei.WebhookStats.record(:ok)
-            Lei.StripeWebhookHandler.handle_event(event)
+            apply_webhook(conn, event)
+
+          # Signed by Stripe, but not now: a replay, or clock skew. Refused,
+          # and counted apart from :invalid, which alerts on a secret mismatch.
+          {:error, :timestamp_outside_tolerance} ->
+            Lei.WebhookStats.record(:stale)
+            Logger.warning("Stripe webhook refused: signature timestamp outside tolerance")
 
             conn
             |> put_resp_content_type("application/json")
-            |> send_resp(200, Poison.encode!(%{status: "ok"}))
+            |> send_resp(400, Poison.encode!(%{error: "webhook timestamp outside tolerance"}))
 
           {:error, reason} ->
             Lei.WebhookStats.record(:invalid)
@@ -702,6 +708,31 @@ defmodule Lei.Web.Router do
   defp put_secret_key_base(conn, _opts) do
     secret = Application.get_env(:lowendinsight, :session_secret_key_base)
     Map.put(conn, :secret_key_base, secret)
+  end
+
+  # The answer tells Stripe whether to retry. 200 means applied or already
+  # applied; a failure to apply is a 500, so the delivery is retried rather than
+  # acknowledged and lost. The event is recorded only when it was applied.
+  defp apply_webhook(conn, event) do
+    {status, body} =
+      try do
+        case Lei.StripeWebhookHandler.process(event) do
+          {:ok, :processed} -> {200, %{status: "ok"}}
+          {:ok, :duplicate} -> {200, %{status: "duplicate"}}
+          {:error, :missing_event_id} -> {400, %{error: "event has no id"}}
+        end
+      rescue
+        e ->
+          Logger.error(
+            "Stripe webhook #{event["type"]} #{event["id"]} failed: #{Exception.message(e)}"
+          )
+
+          {500, %{error: "event could not be applied"}}
+      end
+
+    conn
+    |> put_resp_content_type("application/json")
+    |> send_resp(status, Poison.encode!(body))
   end
 
   defp render_dashboard(conn, org, assigns) do
