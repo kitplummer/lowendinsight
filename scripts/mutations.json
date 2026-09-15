@@ -1422,6 +1422,42 @@
       "replace": "        case Lei.UsageTracker.admit_usage(org_id, api_key_id, 0, 0, required) do",
       "guarded_by": "test/lowendinsight_get/unbilled_paths_test.exs",
       "app": "apps/lowendinsight_get"
+    },
+    {
+      "id": "secret-scan-empty-input-passes",
+      "bug": "A secret scan of an empty body reported clean, so a page the canary failed to fetch counted as free of secrets (2026-09-15).",
+      "file": "scripts/secret-scan.sh",
+      "find": "  echo \"secret-scan: ${LABEL}: empty input, nothing scanned\" >&2\n  exit 2",
+      "replace": "  echo \"secret-scan: ${LABEL}: empty input, nothing scanned\" >&2\n  exit 0",
+      "guarded_by": "test/lowendinsight_get/secret_scan_script_test.exs",
+      "app": "apps/lowendinsight_get"
+    },
+    {
+      "id": "secret-scan-ignores-setting-names",
+      "bug": "Reports that publish configuration by key name (stripe_secret_key, jwt_secret...) passed the scan when the value itself matched no pattern (2026-09-15).",
+      "file": "scripts/secret-scan.sh",
+      "find": "  'secret setting name|",
+      "replace": "  'secret setting name disabled|NEVER_MATCHES_",
+      "guarded_by": "test/lowendinsight_get/secret_scan_script_test.exs",
+      "app": "apps/lowendinsight_get"
+    },
+    {
+      "id": "canary-empty-body-counts-clean",
+      "bug": "The canary counted a body it could not fetch as free of secrets (2026-09-15).",
+      "file": "scripts/canary.sh",
+      "find": "    *) bad \"no secrets: ${label}\" \"nothing to scan (empty response)\" ;;",
+      "replace": "    *) ok \"no secrets: ${label}\" ;;",
+      "guarded_by": "test/lowendinsight_get/canary_secret_scan_wiring_test.exs",
+      "app": "apps/lowendinsight_get"
+    },
+    {
+      "id": "canary-skips-report-scan",
+      "bug": "The canary did not scan the analysis report, the body that leaked secrets on 2026-09-14.",
+      "file": "scripts/canary.sh",
+      "find": "scan_body \"Try It report\" \"${REPORT:-}\"\n",
+      "replace": "",
+      "guarded_by": "test/lowendinsight_get/canary_secret_scan_wiring_test.exs",
+      "app": "apps/lowendinsight_get"
     }
   ]
 }
