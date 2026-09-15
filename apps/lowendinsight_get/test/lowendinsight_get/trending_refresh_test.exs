@@ -376,7 +376,7 @@ defmodule LowendinsightGet.TrendingRefreshTest do
 
   describe "the page" do
     test "renders one row per analysed repository, in the shape the canary counts" do
-      # The canary counts `var project = "<url>"` in the rendered page. Pinned
+      # The canary counts `data-repo="<url>"` in the rendered page. Pinned
       # here against the real template, so a template change that breaks the
       # count fails a test rather than silently zeroing a check.
       {:ok, _} =
@@ -403,7 +403,7 @@ defmodule LowendinsightGet.TrendingRefreshTest do
         |> LowendinsightGet.Endpoint.call(LowendinsightGet.Endpoint.init([]))
 
       assert conn.status == 200
-      assert length(Regex.scan(~r/var project = "https?:\/\//, conn.resp_body)) == 2
+      assert length(Regex.scan(~r/data-repo="https?:\/\//, conn.resp_body)) == 2
       assert conn.resp_body =~ "2026-09-14T00:10:00Z"
     end
   end

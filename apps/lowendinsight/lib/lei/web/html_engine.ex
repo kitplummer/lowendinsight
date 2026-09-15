@@ -17,6 +17,29 @@ defmodule Lei.Web.HTML do
   def to_html(binary) when is_binary(binary), do: escape(binary)
   def to_html(other), do: other |> to_string() |> escape()
 
+  @doc """
+  `term` as a JavaScript literal that is safe inside a `<script>` element.
+
+  JSON is valid JavaScript, but HTML-escaping it is wrong (the entities would
+  reach the script as text) and not escaping it is worse: `</script>` inside a
+  string ends the element. `<`, `>` and `&` only ever occur inside JSON
+  strings, where `\\u003c` and friends mean the same characters, so replacing
+  them keeps the value and removes every way out of the element. U+2028 and
+  U+2029 are line terminators to older JavaScript parsers.
+  """
+  def script_json(term), do: term |> Poison.encode!() |> script_json_text()
+
+  @doc "As `script_json/1`, for a value that is already encoded as JSON."
+  def script_json_text(json) when is_binary(json) do
+    json
+    |> String.replace("<", "\\u003c")
+    |> String.replace(">", "\\u003e")
+    |> String.replace("&", "\\u0026")
+    |> String.replace("\u2028", "\\u2028")
+    |> String.replace("\u2029", "\\u2029")
+    |> safe()
+  end
+
   @doc "Escapes the five characters that are significant in HTML text and attributes."
   def escape(binary) when is_binary(binary) do
     for <<c <- binary>>, into: "" do

@@ -219,8 +219,10 @@ else
   # This check used to grep the page for "github.com" -- and matched the
   # Source link in the page chrome, so it passed while every trending report
   # was an empty placeholder (#158). It now reads what the report contains:
-  # one row per analysed repository, each assigning `var project = "<url>"`.
-  ROWS=$(printf '%s' "$TRENDING" | grep -cE 'var project = "https?://' || true)
+  # one row per analysed repository, each a script element carrying
+  # `data-repo="<url>"`. (Rows used to assign `var project = "<url>"`; that
+  # markup went when report fields stopped being written into script source.)
+  ROWS=$(printf '%s' "$TRENDING" | grep -oE 'data-repo="https?://' | wc -l | tr -d ' ')
   COMPLETED=$(curl -s --max-time 15 "$BASE_URL/metrics" \
     | grep 'lei_trending_report_completed{language="elixir"}' | awk '{print $2}' | tr -d '\r')
 
