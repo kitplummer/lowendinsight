@@ -13,7 +13,8 @@ defmodule LowendinsightGet.Release do
   """
   require Logger
 
-  @apps [:lowendinsight, :lowendinsight_get]
+  # Lei.Repo moved into this app (ADR-003); its repos are listed in order.
+  @apps [:lowendinsight_get]
 
   @doc """
   Runs all pending migrations for every configured repo, in app order.

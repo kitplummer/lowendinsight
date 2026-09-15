@@ -74,6 +74,6 @@ defmodule Lei.TestHygieneTest do
     files = test_files()
 
     assert length(files) > 20
-    assert Enum.any?(files, &String.ends_with?(&1, "cache_test.exs"))
+    assert Enum.any?(files, &String.ends_with?(&1, "rate_limiter_test.exs"))
   end
 end

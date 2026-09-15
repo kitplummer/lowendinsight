@@ -9,7 +9,7 @@ defmodule Lei.Web.Router do
   use Plug.Router
   require Logger
 
-  @otp_app :lowendinsight
+  @otp_app :lowendinsight_get
 
   # Scopes an org admin may grant. "cache" reaches every customer's reports and
   # is an operator's to hand out; "admin" here means admin of the same org.
@@ -37,7 +37,7 @@ defmodule Lei.Web.Router do
 
   plug(Plug.Static,
     at: "/static",
-    from: {:lowendinsight, "priv/static"}
+    from: {:lowendinsight_get, "priv/lei/static"}
   )
 
   plug(Plug.Parsers,
@@ -744,7 +744,7 @@ defmodule Lei.Web.Router do
   end
 
   defp render_page(conn, template, assigns \\ []) do
-    tpl_dir = Path.join(:code.priv_dir(@otp_app) |> to_string(), "templates")
+    tpl_dir = Path.join(:code.priv_dir(@otp_app) |> to_string(), "lei/templates")
     assigns = Keyword.put(assigns, :conn, conn)
     # Lei.Web.HTMLEngine escapes every <%= %>. Plain EEx escaped nothing, so org
     # and key names were written into the page as markup.

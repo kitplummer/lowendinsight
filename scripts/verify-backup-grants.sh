@@ -62,13 +62,13 @@ bold "Running migrations as the application role"
 # part that matters: ALTER DEFAULT PRIVILEGES only covers objects created by the
 # role it names, so running migrations as a superuser here would hide the bug.
 (
-  cd "$ROOT/apps/lowendinsight"
+  cd "$ROOT/apps/lowendinsight_get"
   MIX_ENV=test \
   LEI_TEST_DB="$DB" \
   LEI_TEST_DB_USER="$APP_ROLE" \
   LEI_TEST_DB_PASS="$APP_PASS" \
   LEI_TEST_DB_HOST="$PGHOST" \
-    mix ecto.migrate >/dev/null
+    mix ecto.migrate -r Lei.Repo >/dev/null
 )
 
 TABLES=$(as_super -d "$DB" -c \

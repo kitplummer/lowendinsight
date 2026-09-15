@@ -8,6 +8,8 @@ defmodule LowendinsightGet.Application do
   require Logger
 
   def start(_type, _args) do
+    :ok = Lei.Boot.checks!()
+
     {:ok, _, _} =
       Ecto.Migrator.with_repo(LowendinsightGet.Repo, fn repo ->
         Ecto.Migrator.run(repo, Ecto.Migrator.migrations_path(repo), :up, all: true)
@@ -71,14 +73,16 @@ defmodule LowendinsightGet.Application do
         "ssl=#{ssl?} socket_opts=#{inspect(socket_opts)}"
     )
 
-    kids = [
-      {Redix, redix_opts},
-      LowendinsightGet.Repo,
-      {Oban, Application.fetch_env!(:lowendinsight_get, Oban)},
-      LowendinsightGet.RequestLogger,
-      LowendinsightGet.Endpoint,
-      {Task.Supervisor, name: LowendinsightGet.AnalysisSupervisor}
-    ]
+    kids =
+      [{Redix, redix_opts}] ++
+        Lei.Boot.children() ++
+        [
+          LowendinsightGet.Repo,
+          {Oban, Application.fetch_env!(:lowendinsight_get, Oban)},
+          LowendinsightGet.RequestLogger,
+          LowendinsightGet.Endpoint,
+          {Task.Supervisor, name: LowendinsightGet.AnalysisSupervisor}
+        ]
 
     kids =
       case Application.get_env(:lowendinsight_get, :cache_clean_enable) do

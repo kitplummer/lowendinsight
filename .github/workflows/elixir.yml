@@ -120,9 +120,6 @@ jobs:
         mix local.rebar --force
         mix local.hex --force
         mix deps.get
-    - name: Setup Database
-      run: |
-        cd apps/lowendinsight && MIX_ENV=test mix ecto.create && MIX_ENV=test mix ecto.migrate
     # This step used to retry up to five times, each attempt with a fresh
     # random seed. That turned a seed-dependent failure into a green check:
     # Lei.Acp.RateLimitTest was failing on roughly two seeds in three and CI

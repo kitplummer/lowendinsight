@@ -11,10 +11,18 @@ defmodule LowendinsightGet.ThemeTest do
   """
 
   @get_templates Path.wildcard("priv/templates/*.html.eex")
-  @lei_templates Path.wildcard("../lowendinsight/priv/templates/*.html.eex")
+  @lei_templates Path.wildcard("priv/lei/templates/*.html.eex")
   @theme_css "priv/static/css/theme.css"
 
   defp read(p), do: File.read!(Path.join(File.cwd!(), p))
+
+  test "both template sets are found" do
+    # A glob that matches nothing makes every theme check below pass without
+    # reading a page. The Lei templates moved from the library's priv to this
+    # app's priv/lei (ADR-003), and this glob pointed at the old path.
+    assert length(@get_templates) >= 5
+    assert "priv/lei/templates/dashboard.html.eex" in @lei_templates
+  end
 
   # A full document starts with a doctype; the rest are partials rendered
   # inside layout.html.eex and inherit its head.
@@ -100,7 +108,7 @@ defmodule LowendinsightGet.ThemeTest do
       # page, loads no tokens, and a var() there would resolve to nothing.
       sources =
         Path.wildcard("priv/templates/*.html.eex") ++
-          Path.wildcard("../lowendinsight/priv/templates/*.html.eex")
+          Path.wildcard("priv/lei/templates/*.html.eex")
 
       offenders =
         for p <- sources,

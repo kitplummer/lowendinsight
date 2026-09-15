@@ -22,7 +22,7 @@ defmodule LowendinsightGet.AgentPaymentTest do
   @deposit "0x5ff8d73e8bccd3701c9aef78389f3b9771172b5c"
   @payer "0x95b01240addf561daa31b76b1e8f89f8c4287917"
   @hash "0xcc03711d01ade07b5b546263d81bbe620a32ac12fe540736e5d5f2780c152cf6"
-  @fixtures Path.expand("../../../lowendinsight/test/fixtures/tempo", __DIR__)
+  @fixtures Path.expand("../fixtures/tempo", __DIR__)
 
   setup :set_mox_global
   setup :verify_on_exit!

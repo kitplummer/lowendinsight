@@ -8,7 +8,15 @@ config :logger, :console, format: "lei: $time $metadata[$level] $message\n"
 
 # --- lowendinsight_get base config ---
 
-config :lowendinsight_get, ecto_repos: [LowendinsightGet.Repo]
+# Lei.Repo first: it owns orgs and api_keys, which LowendinsightGet reads.
+config :lowendinsight_get, ecto_repos: [Lei.Repo, LowendinsightGet.Repo]
+
+# Lei.Repo's migrations live apart from LowendinsightGet.Repo's (ADR-003). Read
+# from config, not from `use Ecto.Repo`: passed there it is ignored, Lei.Repo
+# falls back to priv/repo/migrations, and finds none of its own -- reporting
+# "already up" on a database that has them and creating nothing on one that
+# does not.
+config :lowendinsight_get, Lei.Repo, priv: "priv/lei_repo"
 
 config :lowendinsight_get, LowendinsightGet.Endpoint,
   port: String.to_integer(System.get_env("PORT") || "4000")
@@ -52,7 +60,6 @@ config :lowendinsight_get,
 
 # --- lowendinsight (library) Ecto repo ---
 
-config :lowendinsight, ecto_repos: [Lei.Repo]
 
 config :lowendinsight,
   jwt_secret: System.get_env("LEI_JWT_SECRET") || "lei_dev_secret"
