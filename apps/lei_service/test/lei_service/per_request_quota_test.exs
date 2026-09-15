@@ -41,7 +41,7 @@ defmodule LeiService.PerRequestQuotaTest do
 
     limit =
       org.free_tier_analyses_limit ||
-        Application.get_env(:lowendinsight, :free_tier_monthly_limit, 200)
+        Application.get_env(:lei_service, :free_tier_monthly_limit, 200)
 
     used = limit - remaining
     if used > 0, do: {:ok, _} = UsageTracker.record_usage(org.id, nil, used, 0)

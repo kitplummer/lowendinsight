@@ -34,13 +34,13 @@ defmodule Lei.StripeWebhookHardeningTest do
       Lei.Stripe.construct_webhook_event(payload, signature, secret)
     end)
 
-    original = Application.get_env(:lowendinsight, :stripe_webhook_secret)
-    Application.put_env(:lowendinsight, :stripe_webhook_secret, @secret)
+    original = Application.get_env(:lei_service, :stripe_webhook_secret)
+    Application.put_env(:lei_service, :stripe_webhook_secret, @secret)
 
     on_exit(fn ->
       if original,
-        do: Application.put_env(:lowendinsight, :stripe_webhook_secret, original),
-        else: Application.delete_env(:lowendinsight, :stripe_webhook_secret)
+        do: Application.put_env(:lei_service, :stripe_webhook_secret, original),
+        else: Application.delete_env(:lei_service, :stripe_webhook_secret)
     end)
 
     :ok

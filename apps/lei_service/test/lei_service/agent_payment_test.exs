@@ -40,22 +40,22 @@ defmodule LeiService.AgentPaymentTest do
       :stripe_profile_id
     ]
 
-    saved = for k <- keys, do: {k, Application.fetch_env(:lowendinsight, k)}
+    saved = for k <- keys, do: {k, Application.fetch_env(:lei_service, k)}
 
     Application.put_env(
-      :lowendinsight,
+      :lei_service,
       :stripe_secret_key,
       "sk_test_" <> String.duplicate("x", 24)
     )
 
-    Application.put_env(:lowendinsight, :tempo_deposit_address, @deposit)
-    Application.put_env(:lowendinsight, :tempo_poll_interval_ms, 0)
+    Application.put_env(:lei_service, :tempo_deposit_address, @deposit)
+    Application.put_env(:lei_service, :tempo_poll_interval_ms, 0)
 
     on_exit(fn ->
       for {k, v} <- saved do
         case v do
-          {:ok, value} -> Application.put_env(:lowendinsight, k, value)
-          :error -> Application.delete_env(:lowendinsight, k)
+          {:ok, value} -> Application.put_env(:lei_service, k, value)
+          :error -> Application.delete_env(:lei_service, k)
         end
       end
 
@@ -354,7 +354,7 @@ defmodule LeiService.AgentPaymentTest do
     end
 
     test "an anonymous request is never served for free when no rail can take payment" do
-      Application.delete_env(:lowendinsight, :tempo_deposit_address)
+      Application.delete_env(:lei_service, :tempo_deposit_address)
       conn = post_batch()
 
       assert conn.status == 402

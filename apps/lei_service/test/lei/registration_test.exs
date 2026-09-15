@@ -18,7 +18,7 @@ defmodule Lei.RegistrationTest do
     signer =
       Joken.Signer.create(
         "HS256",
-        Application.get_env(:lowendinsight, :jwt_secret, "lei_dev_secret")
+        Application.get_env(:lei_service, :jwt_secret, "lei_dev_secret")
       )
 
     {:ok, operator, _} = Joken.generate_and_sign(%{}, %{}, signer)

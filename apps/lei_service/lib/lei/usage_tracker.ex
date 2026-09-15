@@ -277,15 +277,15 @@ defmodule Lei.UsageTracker do
   end
 
   defp hit_cost_cents do
-    Application.get_env(:lowendinsight, :cache_hit_cost_cents, @default_hit_cost_cents)
+    Application.get_env(:lei_service, :cache_hit_cost_cents, @default_hit_cost_cents)
   end
 
   defp miss_cost_cents do
-    Application.get_env(:lowendinsight, :cache_miss_cost_cents, @default_miss_cost_cents)
+    Application.get_env(:lei_service, :cache_miss_cost_cents, @default_miss_cost_cents)
   end
 
   defp free_tier_limit do
-    Application.get_env(:lowendinsight, :free_tier_monthly_limit, @default_free_tier_limit)
+    Application.get_env(:lei_service, :free_tier_monthly_limit, @default_free_tier_limit)
   end
 
   # Records what this analysis consumed against the org's credit balance.
@@ -336,7 +336,7 @@ defmodule Lei.UsageTracker do
   # sets it; an invalid reason fails Lei.CreditEntry's changeset, which is the
   # closest reachable stand-in for a database error mid-transaction.
   defp debit_reason do
-    Application.get_env(:lowendinsight, :credit_debit_reason, "debit:analysis")
+    Application.get_env(:lei_service, :credit_debit_reason, "debit:analysis")
   end
 
   # The usage row's cumulative counters after the update. They only ever

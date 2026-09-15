@@ -156,7 +156,7 @@ defmodule Lei.Payments.Gate do
     max(default_top_up() - min(balance, 0), required - balance)
   end
 
-  defp default_top_up, do: Application.get_env(:lowendinsight, :default_top_up_credits, 15_000)
+  defp default_top_up, do: Application.get_env(:lei_service, :default_top_up_credits, 15_000)
 
   defp json(conn, status, body) do
     conn

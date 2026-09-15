@@ -61,7 +61,7 @@ config :lowendinsight,
 
 # --- Stripe + ACP test overrides ---
 # No bearer token or signing secret = auth checks skipped in test
-config :lowendinsight,
+config :lei_service,
   stripe_module: Lei.StripeMock,
   tempo_rpc_module: Lei.TempoRpcMock,
   # Not a real profile. Present so challenges are issued; tests that need it
@@ -71,7 +71,7 @@ config :lowendinsight,
   acp_signing_secret: nil
 
 # --- Usage billing test defaults ---
-config :lowendinsight,
+config :lei_service,
   cache_hit_cost_cents: 0.5,
   cache_miss_cost_cents: 5.0,
   free_tier_monthly_limit: 200,

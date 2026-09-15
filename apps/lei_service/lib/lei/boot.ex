@@ -28,8 +28,8 @@ defmodule Lei.Boot do
       Lei.Stripe.ObjectCheck
     ]
 
-    if Application.get_env(:lowendinsight, :start_http, false) do
-      port = Application.get_env(:lowendinsight, :http_port, 4000)
+    if Application.get_env(:lei_service, :start_http, false) do
+      port = Application.get_env(:lei_service, :http_port, 4000)
       base ++ [{Plug.Cowboy, scheme: :http, plug: Lei.Web.Router, options: [port: port]}]
     else
       base

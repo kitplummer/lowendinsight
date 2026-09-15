@@ -16,22 +16,22 @@ defmodule Lei.Payments.Rails.TempoTest do
   setup do
     saved =
       for k <- [:stripe_secret_key, :tempo_deposit_address],
-          do: {k, Application.get_env(:lowendinsight, k)}
+          do: {k, Application.get_env(:lei_service, k)}
 
     Application.put_env(
-      :lowendinsight,
+      :lei_service,
       :stripe_secret_key,
       "sk_test_" <> String.duplicate("x", 24)
     )
 
-    Application.put_env(:lowendinsight, :tempo_deposit_address, @deposit)
+    Application.put_env(:lei_service, :tempo_deposit_address, @deposit)
 
     on_exit(fn ->
       for {k, v} <- saved,
           do:
             if(v,
-              do: Application.put_env(:lowendinsight, k, v),
-              else: Application.delete_env(:lowendinsight, k)
+              do: Application.put_env(:lei_service, k, v),
+              else: Application.delete_env(:lei_service, k)
             )
     end)
 
@@ -148,12 +148,12 @@ defmodule Lei.Payments.Rails.TempoTest do
     end
 
     test "no address, or no Stripe key, is unavailable rather than an error" do
-      Application.delete_env(:lowendinsight, :tempo_deposit_address)
+      Application.delete_env(:lei_service, :tempo_deposit_address)
 
       assert {:error, {:unavailable, :no_deposit_address}} =
                Tempo.requirements(500, confirmed())
 
-      Application.delete_env(:lowendinsight, :stripe_secret_key)
+      Application.delete_env(:lei_service, :stripe_secret_key)
 
       assert {:error, {:unavailable, :stripe_not_configured}} =
                Tempo.requirements(500, confirmed())
@@ -161,7 +161,7 @@ defmodule Lei.Payments.Rails.TempoTest do
 
     test "a live key means mainnet and USDC.e" do
       Application.put_env(
-        :lowendinsight,
+        :lei_service,
         :stripe_secret_key,
         "sk_live_" <> String.duplicate("x", 24)
       )
@@ -367,7 +367,7 @@ defmodule Lei.Payments.Rails.TempoTest do
       challenge = issue()
 
       Application.put_env(
-        :lowendinsight,
+        :lei_service,
         :stripe_secret_key,
         "sk_live_" <> String.duplicate("x", 24)
       )

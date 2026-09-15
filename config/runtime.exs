@@ -10,7 +10,7 @@ import Config
 # Where this is deployed, as distinct from how it was compiled: a release is
 # always MIX_ENV=prod, so only this tells production from staging. Set in
 # fly.toml. Lei.Stripe.Mode refuses a live Stripe key unless it is "production".
-config :lowendinsight, deploy_env: System.get_env("LEI_DEPLOY_ENV")
+config :lei_service, deploy_env: System.get_env("LEI_DEPLOY_ENV")
 
 if config_env() == :prod do
   config :lei_service, LeiService.Endpoint,
@@ -39,7 +39,7 @@ if config_env() == :prod do
     raise "LEI_SESSION_SECRET is the development default; generate a real one"
   end
 
-  config :lowendinsight,
+  config :lei_service,
     # Lei.Auth verifies JWTs on Lei.Web.Router's own listener (start_http) with
     # this. It must be the same secret the endpoint's LeiService.Auth uses.
     jwt_secret: jwt_secret,
@@ -70,7 +70,7 @@ if config_env() == :prod do
       "dart"
     ]
 
-  config :lowendinsight,
+  config :lei_service,
     # Two HTTP listeners run in production, deliberately:
     #
     #   8080  LeiService.Endpoint -- the Fly entry point (fly.toml
@@ -85,7 +85,9 @@ if config_env() == :prod do
     # deployment path (#19). Set LEI_START_HTTP=false to disable it where only
     # the Fly entry point is needed.
     start_http: System.get_env("LEI_START_HTTP", "true") == "true",
-    http_port: String.to_integer(System.get_env("LEI_HTTP_PORT") || "4000"),
+    http_port: String.to_integer(System.get_env("LEI_HTTP_PORT") || "4000")
+
+  config :lowendinsight,
     critical_contributor_level:
       String.to_integer(System.get_env("LEI_CRITICAL_CONTRIBUTOR_LEVEL") || "2"),
     high_contributor_level: System.get_env("LEI_HIGH_CONTRIBUTOR_LEVEL") || 3,
@@ -177,7 +179,7 @@ if config_env() == :prod do
     ]
 
   # Stripe + ACP
-  config :lowendinsight,
+  config :lei_service,
     stripe_secret_key: System.get_env("STRIPE_SECRET_KEY"),
     stripe_webhook_secret: System.get_env("STRIPE_WEBHOOK_SECRET"),
     stripe_pro_price_id: System.get_env("STRIPE_PRO_PRICE_ID"),
@@ -196,7 +198,7 @@ if config_env() == :prod do
     acp_signing_secret: System.get_env("LEI_ACP_SIGNING_SECRET")
 
   # Usage billing rates (ADR-001)
-  config :lowendinsight,
+  config :lei_service,
     cache_hit_cost_cents:
       String.to_float(System.get_env("LEI_CACHE_HIT_COST_CENTS") || "0.5"),
     cache_miss_cost_cents:

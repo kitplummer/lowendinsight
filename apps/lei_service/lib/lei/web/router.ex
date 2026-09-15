@@ -266,7 +266,7 @@ defmodule Lei.Web.Router do
   post "/webhooks/stripe" do
     raw_body = conn.private[:raw_body] || ""
     signature = List.first(Plug.Conn.get_req_header(conn, "stripe-signature")) || ""
-    webhook_secret = Application.get_env(:lowendinsight, :stripe_webhook_secret, "")
+    webhook_secret = Application.get_env(:lei_service, :stripe_webhook_secret, "")
     stripe = Lei.Stripe.impl()
 
     # A wrong signing secret fails exactly like an unset one, and both fail
@@ -423,7 +423,7 @@ defmodule Lei.Web.Router do
 
       {org_id, _, tier} ->
         usage = Lei.UsageTracker.get_current_usage(org_id)
-        pro_credit = Application.get_env(:lowendinsight, :pro_tier_credit_cents, 1500)
+        pro_credit = Application.get_env(:lei_service, :pro_tier_credit_cents, 1500)
 
         included_credit =
           if tier == "pro", do: pro_credit, else: 0
@@ -673,9 +673,9 @@ defmodule Lei.Web.Router do
         )
 
       {:ok, org} ->
-        base_url = Application.get_env(:lowendinsight, :lei_base_url, "http://localhost:4000")
-        price_id = Application.get_env(:lowendinsight, :stripe_pro_price_id)
-        metered_price_id = Application.get_env(:lowendinsight, :stripe_metered_price_id)
+        base_url = Application.get_env(:lei_service, :lei_base_url, "http://localhost:4000")
+        price_id = Application.get_env(:lei_service, :stripe_pro_price_id)
+        metered_price_id = Application.get_env(:lei_service, :stripe_metered_price_id)
         stripe = Lei.Stripe.impl()
 
         case stripe.create_checkout_session(%{
@@ -706,7 +706,7 @@ defmodule Lei.Web.Router do
   end
 
   defp put_secret_key_base(conn, _opts) do
-    secret = Application.get_env(:lowendinsight, :session_secret_key_base)
+    secret = Application.get_env(:lei_service, :session_secret_key_base)
     Map.put(conn, :secret_key_base, secret)
   end
 

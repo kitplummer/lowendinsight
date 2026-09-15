@@ -93,9 +93,9 @@ defmodule Lei.Payments.HttpTest do
       # The caller still needs credits; it just cannot buy them this way. A
       # challenge here would look payable and fail at the wallet (#143). A 500
       # would say the service is broken when it is refusing a sale.
-      previous = Application.get_env(:lowendinsight, :stripe_profile_id)
-      Application.delete_env(:lowendinsight, :stripe_profile_id)
-      on_exit(fn -> Application.put_env(:lowendinsight, :stripe_profile_id, previous) end)
+      previous = Application.get_env(:lei_service, :stripe_profile_id)
+      Application.delete_env(:lei_service, :stripe_profile_id)
+      on_exit(fn -> Application.put_env(:lei_service, :stripe_profile_id, previous) end)
 
       conn = Http.challenge(conn(:get, "/v1/analyze"), org.id, 15_000)
 
@@ -243,16 +243,16 @@ defmodule Lei.Payments.HttpTest do
 
   describe "rate limiting" do
     setup do
-      original = Application.get_env(:lowendinsight, :rate_limits)
+      original = Application.get_env(:lei_service, :rate_limits)
 
       on_exit(fn ->
         case original do
-          nil -> Application.delete_env(:lowendinsight, :rate_limits)
-          value -> Application.put_env(:lowendinsight, :rate_limits, value)
+          nil -> Application.delete_env(:lei_service, :rate_limits)
+          value -> Application.put_env(:lei_service, :rate_limits, value)
         end
       end)
 
-      Application.put_env(:lowendinsight, :rate_limits, %{
+      Application.put_env(:lei_service, :rate_limits, %{
         free: 60,
         pro: 600,
         payment_challenge: 2,
@@ -318,7 +318,7 @@ defmodule Lei.Payments.HttpTest do
       # Every paid request passes through settle/1. If it charged the bucket
       # before looking for a credential, all analysis from one IP would be
       # capped at the settle limit (#147).
-      limit = Application.get_env(:lowendinsight, :rate_limits)[:payment_settle] || 10
+      limit = Application.get_env(:lei_service, :rate_limits)[:payment_settle] || 10
 
       for _ <- 1..(limit + 5) do
         conn = conn(:post, "/v1/analyze") |> put_req_header("authorization", "Bearer lei_x")

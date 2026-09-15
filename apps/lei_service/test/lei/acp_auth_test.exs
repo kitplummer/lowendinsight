@@ -8,14 +8,14 @@ defmodule Lei.Acp.AuthTest do
   describe "with no auth configured (dev mode)" do
     setup do
       # Ensure no auth is configured
-      old_bearer = Application.get_env(:lowendinsight, :acp_bearer_token)
-      old_signing = Application.get_env(:lowendinsight, :acp_signing_secret)
-      Application.put_env(:lowendinsight, :acp_bearer_token, nil)
-      Application.put_env(:lowendinsight, :acp_signing_secret, nil)
+      old_bearer = Application.get_env(:lei_service, :acp_bearer_token)
+      old_signing = Application.get_env(:lei_service, :acp_signing_secret)
+      Application.put_env(:lei_service, :acp_bearer_token, nil)
+      Application.put_env(:lei_service, :acp_signing_secret, nil)
 
       on_exit(fn ->
-        if old_bearer, do: Application.put_env(:lowendinsight, :acp_bearer_token, old_bearer)
-        if old_signing, do: Application.put_env(:lowendinsight, :acp_signing_secret, old_signing)
+        if old_bearer, do: Application.put_env(:lei_service, :acp_bearer_token, old_bearer)
+        if old_signing, do: Application.put_env(:lei_service, :acp_signing_secret, old_signing)
       end)
 
       :ok
@@ -32,11 +32,11 @@ defmodule Lei.Acp.AuthTest do
 
   describe "with bearer token configured" do
     setup do
-      Application.put_env(:lowendinsight, :acp_bearer_token, "test_token_123")
-      Application.put_env(:lowendinsight, :acp_signing_secret, nil)
+      Application.put_env(:lei_service, :acp_bearer_token, "test_token_123")
+      Application.put_env(:lei_service, :acp_signing_secret, nil)
 
       on_exit(fn ->
-        Application.put_env(:lowendinsight, :acp_bearer_token, nil)
+        Application.put_env(:lei_service, :acp_bearer_token, nil)
       end)
 
       :ok
@@ -73,11 +73,11 @@ defmodule Lei.Acp.AuthTest do
 
   describe "with HMAC signing configured" do
     setup do
-      Application.put_env(:lowendinsight, :acp_bearer_token, nil)
-      Application.put_env(:lowendinsight, :acp_signing_secret, "hmac_secret")
+      Application.put_env(:lei_service, :acp_bearer_token, nil)
+      Application.put_env(:lei_service, :acp_signing_secret, "hmac_secret")
 
       on_exit(fn ->
-        Application.put_env(:lowendinsight, :acp_signing_secret, nil)
+        Application.put_env(:lei_service, :acp_signing_secret, nil)
       end)
 
       :ok

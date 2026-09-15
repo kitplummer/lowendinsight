@@ -92,9 +92,9 @@ defmodule Lei.Payments.Rails.MppTest do
 
     test "no challenge is issued without a Stripe profile" do
       # A challenge no client can answer is a 402 that looks payable and is not.
-      previous = Application.get_env(:lowendinsight, :stripe_profile_id)
-      Application.delete_env(:lowendinsight, :stripe_profile_id)
-      on_exit(fn -> Application.put_env(:lowendinsight, :stripe_profile_id, previous) end)
+      previous = Application.get_env(:lei_service, :stripe_profile_id)
+      Application.delete_env(:lei_service, :stripe_profile_id)
+      on_exit(fn -> Application.put_env(:lei_service, :stripe_profile_id, previous) end)
 
       assert {:error, {:unavailable, :no_stripe_profile}} = Mpp.requirements(15_000)
     end

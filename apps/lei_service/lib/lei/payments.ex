@@ -117,7 +117,7 @@ defmodule Lei.Payments do
   end
 
   defp configured_rails do
-    Application.get_env(:lowendinsight, :payment_rails, [])
+    Application.get_env(:lei_service, :payment_rails, [])
   end
 
   @doc """

@@ -285,7 +285,7 @@ defmodule Lei.Payments.Rails.Tempo do
 
   @doc "The configured deposit address, lowercased, or nil."
   def deposit_address do
-    case Application.get_env(:lowendinsight, :tempo_deposit_address) do
+    case Application.get_env(:lei_service, :tempo_deposit_address) do
       "0x" <> hex = address when byte_size(hex) == 40 -> String.downcase(address)
       _ -> nil
     end
@@ -294,12 +294,12 @@ defmodule Lei.Payments.Rails.Tempo do
   defp new_memo, do: "0x" <> Base.encode16(:crypto.strong_rand_bytes(32), case: :lower)
 
   defp settle_timeout_ms,
-    do: Application.get_env(:lowendinsight, :tempo_settle_timeout_ms, 20_000)
+    do: Application.get_env(:lei_service, :tempo_settle_timeout_ms, 20_000)
 
-  defp poll_interval_ms, do: Application.get_env(:lowendinsight, :tempo_poll_interval_ms, 1_000)
+  defp poll_interval_ms, do: Application.get_env(:lei_service, :tempo_poll_interval_ms, 1_000)
 
   defp realm do
-    Application.get_env(:lowendinsight, :lei_base_url, "http://localhost:4000")
+    Application.get_env(:lei_service, :lei_base_url, "http://localhost:4000")
     |> URI.parse()
     |> Map.get(:host)
     |> Kernel.||("localhost")

@@ -26,22 +26,22 @@ defmodule Lei.Payments.TempoHttpTest do
 
     saved =
       for k <- [:stripe_secret_key, :tempo_deposit_address, :tempo_poll_interval_ms],
-          do: {k, Application.get_env(:lowendinsight, k)}
+          do: {k, Application.get_env(:lei_service, k)}
 
     Application.put_env(
-      :lowendinsight,
+      :lei_service,
       :stripe_secret_key,
       "sk_test_" <> String.duplicate("x", 24)
     )
 
-    Application.put_env(:lowendinsight, :tempo_deposit_address, @deposit)
-    Application.put_env(:lowendinsight, :tempo_poll_interval_ms, 0)
+    Application.put_env(:lei_service, :tempo_deposit_address, @deposit)
+    Application.put_env(:lei_service, :tempo_poll_interval_ms, 0)
 
     on_exit(fn ->
       for {k, v} <- saved do
         if v,
-          do: Application.put_env(:lowendinsight, k, v),
-          else: Application.delete_env(:lowendinsight, k)
+          do: Application.put_env(:lei_service, k, v),
+          else: Application.delete_env(:lei_service, k)
       end
     end)
 

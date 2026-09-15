@@ -36,10 +36,12 @@ defmodule RuntimeSecretsConfigTest do
   test "the session secret and Lei.Auth's JWT secret come from the environment at boot" do
     config = read_prod(@env)
 
-    assert config[:lowendinsight][:session_secret_key_base] == @session
-    assert config[:lowendinsight][:jwt_secret] == "runtime-test-jwt-secret"
-    # The same secret the endpoint's auth plug uses.
-    assert config[:lei_service][:jwt_secret] == config[:lowendinsight][:jwt_secret]
+    assert config[:lei_service][:session_secret_key_base] == @session
+    assert config[:lei_service][:jwt_secret] == "runtime-test-jwt-secret"
+    # One setting for both Lei.Auth and the endpoint's auth plug, and none
+    # under the library's namespace (ADR-003).
+    refute Keyword.has_key?(config[:lowendinsight] || [], :jwt_secret)
+    refute Keyword.has_key?(config[:lowendinsight] || [], :session_secret_key_base)
   end
 
   test "production refuses to boot without a session secret" do

@@ -8,12 +8,12 @@ defmodule Lei.RateLimiterTest do
     # rather than restoring it, so any test running later saw the limiter fall
     # back to its hardcoded free-tier default -- which made Lei.Acp.RateLimitTest
     # pass or fail depending on the ExUnit seed. Restore on every exit path.
-    original = Application.get_env(:lowendinsight, :rate_limits)
+    original = Application.get_env(:lei_service, :rate_limits)
 
     on_exit(fn ->
       case original do
-        nil -> Application.delete_env(:lowendinsight, :rate_limits)
-        value -> Application.put_env(:lowendinsight, :rate_limits, value)
+        nil -> Application.delete_env(:lei_service, :rate_limits)
+        value -> Application.put_env(:lei_service, :rate_limits, value)
       end
     end)
 
@@ -22,20 +22,20 @@ defmodule Lei.RateLimiterTest do
 
   describe "per-bucket windows (#152)" do
     setup do
-      windows = Application.get_env(:lowendinsight, :rate_limit_windows)
+      windows = Application.get_env(:lei_service, :rate_limit_windows)
 
       on_exit(fn ->
         if windows,
-          do: Application.put_env(:lowendinsight, :rate_limit_windows, windows),
-          else: Application.delete_env(:lowendinsight, :rate_limit_windows)
+          do: Application.put_env(:lei_service, :rate_limit_windows, windows),
+          else: Application.delete_env(:lei_service, :rate_limit_windows)
       end)
 
       :ok
     end
 
     test "a bucket with its own window counts over that window, not the default minute" do
-      Application.put_env(:lowendinsight, :rate_limits, %{free: 60, pro: 600, try_it: 1})
-      Application.put_env(:lowendinsight, :rate_limit_windows, %{try_it: 3_600_000})
+      Application.put_env(:lei_service, :rate_limits, %{free: 60, pro: 600, try_it: 1})
+      Application.put_env(:lei_service, :rate_limit_windows, %{try_it: 3_600_000})
 
       assert {:ok, 0} = Lei.RateLimiter.check("hourly", "try_it")
       assert {:error, :rate_limited, retry_after} = Lei.RateLimiter.check("hourly", "try_it")
@@ -47,8 +47,8 @@ defmodule Lei.RateLimiterTest do
     test "cleanup keeps what a longer window still counts" do
       # Cleanup ran on the default minute, so an hourly bucket's history was
       # erased every two minutes and its limit could never be reached.
-      Application.put_env(:lowendinsight, :rate_limits, %{free: 60, pro: 600, try_it: 1})
-      Application.put_env(:lowendinsight, :rate_limit_windows, %{try_it: 3_600_000})
+      Application.put_env(:lei_service, :rate_limits, %{free: 60, pro: 600, try_it: 1})
+      Application.put_env(:lei_service, :rate_limit_windows, %{try_it: 3_600_000})
 
       assert {:ok, 0} = Lei.RateLimiter.check("survives-cleanup", "try_it")
 
@@ -74,7 +74,7 @@ defmodule Lei.RateLimiterTest do
   end
 
   test "blocks when limit exceeded" do
-    Application.put_env(:lowendinsight, :rate_limits, %{free: 3, pro: 600})
+    Application.put_env(:lei_service, :rate_limits, %{free: 3, pro: 600})
 
     assert {:ok, 2} = Lei.RateLimiter.check("limited-key", "free")
     assert {:ok, 1} = Lei.RateLimiter.check("limited-key", "free")
@@ -83,7 +83,7 @@ defmodule Lei.RateLimiterTest do
   end
 
   test "pro tier gets higher limit" do
-    Application.put_env(:lowendinsight, :rate_limits, %{free: 2, pro: 5})
+    Application.put_env(:lei_service, :rate_limits, %{free: 2, pro: 5})
 
     Lei.RateLimiter.check("free-key", "free")
     Lei.RateLimiter.check("free-key", "free")
@@ -95,7 +95,7 @@ defmodule Lei.RateLimiterTest do
   end
 
   test "different keys are independent" do
-    Application.put_env(:lowendinsight, :rate_limits, %{free: 1, pro: 600})
+    Application.put_env(:lei_service, :rate_limits, %{free: 1, pro: 600})
 
     assert {:ok, 0} = Lei.RateLimiter.check("key-a", "free")
     assert {:error, :rate_limited, _} = Lei.RateLimiter.check("key-a", "free")
@@ -103,7 +103,7 @@ defmodule Lei.RateLimiterTest do
   end
 
   test "reset clears state for a key" do
-    Application.put_env(:lowendinsight, :rate_limits, %{free: 1, pro: 600})
+    Application.put_env(:lei_service, :rate_limits, %{free: 1, pro: 600})
 
     assert {:ok, 0} = Lei.RateLimiter.check("reset-key", "free")
     assert {:error, :rate_limited, _} = Lei.RateLimiter.check("reset-key", "free")
@@ -112,7 +112,7 @@ defmodule Lei.RateLimiterTest do
   end
 
   test "returns retry_after when rate limited" do
-    Application.put_env(:lowendinsight, :rate_limits, %{free: 1, pro: 600})
+    Application.put_env(:lei_service, :rate_limits, %{free: 1, pro: 600})
 
     Lei.RateLimiter.check("retry-key", "free")
     assert {:error, :rate_limited, retry_after} = Lei.RateLimiter.check("retry-key", "free")

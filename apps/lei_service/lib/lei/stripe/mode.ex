@@ -50,7 +50,7 @@ defmodule Lei.Stripe.Mode do
   def of(_), do: :malformed
 
   @doc "The mode of the configured secret key."
-  def current, do: of(Application.get_env(:lowendinsight, :stripe_secret_key))
+  def current, do: of(Application.get_env(:lei_service, :stripe_secret_key))
 
   @doc """
   Whether this deployment is production.
@@ -59,7 +59,7 @@ defmodule Lei.Stripe.Mode do
   deploy and production are indistinguishable by it. `LEI_DEPLOY_ENV` is set in
   `fly.toml`, where it is versioned with the deploy that depends on it.
   """
-  def production?(deploy_env \\ Application.get_env(:lowendinsight, :deploy_env)) do
+  def production?(deploy_env \\ Application.get_env(:lei_service, :deploy_env)) do
     deploy_env == "production"
   end
 
@@ -153,7 +153,7 @@ defmodule Lei.Stripe.Mode do
   defp option(opts, name, config_key) do
     case Keyword.fetch(opts, name) do
       {:ok, value} -> value
-      :error -> Application.get_env(:lowendinsight, config_key)
+      :error -> Application.get_env(:lei_service, config_key)
     end
   end
 

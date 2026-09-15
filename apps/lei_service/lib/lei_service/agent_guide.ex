@@ -22,7 +22,7 @@ defmodule LeiService.AgentGuide do
 
   def facts do
     mode = Lei.Stripe.Mode.current()
-    top_up = Application.get_env(:lowendinsight, :default_top_up_credits, 15_000)
+    top_up = Application.get_env(:lei_service, :default_top_up_credits, 15_000)
     hit = credits(:cache_hit_cost_cents, 0.5)
     miss = credits(:cache_miss_cost_cents, 5.0)
 
@@ -35,12 +35,12 @@ defmodule LeiService.AgentGuide do
       miss_usd: usd(miss),
       top_up_credits: top_up,
       top_up_usd: usd(top_up),
-      free_monthly_analyses: Application.get_env(:lowendinsight, :free_tier_monthly_limit, 200),
+      free_monthly_analyses: Application.get_env(:lei_service, :free_tier_monthly_limit, 200),
       pro_price: @pro_price,
       pro_included_usd:
         usd(
           round(
-            Application.get_env(:lowendinsight, :pro_tier_credit_cents, 1500.0) *
+            Application.get_env(:lei_service, :pro_tier_credit_cents, 1500.0) *
               @credits_per_cent
           )
         ),
@@ -50,7 +50,7 @@ defmodule LeiService.AgentGuide do
   end
 
   defp credits(key, default) do
-    round(Application.get_env(:lowendinsight, key, default) * @credits_per_cent)
+    round(Application.get_env(:lei_service, key, default) * @credits_per_cent)
   end
 
   @doc "An integer with thousands separators: 15000 -> \"15,000\"."
