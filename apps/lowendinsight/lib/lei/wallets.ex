@@ -71,6 +71,7 @@ defmodule Lei.Wallets do
     # the farming vector by not granting one, rather than rate-limiting around
     # it. Access comes from credits, and a new org has none.
     |> Ecto.Changeset.put_change(:free_tier_analyses_limit, 0)
+    |> Ecto.Changeset.put_change(:prepaid, true)
     |> Repo.insert()
     |> case do
       {:ok, org} ->

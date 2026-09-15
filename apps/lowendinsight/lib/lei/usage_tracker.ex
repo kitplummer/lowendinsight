@@ -129,6 +129,10 @@ defmodule Lei.UsageTracker do
       %Org{wallet_address: wallet} = org when is_binary(wallet) and wallet != "" ->
         check_credit_balance(org)
 
+      # The same for any org bought with credits rather than signed up for.
+      %Org{prepaid: true} = org ->
+        check_credit_balance(org)
+
       %Org{tier: "pro"} ->
         {:ok, :unlimited}
 

@@ -14,6 +14,8 @@ defmodule Lei.Org do
     field(:free_tier_analyses_used, :integer, default: 0)
     field(:free_tier_analyses_limit, :integer, default: 200)
     field(:wallet_address, :string)
+    # Admitted on its credit balance, with no monthly allowance (ADR-002).
+    field(:prepaid, :boolean, default: false)
     has_many(:api_keys, Lei.ApiKey)
     timestamps()
   end

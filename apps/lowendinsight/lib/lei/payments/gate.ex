@@ -187,7 +187,10 @@ defmodule Lei.Payments.Gate do
   end
 
   defp credit_funded?(org_id) do
-    Lei.Wallets.wallet_org?(Lei.Repo.get(Lei.Org, org_id))
+    case Lei.Repo.get(Lei.Org, org_id) do
+      %Lei.Org{prepaid: true} -> true
+      org -> Lei.Wallets.wallet_org?(org)
+    end
   end
 
   defp default_top_up, do: Application.get_env(:lowendinsight, :default_top_up_credits, 15_000)

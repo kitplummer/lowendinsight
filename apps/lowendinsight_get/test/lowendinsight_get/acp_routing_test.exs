@@ -38,17 +38,17 @@ defmodule LowendinsightGet.AcpRoutingTest do
 
   describe "POST /acp/checkout" do
     test "creates a session" do
-      conn = post_acp("/acp/checkout", %{sku: "lei-free"})
+      conn = post_acp("/acp/checkout", %{sku: "lei-credits-29000"})
 
       assert conn.status == 201
       body = Poison.decode!(conn.resp_body)
       assert String.starts_with?(body["id"], "acp_cs_")
-      assert body["sku"] == "lei-free"
+      assert body["sku"] == "lei-credits-29000"
       assert body["status"] == "open"
     end
 
     test "reports amount for a paid SKU" do
-      conn = post_acp("/acp/checkout", %{sku: "lei-pro-monthly"})
+      conn = post_acp("/acp/checkout", %{sku: "lei-credits-29000"})
 
       assert conn.status == 201
       assert Poison.decode!(conn.resp_body)["amount_cents"] == 2900
@@ -64,7 +64,7 @@ defmodule LowendinsightGet.AcpRoutingTest do
 
   describe "POST /acp/checkout/:id" do
     test "updates customer details" do
-      {:ok, session} = Acp.create_session("lei-free")
+      {:ok, session} = Acp.create_session("lei-credits-29000")
 
       conn = post_acp("/acp/checkout/#{session.id}", %{customer_name: "Agent Corp"})
 
@@ -75,7 +75,7 @@ defmodule LowendinsightGet.AcpRoutingTest do
 
   describe "POST /acp/checkout/:id/cancel" do
     test "cancels an open session" do
-      {:ok, session} = Acp.create_session("lei-free")
+      {:ok, session} = Acp.create_session("lei-credits-29000")
 
       conn = post_acp("/acp/checkout/#{session.id}/cancel", %{})
 
@@ -118,7 +118,7 @@ defmodule LowendinsightGet.AcpRoutingTest do
     end
 
     test "accepts a request whose signature matches the raw body", %{secret: secret} do
-      body = %{sku: "lei-free"}
+      body = %{sku: "lei-credits-29000"}
       signature = sign(Poison.encode!(body), secret)
 
       conn = post_acp("/acp/checkout", body, [{"x-acp-signature", signature}])
@@ -127,7 +127,7 @@ defmodule LowendinsightGet.AcpRoutingTest do
     end
 
     test "rejects a bad signature", %{secret: secret} do
-      body = %{sku: "lei-free"}
+      body = %{sku: "lei-credits-29000"}
       signature = sign(Poison.encode!(%{sku: "something-else"}), secret)
 
       conn = post_acp("/acp/checkout", body, [{"x-acp-signature", signature}])
@@ -137,7 +137,7 @@ defmodule LowendinsightGet.AcpRoutingTest do
     end
 
     test "rejects a missing signature" do
-      conn = post_acp("/acp/checkout", %{sku: "lei-free"})
+      conn = post_acp("/acp/checkout", %{sku: "lei-credits-29000"})
 
       assert conn.status == 401
       assert Poison.decode!(conn.resp_body)["error"] == "missing x-acp-signature header"

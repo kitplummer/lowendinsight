@@ -138,9 +138,9 @@
     },
     {
       "id": "wallet-credit-gate",
-      "bug": "A wallet org's only gate is its credit balance, checked before the analysis runs. Falling through to the tier check would serve a zero-balance agent for free, and ADR-002 allows balances to go negative precisely because refusal has to happen before the work.",
+      "bug": "A wallet org's only gate is its credit balance, checked before the analysis runs. Falling through to the tier check would serve a zero-balance agent for free, and ADR-002 allows balances to go negative precisely because refusal has to happen before the work. Wallet orgs reach the credit check both by wallet address and by the prepaid flag, so the bug needs both routes gone.",
       "file": "apps/lowendinsight/lib/lei/usage_tracker.ex",
-      "find": "      %Org{wallet_address: wallet} = org when is_binary(wallet) and wallet != \"\" ->\n        check_credit_balance(org)\n\n",
+      "find": "      %Org{wallet_address: wallet} = org when is_binary(wallet) and wallet != \"\" ->\n        check_credit_balance(org)\n\n      # The same for any org bought with credits rather than signed up for.\n      %Org{prepaid: true} = org ->\n        check_credit_balance(org)\n\n",
       "replace": "",
       "guarded_by": "test/lei/wallets_test.exs",
       "app": "apps/lowendinsight"
@@ -1196,6 +1196,60 @@
       "find": "        case Lei.Payments.Gate.admit(conn, admission) do",
       "replace": "        _ = admission\n        case Lei.Payments.Gate.admit(conn) do",
       "guarded_by": "test/lei/web/batch_admission_test.exs",
+      "app": "apps/lowendinsight"
+    },
+    {
+      "id": "acp-purchase-grants-pro",
+      "bug": "ACP created an unlimited tier: pro org from a one-off $29 charge that was never billed again (security, 2026-09-14).",
+      "file": "apps/lowendinsight/lib/lei/acp.ex",
+      "find": "ApiKeys.create_org(customer_name, tier: \"free\", status: \"active\")",
+      "replace": "ApiKeys.create_org(customer_name, tier: \"pro\", status: \"active\")",
+      "guarded_by": "test/lei/acp_credits_test.exs",
+      "app": "apps/lowendinsight"
+    },
+    {
+      "id": "acp-org-not-prepaid",
+      "bug": "An ACP-purchased org fell back to the free tier's monthly quota instead of being admitted on its credits (2026-09-14).",
+      "file": "apps/lowendinsight/lib/lei/acp.ex",
+      "find": "change(prepaid: true, free_tier_analyses_limit: 0)",
+      "replace": "change(prepaid: false, free_tier_analyses_limit: 0)",
+      "guarded_by": "test/lei/acp_credits_test.exs",
+      "app": "apps/lowendinsight"
+    },
+    {
+      "id": "acp-free-sku-offered",
+      "bug": "ACP offered a free SKU, handing any caller a free-tier org; ADR-002 rules out a free tier for agents (security, 2026-09-14).",
+      "file": "apps/lowendinsight/lib/lei/acp_checkout_session.ex",
+      "find": "    \"lei-credits-29000\" => 2900\n",
+      "replace": "    \"lei-credits-29000\" => 2900,\n    \"lei-free\" => 0\n",
+      "guarded_by": "test/lei/acp_credits_test.exs",
+      "app": "apps/lowendinsight"
+    },
+    {
+      "id": "prepaid-org-uses-free-quota",
+      "bug": "A prepaid org without a wallet was checked against the free-tier quota rather than its credit balance (2026-09-14).",
+      "file": "apps/lowendinsight/lib/lei/usage_tracker.ex",
+      "find": "      %Org{prepaid: true} = org ->",
+      "replace": "      %Org{prepaid: :never} = org ->",
+      "guarded_by": "test/lei/acp_credits_test.exs",
+      "app": "apps/lowendinsight"
+    },
+    {
+      "id": "acp-charges-before-name-check",
+      "bug": "ACP charged the card and then failed to create the org when the name was taken, taking money for nothing (2026-09-14).",
+      "file": "apps/lowendinsight/lib/lei/acp.ex",
+      "find": "      _ -> {:error, :name_taken}",
+      "replace": "      _ -> :ok",
+      "guarded_by": "test/lei/acp_credits_test.exs",
+      "app": "apps/lowendinsight"
+    },
+    {
+      "id": "acp-echoes-stripe-error",
+      "bug": "ACP returned inspect() of Stripe's error body, which can carry the PaymentIntent and its client secret (security, 2026-09-14).",
+      "file": "apps/lowendinsight/lib/lei/acp.ex",
+      "find": "{:error, {:payment_failed, decline_code(reason)}}",
+      "replace": "{:error, {:payment_failed, if(decline_code(reason), do: reason)}}",
+      "guarded_by": "test/lei/acp_credits_test.exs",
       "app": "apps/lowendinsight"
     }
   ]
