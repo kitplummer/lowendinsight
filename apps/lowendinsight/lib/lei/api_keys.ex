@@ -58,7 +58,8 @@ defmodule Lei.ApiKeys do
     end
   end
 
-  defp slugify(name) do
+  @doc "The slug an org named `name` would get; what create_org/2 checks for collisions."
+  def slugify(name) do
     name
     |> String.downcase()
     |> String.replace(~r/[^a-z0-9]+/, "-")

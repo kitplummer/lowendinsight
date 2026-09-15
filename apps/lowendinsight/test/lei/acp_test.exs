@@ -1,6 +1,16 @@
 defmodule Lei.AcpTest do
   use ExUnit.Case, async: false
+  import Mox
+
   alias Lei.Acp
+
+  setup :verify_on_exit!
+
+  defp stripe_succeeds do
+    expect(Lei.StripeMock, :create_payment_intent, fn _ ->
+      {:ok, %{"id" => "pi_acp_#{System.unique_integer([:positive])}", "status" => "succeeded"}}
+    end)
+  end
 
   setup do
     :ok = Ecto.Adapters.SQL.Sandbox.checkout(Lei.Repo)
@@ -9,18 +19,12 @@ defmodule Lei.AcpTest do
   end
 
   describe "create_session/1" do
-    test "creates free session" do
-      assert {:ok, session} = Acp.create_session("lei-free")
+    test "creates a credits session" do
+      assert {:ok, session} = Acp.create_session("lei-credits-29000")
       assert String.starts_with?(session.id, "acp_cs_")
-      assert session.sku == "lei-free"
-      assert session.amount_cents == 0
-      assert session.status == "open"
-    end
-
-    test "creates pro session" do
-      assert {:ok, session} = Acp.create_session("lei-pro-monthly")
-      assert session.sku == "lei-pro-monthly"
+      assert session.sku == "lei-credits-29000"
       assert session.amount_cents == 2900
+      assert session.status == "open"
     end
 
     test "rejects invalid SKU" do
@@ -30,7 +34,7 @@ defmodule Lei.AcpTest do
 
   describe "update_session/2" do
     test "updates customer name" do
-      {:ok, session} = Acp.create_session("lei-free")
+      {:ok, session} = Acp.create_session("lei-credits-29000")
 
       assert {:ok, updated} =
                Acp.update_session(session.id, %{customer_name: "Agent Corp"})
@@ -45,14 +49,17 @@ defmodule Lei.AcpTest do
   end
 
   describe "complete_session/2" do
-    test "completes free session with org and key" do
-      {:ok, session} = Acp.create_session("lei-free")
-      Acp.update_session(session.id, %{customer_name: "Free Agent"})
+    test "completes a paid session with org and key" do
+      {:ok, session} = Acp.create_session("lei-credits-29000")
+      Acp.update_session(session.id, %{customer_name: "Paying Agent"})
+      stripe_succeeds()
 
-      assert {:ok, result} = Acp.complete_session(session.id, %{})
+      assert {:ok, result} =
+               Acp.complete_session(session.id, %{"payment_method" => "pm_card_visa"})
+
       assert String.starts_with?(result.api_key, "lei_")
       assert String.starts_with?(result.recovery_code, "lei_recover_")
-      assert result.tier == "free"
+      assert result.tier == "prepaid"
       assert result.org_slug != nil
     end
 
@@ -61,21 +68,22 @@ defmodule Lei.AcpTest do
     end
 
     test "rejects double completion" do
-      {:ok, session} = Acp.create_session("lei-free")
-      {:ok, _result} = Acp.complete_session(session.id, %{})
+      {:ok, session} = Acp.create_session("lei-credits-29000")
+      stripe_succeeds()
+      {:ok, _result} = Acp.complete_session(session.id, %{"payment_method" => "pm_card_visa"})
       assert {:error, :session_not_open} = Acp.complete_session(session.id, %{})
     end
   end
 
   describe "cancel_session/1" do
     test "cancels open session" do
-      {:ok, session} = Acp.create_session("lei-free")
+      {:ok, session} = Acp.create_session("lei-credits-29000")
       assert {:ok, cancelled} = Acp.cancel_session(session.id)
       assert cancelled.status == "cancelled"
     end
 
     test "rejects cancel of already cancelled session" do
-      {:ok, session} = Acp.create_session("lei-free")
+      {:ok, session} = Acp.create_session("lei-credits-29000")
       {:ok, _} = Acp.cancel_session(session.id)
       assert {:error, :session_not_open} = Acp.cancel_session(session.id)
     end
@@ -87,7 +95,7 @@ defmodule Lei.AcpTest do
 
   describe "session expiry" do
     test "rejects completion of expired session" do
-      {:ok, session} = Acp.create_session("lei-free")
+      {:ok, session} = Acp.create_session("lei-credits-29000")
 
       # Manually expire it
       session

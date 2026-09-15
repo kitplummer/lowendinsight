@@ -76,6 +76,7 @@ defmodule Lei.Acp.Router do
           recovery_code: result.recovery_code,
           org_slug: result.org_slug,
           tier: result.tier,
+          credits: result.credits,
           warning: "Store these credentials securely. They will not be shown again."
         })
 
@@ -95,7 +96,7 @@ defmodule Lei.Acp.Router do
         })
 
       {:error, {:payment_failed, reason}} ->
-        json_resp(conn, 402, %{error: "payment failed", details: inspect(reason)})
+        json_resp(conn, 402, %{error: "payment failed", decline_code: reason})
 
       # Without this clause the case below raises, so a name collision would
       # surface as a 500 on a completed payment.

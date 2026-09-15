@@ -84,7 +84,7 @@ defmodule Lei.Acp.AuthTest do
     end
 
     test "accepts valid HMAC signature" do
-      body = ~s({"sku":"lei-free"})
+      body = ~s({"sku":"lei-credits-29000"})
 
       signature =
         :crypto.mac(:hmac, :sha256, "hmac_secret", body) |> Base.encode16(case: :lower)
@@ -101,7 +101,7 @@ defmodule Lei.Acp.AuthTest do
     test "rejects invalid HMAC signature" do
       conn =
         conn(:post, "/acp/checkout")
-        |> put_private(:raw_body, ~s({"sku":"lei-free"}))
+        |> put_private(:raw_body, ~s({"sku":"lei-credits-29000"}))
         |> put_req_header("x-acp-signature", "invalid_sig")
         |> Auth.call(%{})
 
@@ -112,7 +112,7 @@ defmodule Lei.Acp.AuthTest do
     test "rejects missing signature header" do
       conn =
         conn(:post, "/acp/checkout")
-        |> put_private(:raw_body, ~s({"sku":"lei-free"}))
+        |> put_private(:raw_body, ~s({"sku":"lei-credits-29000"}))
         |> Auth.call(%{})
 
       assert conn.status == 401

@@ -454,8 +454,10 @@ run as a real test, not a formality.
 `Lei.Acp.Auth` skips both the bearer and HMAC checks when they are absent.
 `POST /acp/checkout` is therefore open to anyone.
 
-For the `lei-free` SKU that may be the intended frictionless self-provisioning
-described in ADR-001. It is a live decision either way, not a theoretical one,
-and it became live when #62 made the endpoint reachable at all.
+Since 2026-09-15 the only SKU is `lei-credits-29000`: $29 charged once buys
+29,000 credits on a prepaid org with no monthly allowance (ADR-002). There is no
+free SKU, so an open endpoint provisions nothing without a successful payment.
+The former `lei-free` SKU gave any caller a free-tier org, and `lei-pro-monthly`
+created an unlimited Pro org from a one-off charge that was never billed again.
 
 Setting either secret turns the corresponding check on.

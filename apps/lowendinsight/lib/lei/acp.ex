@@ -3,7 +3,7 @@ defmodule Lei.Acp do
   ACP (Agentic Commerce Protocol) business logic for agent-to-agent commerce.
   Manages checkout session lifecycle: create → update → complete/cancel.
   """
-  alias Lei.{Repo, AcpCheckoutSession, ApiKeys}
+  alias Lei.{Repo, AcpCheckoutSession, ApiKeys, Credits, Org}
 
   @session_ttl_seconds 3600
 
@@ -46,12 +46,11 @@ defmodule Lei.Acp do
   def complete_session(id, payment_params) do
     with {:ok, session} <- get_session(id),
          :ok <- check_session_open(session),
-         :ok <- check_not_expired(session) do
-      if session.amount_cents == 0 do
-        complete_free_session(session)
-      else
-        complete_paid_session(session, payment_params)
-      end
+         :ok <- check_not_expired(session),
+         # Before the charge, not after: a name that cannot be created would
+         # otherwise take the agent's money for nothing.
+         :ok <- check_name_available(session) do
+      complete_paid_session(session, payment_params)
     end
   end
 
@@ -77,24 +76,12 @@ defmodule Lei.Acp do
     end
   end
 
-  defp complete_free_session(session) do
-    customer_name = session.customer_name || default_org_name(session)
+  defp check_name_available(session) do
+    slug = ApiKeys.slugify(session.customer_name || default_org_name(session))
 
-    with {:ok, org} <- ApiKeys.create_org(customer_name, tier: "free", status: "active"),
-         {:ok, raw_key, _api_key} <-
-           ApiKeys.create_api_key(org, "acp-key", ["admin", "analyze"]),
-         {:ok, recovery_code} <- ApiKeys.generate_recovery_code(org) do
-      session
-      |> AcpCheckoutSession.update_changeset(%{status: "completed", org_id: org.id})
-      |> Repo.update()
-
-      {:ok,
-       %{
-         api_key: raw_key,
-         recovery_code: recovery_code,
-         org_slug: org.slug,
-         tier: "free"
-       }}
+    case Repo.get_by(Org, slug: slug) do
+      nil -> :ok
+      _ -> {:error, :name_taken}
     end
   end
 
@@ -117,36 +104,60 @@ defmodule Lei.Acp do
 
         {:error, :requires_action, pi_id}
 
+      # Only the decline code. Stripe's error body can carry the PaymentIntent,
+      # its client secret and a request log URL.
       {:error, reason} ->
-        {:error, {:payment_failed, reason}}
+        {:error, {:payment_failed, decline_code(reason)}}
     end
   end
 
+  # Org, credentials, credits and the session's completion are one fact: an
+  # agent that paid either has all of them or none. The credit entry is keyed
+  # to the PaymentIntent, so the same payment cannot be credited twice.
   defp finalize_paid_session(session, payment_intent_id) do
     customer_name = session.customer_name || default_org_name(session)
+    credits = AcpCheckoutSession.credits_for_amount(session.amount_cents)
 
-    with {:ok, org} <-
-           ApiKeys.create_org(customer_name, tier: "pro", status: "active"),
-         {:ok, raw_key, _api_key} <-
-           ApiKeys.create_api_key(org, "acp-key", ["admin", "analyze"]),
-         {:ok, recovery_code} <- ApiKeys.generate_recovery_code(org) do
-      session
-      |> AcpCheckoutSession.update_changeset(%{
-        status: "completed",
-        stripe_payment_intent_id: payment_intent_id,
-        org_id: org.id
-      })
-      |> Repo.update()
-
-      {:ok,
-       %{
-         api_key: raw_key,
-         recovery_code: recovery_code,
-         org_slug: org.slug,
-         tier: "pro"
-       }}
-    end
+    Repo.transaction(fn ->
+      with {:ok, org} <- ApiKeys.create_org(customer_name, tier: "free", status: "active"),
+           {:ok, org} <-
+             org
+             |> Ecto.Changeset.change(prepaid: true, free_tier_analyses_limit: 0)
+             |> Repo.update(),
+           {:ok, _entry} <-
+             Credits.grant(org.id, credits, "purchase:stripe",
+               external_ref: "acp:" <> payment_intent_id,
+               usd_value_cents: session.amount_cents,
+               metadata: %{"acp_session_id" => session.id, "sku" => session.sku}
+             ),
+           {:ok, raw_key, _api_key} <-
+             ApiKeys.create_api_key(org, "acp-key", ["admin", "analyze"]),
+           {:ok, recovery_code} <- ApiKeys.generate_recovery_code(org),
+           {:ok, _session} <-
+             session
+             |> AcpCheckoutSession.update_changeset(%{
+               status: "completed",
+               stripe_payment_intent_id: payment_intent_id,
+               org_id: org.id
+             })
+             |> Repo.update() do
+        %{
+          api_key: raw_key,
+          recovery_code: recovery_code,
+          org_slug: org.slug,
+          tier: "prepaid",
+          credits: credits
+        }
+      else
+        {:error, reason} -> Repo.rollback(reason)
+      end
+    end)
   end
+
+  defp decline_code(%{"error" => %{} = error}),
+    do: error["decline_code"] || error["code"] || "payment_failed"
+
+  defp decline_code(_), do: "payment_failed"
 
   # A fixed default ("ACP Agent") would slug-collide for every anonymous
   # completion, so each one would land on the same org. Under the old

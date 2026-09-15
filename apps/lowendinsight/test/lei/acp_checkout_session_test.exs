@@ -5,18 +5,13 @@ defmodule Lei.AcpCheckoutSessionTest do
   describe "valid_skus/0" do
     test "returns list of valid SKUs" do
       skus = AcpCheckoutSession.valid_skus()
-      assert "lei-free" in skus
-      assert "lei-pro-monthly" in skus
+      assert skus == ["lei-credits-29000"]
     end
   end
 
   describe "amount_for_sku/1" do
-    test "returns 0 for free SKU" do
-      assert AcpCheckoutSession.amount_for_sku("lei-free") == 0
-    end
-
-    test "returns 2900 for pro SKU" do
-      assert AcpCheckoutSession.amount_for_sku("lei-pro-monthly") == 2900
+    test "returns 2900 for the credits SKU" do
+      assert AcpCheckoutSession.amount_for_sku("lei-credits-29000") == 2900
     end
 
     test "returns nil for invalid SKU" do
@@ -28,7 +23,7 @@ defmodule Lei.AcpCheckoutSessionTest do
     test "valid changeset" do
       attrs = %{
         id: "acp_cs_test",
-        sku: "lei-free",
+        sku: "lei-credits-29000",
         amount_cents: 0,
         expires_at: DateTime.utc_now()
       }
@@ -50,7 +45,7 @@ defmodule Lei.AcpCheckoutSessionTest do
     test "rejects invalid status" do
       attrs = %{
         id: "acp_cs_test",
-        sku: "lei-free",
+        sku: "lei-credits-29000",
         amount_cents: 0,
         expires_at: DateTime.utc_now(),
         status: "invalid"

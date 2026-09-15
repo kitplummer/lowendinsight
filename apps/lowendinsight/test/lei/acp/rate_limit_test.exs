@@ -22,7 +22,7 @@ defmodule Lei.Acp.RateLimitTest do
   end
 
   defp acp_conn(path, ip) do
-    conn(:post, path, ~s({"sku":"lei-free"}))
+    conn(:post, path, ~s({"sku":"lei-credits-29000"}))
     |> put_req_header("content-type", "application/json")
     |> put_req_header("fly-client-ip", ip)
   end

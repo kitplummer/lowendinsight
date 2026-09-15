@@ -19,13 +19,20 @@ defmodule Lei.AcpCheckoutSession do
 
   @valid_statuses ~w(open completed cancelled expired)
 
+  # Agents buy credits (ADR-002). There is no free SKU -- an org costs nothing
+  # to create here, so any allowance per org is an allowance per attacker --
+  # and no Pro SKU: a one-off charge cannot carry a subscription, and Pro
+  # without one was unlimited and never billed.
   @skus %{
-    "lei-free" => 0,
-    "lei-pro-monthly" => 2900
+    "lei-credits-29000" => 2900
   }
+
+  # One credit is $0.001, so a cent buys ten.
+  @credits_per_cent 10
 
   def valid_skus, do: Map.keys(@skus)
   def amount_for_sku(sku), do: Map.get(@skus, sku)
+  def credits_for_amount(amount_cents), do: amount_cents * @credits_per_cent
 
   def changeset(session, attrs) do
     session
