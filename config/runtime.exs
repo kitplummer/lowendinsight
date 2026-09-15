@@ -133,7 +133,7 @@ if config_env() == :prod do
     pool_size: String.to_integer(System.get_env("POOL_SIZE") || "5"),
     socket_options: [:inet6]
 
-  config :lowendinsight, Lei.Repo,
+  config :lowendinsight_get, Lei.Repo,
     url: database_url,
     pool_size: String.to_integer(System.get_env("POOL_SIZE") || "5"),
     socket_options: [:inet6]

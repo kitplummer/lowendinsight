@@ -45,7 +45,7 @@ config :lowendinsight_get, LowendinsightGet.Repo,
   url: database_url,
   pool_size: 5
 
-config :lowendinsight, Lei.Repo,
+config :lowendinsight_get, Lei.Repo,
   url: database_url,
   pool_size: 5
 

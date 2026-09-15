@@ -64,27 +64,27 @@ defmodule Lei.Stripe.ModeVisibilityTest do
 
   describe "boot checks" do
     test "pass with the test configuration" do
-      assert :ok = Lei.Application.boot_checks!()
+      assert :ok = Lei.Boot.checks!()
     end
 
     test "refuse a live key when not deployed to production" do
       put_key("sk_live_")
       Application.put_env(:lowendinsight, :deploy_env, "staging")
-      assert_raise ArgumentError, ~r/live Stripe key/, &Lei.Application.boot_checks!/0
+      assert_raise ArgumentError, ~r/live Stripe key/, &Lei.Boot.checks!/0
     end
 
     test "refuse a sandbox profile beside a live key" do
       put_key("sk_live_")
       Application.put_env(:lowendinsight, :deploy_env, "production")
       Application.put_env(:lowendinsight, :stripe_profile_id, "profile_test_lei")
-      assert_raise ArgumentError, ~r/STRIPE_PROFILE_ID/, &Lei.Application.boot_checks!/0
+      assert_raise ArgumentError, ~r/STRIPE_PROFILE_ID/, &Lei.Boot.checks!/0
     end
 
     test "accept a live key when deployed to production" do
       put_key("sk_live_")
       Application.put_env(:lowendinsight, :stripe_profile_id, "profile_lei")
       Application.put_env(:lowendinsight, :deploy_env, "production")
-      assert :ok = Lei.Application.boot_checks!()
+      assert :ok = Lei.Boot.checks!()
     end
   end
 end

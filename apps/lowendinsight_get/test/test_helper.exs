@@ -7,9 +7,11 @@
 # Run with: mix test --include network
 ExUnit.start(exclude: [network: true])
 
-# The payment journey drives the deployed endpoint, which reaches Stripe and
-# the Tempo RPC through these. Defined here too because this app's tests can
-# run without the library's test_helper having loaded.
+# Lei.Repo belongs to this app since ADR-003; its tests check out connections
+# explicitly.
+Ecto.Adapters.SQL.Sandbox.mode(Lei.Repo, :manual)
+
+# Stripe and the Tempo RPC are reached through these behaviours in tests.
 for {mock, behaviour} <- [
       {Lei.StripeMock, Lei.StripeBehaviour},
       {Lei.TempoRpcMock, Lei.Tempo.RpcBehaviour}

@@ -227,7 +227,7 @@ defmodule Helpers do
   def convert_config_to_list(config) do
     config
     |> Enum.reject(fn {k, _v} ->
-      k in [:jobs_per_core_max, :ecto_repos] or (is_atom(k) and k == Lei.Repo)
+      k in [:jobs_per_core_max, :ecto_repos]
     end)
     |> Enum.filter(fn {_k, v} -> json_encodable?(v) end)
     |> Enum.into(%{})

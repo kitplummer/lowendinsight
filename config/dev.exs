@@ -31,7 +31,7 @@ config :lowendinsight_get, Oban,
 
 # --- lowendinsight (library) dev overrides ---
 
-config :lowendinsight, Lei.Repo,
+config :lowendinsight_get, Lei.Repo,
   database: "lowendinsight_dev",
   username: "postgres",
   password: "postgres",

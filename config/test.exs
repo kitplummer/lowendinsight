@@ -40,7 +40,7 @@ config :redix,
 
 # Overridable so the backup-grant check can run migrations as a non-superuser
 # role. Defaults are unchanged for everyone else.
-config :lowendinsight, Lei.Repo,
+config :lowendinsight_get, Lei.Repo,
   database: System.get_env("LEI_TEST_DB") || "lowendinsight_test",
   username: System.get_env("LEI_TEST_DB_USER") || "postgres",
   password: System.get_env("LEI_TEST_DB_PASS") || "postgres",

@@ -104,11 +104,12 @@ check_compile() {
 }
 
 check_databases() {
-  # Both apps own a Repo and both need their test database to exist. Without
-  # this the suite stage fails on a migration error that looks like a code
-  # fault and is not one -- which is its own kind of false signal.
+  # The service owns both Repos (ADR-003: the library has no database), and
+  # both need their test database to exist. Without this the suite stage fails
+  # on a migration error that looks like a code fault and is not one -- which
+  # is its own kind of false signal.
   local failed=0
-  for app in apps/lowendinsight apps/lowendinsight_get; do
+  for app in apps/lowendinsight_get; do
     dim "   $app"
     (cd "$app" && MIX_ENV=test mix ecto.create --quiet && MIX_ENV=test mix ecto.migrate >/dev/null) || failed=1
   done

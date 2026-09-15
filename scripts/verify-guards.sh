@@ -34,6 +34,7 @@ restore() {
     while IFS= read -r -d '' saved; do
       rel="${saved#"$BACKUP_DIR"/}"
       cp "$saved" "$rel"
+      force_recompile "$rel"
     done < <(find "$BACKUP_DIR" -type f -print0)
     rm -rf "$BACKUP_DIR"
   fi
@@ -49,6 +50,17 @@ backup_file() {
 PASS=0
 FAIL=0
 STALE=0
+
+# Mix (1.16) recompiles a source only if its size changed, or its mtime is newer
+# than the build manifest *and* its digest changed -- mtimes at one-second
+# resolution. A mutation that keeps the file's size (uuid4 -> uuid1), applied or
+# restored in the same second as the last compile, was not recompiled: the
+# guard ran against unmutated code and reported a false "unguarded", and a
+# restore that was not recompiled would leave mutated code for later guards to
+# run against. A future mtime makes every change newer than any manifest.
+force_recompile() {
+  touch -d "@$(( $(date +%s) + 5 ))" "$1"
+}
 
 bold "=== Guard verification ==="
 echo ""
@@ -187,6 +199,8 @@ open(m['file'], 'w').write(src.replace(m['find'], m['replace'], 1))
     continue
   fi
 
+  force_recompile "$FILE"
+
   # Run only the guarding test. It must fail.
   if (cd "$APP" && MIX_ENV=test mix test "$GUARDED_BY" >/tmp/guard.out 2>&1); then
     red "  FAIL: $GUARDED_BY still PASSED with the bug reintroduced."
@@ -199,6 +213,7 @@ open(m['file'], 'w').write(src.replace(m['find'], m['replace'], 1))
   fi
 
   cp "$BACKUP_DIR/$FILE" "$FILE"
+  force_recompile "$FILE"
   echo ""
 done
 

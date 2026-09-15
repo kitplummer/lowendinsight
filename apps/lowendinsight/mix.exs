@@ -58,13 +58,9 @@ defmodule GithubModule.MixProject do
       {:mox, "~> 1.1", only: :test},
       {:yarn_parser, "~> 0.3"},
       {:sweet_xml, "~> 0.7.1"},
-      {:sbom, "~> 0.6", only: :dev, runtime: false},
-      {:exqlite, "~> 0.27"},
-      {:plug, "~> 1.15"},
-      {:plug_cowboy, "~> 2.7"},
-      {:joken, "~> 2.5.0"},
-      {:ecto_sql, "~> 3.11"},
-      {:postgrex, "~> 0.18"}
+      # No database, web server or JWT here: those belong to the hosted
+      # service, which depends on this library (ADR-003).
+      {:sbom, "~> 0.6", only: :dev, runtime: false}
     ]
   end
 
