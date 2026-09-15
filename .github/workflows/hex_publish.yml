@@ -1,32 +1,33 @@
-name: elixir_ci_hex_publish
+name: hex_publish
 
+# Publishes the tagged version. This maintenance branch (release/0.9) carries
+# security fixes for the 0.9 series on top of the code Hex 0.9.1 was built
+# from; the previous workflow here published on merges to main, which this
+# branch never has.
 on:
-  pull_request:
-    types: [closed]
-    branches:
-      - main
+  push:
+    tags:
+      - 'v0.9.*'
 
 jobs:
-  build:
-
+  publish:
     runs-on: ubuntu-latest
 
-    container:
-      image: elixir:1.14-alpine
-
     steps:
-    - uses: actions/checkout@v1
+    - uses: actions/checkout@v4
+    - name: Setup Elixir
+      uses: erlef/setup-beam@v1
+      with:
+        elixir-version: 1.16.3
+        otp-version: 26.2
     - name: Install Dependencies
       run: |
-        apk add git
         mix local.rebar --force
         mix local.hex --force
         mix deps.get
+    - name: Test
+      run: MIX_ENV=test mix test --exclude network --exclude long
     - name: Publish to Hex
-      env: # Or as an environment variable
+      env:
         HEX_API_KEY: ${{ secrets.HEX_API_KEY }}
-      if: github.event.pull_request.merged == true
-      run: |
-        git config --global --add safe.directory /__w/lowendinsight/lowendinsight
-        mix hex.publish --yes
-
+      run: mix hex.publish --yes
