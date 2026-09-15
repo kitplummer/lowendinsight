@@ -6,11 +6,11 @@ import Config
 
 config :logger, level: :error
 
-# --- lowendinsight_get test overrides ---
+# --- lei_service test overrides ---
 
-config :lowendinsight_get, LowendinsightGet.Endpoint, port: 4444
+config :lei_service, LeiService.Endpoint, port: 4444
 
-config :lowendinsight_get,
+config :lei_service,
   cache_ttl: String.to_integer(System.get_env("LEI_CACHE_TTL") || "30"),
   cache_clean_enable: String.to_atom(System.get_env("LEI_CACHE_CLEAN_ENABLE") || "true"),
   check_repo_size?: String.to_atom(System.get_env("LEI_CHECK_REPO_SIZE") || "true"),
@@ -19,16 +19,16 @@ config :lowendinsight_get,
   gh_token: System.get_env("LEI_GH_TOKEN") || "",
   use_workers: false
 
-config :lowendinsight_get, LowendinsightGet.Repo,
-  database: "lowendinsight_get_test",
+config :lei_service, LeiService.Repo,
+  database: "lei_service_test",
   username: "postgres",
   password: "postgres",
   hostname: "localhost",
   pool: Ecto.Adapters.SQL.Sandbox,
   pool_size: 5
 
-config :lowendinsight_get, Oban,
-  repo: LowendinsightGet.Repo,
+config :lei_service, Oban,
+  repo: LeiService.Repo,
   testing: :manual,
   queues: false,
   plugins: false
@@ -40,7 +40,7 @@ config :redix,
 
 # Overridable so the backup-grant check can run migrations as a non-superuser
 # role. Defaults are unchanged for everyone else.
-config :lowendinsight_get, Lei.Repo,
+config :lei_service, Lei.Repo,
   database: System.get_env("LEI_TEST_DB") || "lowendinsight_test",
   username: System.get_env("LEI_TEST_DB_USER") || "postgres",
   password: System.get_env("LEI_TEST_DB_PASS") || "postgres",

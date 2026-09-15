@@ -6,9 +6,9 @@ import Config
 
 config :logger, level: :debug
 
-# --- lowendinsight_get dev overrides ---
+# --- lei_service dev overrides ---
 
-config :lowendinsight_get,
+config :lei_service,
   check_repo_size?: String.to_atom(System.get_env("LEI_CHECK_REPO_SIZE") || "true"),
   gh_token: System.get_env("LEI_GH_TOKEN") || "",
   num_of_repos: String.to_integer(System.get_env("LEI_NUM_OF_REPOS") || "10"),
@@ -18,20 +18,20 @@ config :lowendinsight_get,
 config :redix,
   timeout: :infinity
 
-config :lowendinsight_get, LowendinsightGet.Repo,
-  database: "lowendinsight_get_dev",
+config :lei_service, LeiService.Repo,
+  database: "lei_service_dev",
   username: "postgres",
   password: "postgres",
   hostname: "localhost",
   pool_size: 5
 
-config :lowendinsight_get, Oban,
-  repo: LowendinsightGet.Repo,
+config :lei_service, Oban,
+  repo: LeiService.Repo,
   queues: [analysis: 2]
 
 # --- lowendinsight (library) dev overrides ---
 
-config :lowendinsight_get, Lei.Repo,
+config :lei_service, Lei.Repo,
   database: "lowendinsight_dev",
   username: "postgres",
   password: "postgres",

@@ -13,7 +13,7 @@ import Config
 config :lowendinsight, deploy_env: System.get_env("LEI_DEPLOY_ENV")
 
 if config_env() == :prod do
-  config :lowendinsight_get, LowendinsightGet.Endpoint,
+  config :lei_service, LeiService.Endpoint,
     port: String.to_integer(System.get_env("PORT") || "4444"),
     ip: {0, 0, 0, 0}
 
@@ -41,11 +41,11 @@ if config_env() == :prod do
 
   config :lowendinsight,
     # Lei.Auth verifies JWTs on Lei.Web.Router's own listener (start_http) with
-    # this. It must be the same secret the endpoint's LowendinsightGet.Auth uses.
+    # this. It must be the same secret the endpoint's LeiService.Auth uses.
     jwt_secret: jwt_secret,
     session_secret_key_base: session_secret
 
-  config :lowendinsight_get,
+  config :lei_service,
     jwt_secret: jwt_secret,
     cache_ttl: String.to_integer(System.get_env("LEI_CACHE_TTL") || "30"),
     cache_clean_enable: String.to_atom(System.get_env("LEI_CACHE_CLEAN_ENABLE") || "true"),
@@ -73,7 +73,7 @@ if config_env() == :prod do
   config :lowendinsight,
     # Two HTTP listeners run in production, deliberately:
     #
-    #   8080  LowendinsightGet.Endpoint -- the Fly entry point (fly.toml
+    #   8080  LeiService.Endpoint -- the Fly entry point (fly.toml
     #         internal_port). Lei.Web.Router is mounted inside it for the paths
     #         listed in @auth_paths.
     #   4000  Lei.Web.Router standalone, started by start_http below. This is
@@ -128,18 +128,18 @@ if config_env() == :prod do
     System.get_env("DATABASE_URL") ||
       raise "DATABASE_URL env var is required in production"
 
-  config :lowendinsight_get, LowendinsightGet.Repo,
+  config :lei_service, LeiService.Repo,
     url: database_url,
     pool_size: String.to_integer(System.get_env("POOL_SIZE") || "5"),
     socket_options: [:inet6]
 
-  config :lowendinsight_get, Lei.Repo,
+  config :lei_service, Lei.Repo,
     url: database_url,
     pool_size: String.to_integer(System.get_env("POOL_SIZE") || "5"),
     socket_options: [:inet6]
 
-  config :lowendinsight_get, Oban,
-    repo: LowendinsightGet.Repo,
+  config :lei_service, Oban,
+    repo: LeiService.Repo,
     queues: [
       analysis:
         String.to_integer(System.get_env("OBAN_ANALYSIS_CONCURRENCY") || "5")
@@ -151,14 +151,14 @@ if config_env() == :prod do
 
   # Fly's private network (6PN) is IPv6-only, and Redix defaults to IPv4.
   # Override with LEI_REDIS_IPV6=false when running against an IPv4 Redis.
-  config :lowendinsight_get,
+  config :lei_service,
     redis_socket_opts:
       if(System.get_env("LEI_REDIS_IPV6", "true") == "true", do: [:inet6], else: [])
 
   # Scheduler
-  config :lowendinsight_get, LowendinsightGet.Scheduler,
+  config :lei_service, LeiService.Scheduler,
     jobs: [
-      {"*/5 * * * *", {LowendinsightGet.CacheCleaner, :clean, []}},
+      {"*/5 * * * *", {LeiService.CacheCleaner, :clean, []}},
       {
         # Hourly, never overlapping: each run refreshes only languages not
         # refreshed in the last day, one at a time, so a restart costs one
@@ -166,7 +166,7 @@ if config_env() == :prod do
         :github_trending,
         [
           schedule: "0 * * * *",
-          task: {LowendinsightGet.GithubTrending, :refresh_due, []},
+          task: {LeiService.GithubTrending, :refresh_due, []},
           # Re-enabled after #158: disabled 2026-09-14 when its first run
           # OOM-killed production. Bounded since by #162 (analysis memory no
           # longer scales with history) and #163 (rising repositories, 250 MB

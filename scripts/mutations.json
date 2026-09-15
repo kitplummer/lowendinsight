@@ -13,65 +13,65 @@
     {
       "id": "acp-mount-prefix",
       "bug": "ACP checkout returned 404 on every route; the /acp prefix was not stripped before dispatch (#62)",
-      "file": "apps/lowendinsight_get/lib/lowendinsight_get/endpoint.ex",
+      "file": "apps/lei_service/lib/lei_service/endpoint.ex",
       "find": "|> Plug.forward(rest, Lei.Acp.Router, Lei.Acp.Router.init([]))",
       "replace": "|> Lei.Acp.Router.call(Lei.Acp.Router.init([]))",
-      "guarded_by": "test/lowendinsight_get/acp_routing_test.exs",
-      "app": "apps/lowendinsight_get"
+      "guarded_by": "test/lei_service/acp_routing_test.exs",
+      "app": "apps/lei_service"
     },
     {
       "id": "auth-paths-omission",
       "bug": "Eight routes unreachable in production, including all health/metrics and the /v1/orgs family (#69)",
-      "file": "apps/lowendinsight_get/lib/lowendinsight_get/endpoint.ex",
+      "file": "apps/lei_service/lib/lei_service/endpoint.ex",
       "find": "/v1/analyze/batch /v1/usage /v1/credits /v1/health /v1/orgs\n                 /healthz /readyz /metrics)",
       "replace": "/v1/analyze/batch /v1/usage)",
-      "guarded_by": "test/lowendinsight_get/ops_routing_test.exs",
-      "app": "apps/lowendinsight_get"
+      "guarded_by": "test/lei_service/ops_routing_test.exs",
+      "app": "apps/lei_service"
     },
     {
       "id": "rate-limiter-table",
       "bug": "POST /v1/analyze raised for every authenticated caller; the ETS table was created in Plug init/1, which runs at compile time (#91)",
-      "file": "apps/lowendinsight_get/lib/lowendinsight_get/plugs/rate_limiter.ex",
+      "file": "apps/lei_service/lib/lei_service/plugs/rate_limiter.ex",
       "find": "    # Belt and braces: rate limiting must never be the reason an analysis fails.\n    init_table()\n\n",
       "replace": "",
-      "guarded_by": "test/lowendinsight_get/rate_limiter_table_test.exs",
-      "app": "apps/lowendinsight_get"
+      "guarded_by": "test/lei_service/rate_limiter_table_test.exs",
+      "app": "apps/lei_service"
     },
     {
       "id": "signup-success-session",
       "bug": "Every completed Pro checkout ended on a 500; get_session/2 was called without fetching the session (#90)",
-      "file": "apps/lowendinsight_get/lib/lei/web/router.ex",
+      "file": "apps/lei_service/lib/lei/web/router.ex",
       "find": "    conn = fetch_session(conn)\n    org_id = get_session(conn, \"pending_org_id\")",
       "replace": "    org_id = get_session(conn, \"pending_org_id\")",
       "guarded_by": "test/lei/web/signup_success_test.exs",
-      "app": "apps/lowendinsight_get"
+      "app": "apps/lei_service"
     },
     {
       "id": "signup-org-takeover",
       "bug": "Unauthenticated signup issued an admin-scoped key for an existing org when the name matched (#89)",
-      "file": "apps/lowendinsight_get/lib/lei/web/router.ex",
+      "file": "apps/lei_service/lib/lei/web/router.ex",
       "find": "case Lei.ApiKeys.create_org(name, tier: \"free\", status: \"active\") do",
       "replace": "case Lei.ApiKeys.find_or_create_org(name, tier: \"free\", status: \"active\") do",
       "guarded_by": "test/lei/org_takeover_test.exs",
-      "app": "apps/lowendinsight_get"
+      "app": "apps/lei_service"
     },
     {
       "id": "acp-rate-limit",
       "bug": "ACP endpoints had no rate limiting; an unauthenticated caller could create unbounded sessions, orgs and API keys",
-      "file": "apps/lowendinsight_get/lib/lei/acp/router.ex",
+      "file": "apps/lei_service/lib/lei/acp/router.ex",
       "find": "  plug(Lei.Acp.RateLimit)\n\n",
       "replace": "",
       "guarded_by": "test/lei/acp/rate_limit_test.exs",
-      "app": "apps/lowendinsight_get"
+      "app": "apps/lei_service"
     },
     {
       "id": "credit-ledger-idempotency",
       "bug": "Anticipated, not yet shipped: a replayed Stripe webhook or resubmitted x402 payment proof double-credits an org. The defence is the unique index on external_ref, surfaced through the changeset constraint -- without it a duplicate raises Ecto.ConstraintError instead of returning {:error, :duplicate}, which callers will not be expecting.",
-      "file": "apps/lowendinsight_get/lib/lei/credit_entry.ex",
+      "file": "apps/lei_service/lib/lei/credit_entry.ex",
       "find": "    |> unique_constraint(:external_ref)\n",
       "replace": "",
       "guarded_by": "test/lei/credits_test.exs",
-      "app": "apps/lowendinsight_get"
+      "app": "apps/lei_service"
     },
     {
       "id": "scanner-cwd-restore",
@@ -94,236 +94,236 @@
     {
       "id": "webhook-outcome-conflation",
       "bug": "A wrong STRIPE_WEBHOOK_SECRET failed identically to an unset one and to a scanner POSTing junk -- all three returned 400 with no way to tell them apart. The secret sat set-but-wrong with webhooks silently 400ing and nothing surfaced it. Collapsing 'unconfigured' back into 'invalid' makes the monitor report a rotation problem when the real fault is a missing secret.",
-      "file": "apps/lowendinsight_get/lib/lei/web/router.ex",
+      "file": "apps/lei_service/lib/lei/web/router.ex",
       "find": "        Lei.WebhookStats.record(:unconfigured)",
       "replace": "        Lei.WebhookStats.record(:invalid)",
       "guarded_by": "test/lei/webhook_monitoring_test.exs",
-      "app": "apps/lowendinsight_get"
+      "app": "apps/lei_service"
     },
     {
       "id": "credit-debit-atomicity",
       "bug": "The usage row and its ledger debit are one transaction because they describe the same event: a committed usage row with no debit is an analysis delivered and never accounted for, findable only by reconciliation after the fact. Letting a failed debit fall through instead of rolling back recreates that gap on every failure.",
-      "file": "apps/lowendinsight_get/lib/lei/usage_tracker.ex",
+      "file": "apps/lei_service/lib/lei/usage_tracker.ex",
       "find": "        case write_usage(org_id, api_key_id, period_start, cache_hits, cache_misses, cost) do\n          {:ok, usage} -> usage\n          {:error, reason} -> Repo.rollback(reason)",
       "replace": "        case write_usage(org_id, api_key_id, period_start, cache_hits, cache_misses, cost) do\n          {:ok, usage} -> usage\n          {:error, reason} -> {:error, reason}",
       "guarded_by": "test/lei/credit_debit_test.exs",
-      "app": "apps/lowendinsight_get"
+      "app": "apps/lei_service"
     },
     {
       "id": "credit-debit-missing",
       "bug": "Anticipated: dropping the ledger debit from the usage path leaves analyses consumed with no internal record of what they cost, which is the state ADR-002 exists to end.",
-      "file": "apps/lowendinsight_get/lib/lei/usage_tracker.ex",
+      "file": "apps/lei_service/lib/lei/usage_tracker.ex",
       "find": "         :ok <- debit_credits(usage, cache_hits, cache_misses) do",
       "replace": "         :ok <- :ok do",
       "guarded_by": "test/lei/credit_debit_test.exs",
-      "app": "apps/lowendinsight_get"
+      "app": "apps/lei_service"
     },
     {
       "id": "wallet-org-takeover",
       "bug": "A wallet address is public, so provisioning that returns an existing org for a presented address hands an attacker a credential for someone else's funded org -- #89's bug in a new costume. provision/2 must never return an existing org; only the caller, having proved control, may decide that.",
-      "file": "apps/lowendinsight_get/lib/lei/wallets.ex",
+      "file": "apps/lei_service/lib/lei/wallets.ex",
       "find": "        if unique_violation?(errors) do\n          {:error, :wallet_taken}",
       "replace": "        if unique_violation?(errors) do\n          {:ok, find_by_address(normalised)}",
       "guarded_by": "test/lei/wallets_test.exs",
-      "app": "apps/lowendinsight_get"
+      "app": "apps/lei_service"
     },
     {
       "id": "wallet-free-tier-grant",
       "bug": "A wallet costs nothing to create, so any per-wallet free allowance is a per-attacker free allowance. Giving wallet orgs the default free-tier limit reopens the farming vector ADR-002 closes by granting none.",
-      "file": "apps/lowendinsight_get/lib/lei/wallets.ex",
+      "file": "apps/lei_service/lib/lei/wallets.ex",
       "find": "    |> Ecto.Changeset.put_change(:free_tier_analyses_limit, 0)\n",
       "replace": "",
       "guarded_by": "test/lei/wallets_test.exs",
-      "app": "apps/lowendinsight_get"
+      "app": "apps/lei_service"
     },
     {
       "id": "wallet-credit-gate",
       "bug": "A wallet org's only gate is its credit balance, checked before the analysis runs. Falling through to the tier check would serve a zero-balance agent for free, and ADR-002 allows balances to go negative precisely because refusal has to happen before the work. Wallet orgs reach the credit check both by wallet address and by the prepaid flag, so the bug needs both routes gone.",
-      "file": "apps/lowendinsight_get/lib/lei/usage_tracker.ex",
+      "file": "apps/lei_service/lib/lei/usage_tracker.ex",
       "find": "      %Org{wallet_address: wallet} = org when is_binary(wallet) and wallet != \"\" ->\n        check_credit_balance(org)\n\n      # The same for any org bought with credits rather than signed up for.\n      %Org{prepaid: true} = org ->\n        check_credit_balance(org)\n\n",
       "replace": "",
       "guarded_by": "test/lei/wallets_test.exs",
-      "app": "apps/lowendinsight_get"
+      "app": "apps/lei_service"
     },
     {
       "id": "reconciliation-empty-ledger",
       "bug": "The boundary for 'pre-ledger' usage must fail towards reporting. Excusing every row when no boundary can be derived means an un-debited system reports clean having reconciled nothing -- the failure this module exists to catch, written into it. Separately, the boundary is the first debit and not the migration timestamp: the credit_entries table existed sixteen hours before anything wrote to it in production, and seven usage rows recorded in between were reported as drift.",
-      "file": "apps/lowendinsight_get/lib/lei/reconciliation.ex",
+      "file": "apps/lei_service/lib/lei/reconciliation.ex",
       "find": "  defp pre_ledger?(_row, nil), do: false",
       "replace": "  defp pre_ledger?(_row, nil), do: true",
       "guarded_by": "test/lei/reconciliation_test.exs",
-      "app": "apps/lowendinsight_get"
+      "app": "apps/lei_service"
     },
     {
       "id": "credits-endpoint-scoping",
       "bug": "A balance is money. /v1/credits derives org_id from the authenticated API key and nothing else; taking it from a query parameter would let any key read any org's ledger.",
-      "file": "apps/lowendinsight_get/lib/lei/web/router.ex",
+      "file": "apps/lei_service/lib/lei/web/router.ex",
       "find": "          balance: Lei.Credits.balance(org_id),",
       "replace": "          balance: Lei.Credits.balance(conn.params[\"org_id\"] || org_id),",
       "guarded_by": "test/lei/web/credits_endpoint_test.exs",
-      "app": "apps/lowendinsight_get"
+      "app": "apps/lei_service"
     },
     {
       "id": "meter-report-unrecorded",
       "bug": "The Stripe meter call happens outside the usage transaction and its result was discarded -- so a failed call meant usage consumed, ledger debited, customer never billed, with nothing written down. Under-billing that errs against us, and invisible. Dropping the failure record restores that blind spot.",
-      "file": "apps/lowendinsight_get/lib/lei/usage_tracker.ex",
+      "file": "apps/lei_service/lib/lei/usage_tracker.ex",
       "find": "              record_meter_report(org_id, usage, identifier, units, \"failed\", inspect(reason))\n",
       "replace": "",
       "guarded_by": "test/lei/meter_reporting_test.exs",
-      "app": "apps/lowendinsight_get"
+      "app": "apps/lei_service"
     },
     {
       "id": "cache-routes-unscoped",
-      "bug": "No /v1/cache route enforced any scope and LowendinsightGet.Auth did not either -- it authenticated and stopped. Any API key that could call the API could export every cached report, or import over them and change the answers everyone else received.",
-      "file": "apps/lowendinsight_get/lib/lowendinsight_get/auth.ex",
+      "bug": "No /v1/cache route enforced any scope and LeiService.Auth did not either -- it authenticated and stopped. Any API key that could call the API could export every cached report, or import over them and change the answers everyone else received.",
+      "file": "apps/lei_service/lib/lei_service/auth.ex",
       "find": "        if conn.assigns[:auth_method] == :jwt or has_scope?(conn, required) do",
       "replace": "        if true do",
-      "guarded_by": "test/lowendinsight_get/cache_invalidate_test.exs",
-      "app": "apps/lowendinsight_get"
+      "guarded_by": "test/lei_service/cache_invalidate_test.exs",
+      "app": "apps/lei_service"
     },
     {
       "id": "landing-page-missing-script-ids",
       "bug": "The landing page's Try it form lacked the analyze-button and invalid-url elements endpoints.js reaches by id. disable_button did null.classList.add, and since validate_and_submit calls preventDefault first, the throw left the form never submitting -- clicking Analyze did nothing, with the reason visible only in the browser console. Server-side the template rendered, the asset returned 200, and the route worked when called directly.",
-      "file": "apps/lowendinsight_get/priv/templates/analyze.html.eex",
+      "file": "apps/lei_service/priv/templates/analyze.html.eex",
       "find": "id=\"analyze-button\" ",
       "replace": "",
-      "guarded_by": "test/lowendinsight_get/page_script_contract_test.exs",
-      "app": "apps/lowendinsight_get"
+      "guarded_by": "test/lei_service/page_script_contract_test.exs",
+      "app": "apps/lei_service"
     },
     {
       "id": "favicon-root-mount",
       "bug": "Browsers request /favicon.ico from the root whether or not a link tag points at it. Plug.Static is mounted at /images, /js and /css, none of which cover the root, so without a dedicated mount the request 404s on every page load and no page-scanning check can notice -- nothing links to it.",
-      "file": "apps/lowendinsight_get/lib/lowendinsight_get/endpoint.ex",
-      "find": "  plug(Plug.Static,\n    from: {:lowendinsight_get, \"priv/static/images\"},\n    at: \"/\",\n    only: ~w(favicon.ico)\n  )\n",
+      "file": "apps/lei_service/lib/lei_service/endpoint.ex",
+      "find": "  plug(Plug.Static,\n    from: {:lei_service, \"priv/static/images\"},\n    at: \"/\",\n    only: ~w(favicon.ico)\n  )\n",
       "replace": "",
-      "guarded_by": "test/lowendinsight_get/favicon_test.exs",
-      "app": "apps/lowendinsight_get"
+      "guarded_by": "test/lei_service/favicon_test.exs",
+      "app": "apps/lei_service"
     },
     {
       "id": "theme-light-override",
       "bug": "The dark media query is guarded with :not([data-theme=\"light\"]) so an explicit light choice survives a dark system setting. Without the guard the toggle only works in one direction: a user on a dark system who picks light gets dark back, with no way to say otherwise.",
-      "file": "apps/lowendinsight_get/priv/static/css/theme.css",
+      "file": "apps/lei_service/priv/static/css/theme.css",
       "find": "  :root:not([data-theme=\"light\"]) {\n    --tag-ink: #1f2430;",
       "replace": "  :root {\n    --tag-ink: #1f2430;",
-      "guarded_by": "test/lowendinsight_get/theme_test.exs",
-      "app": "apps/lowendinsight_get"
+      "guarded_by": "test/lei_service/theme_test.exs",
+      "app": "apps/lei_service"
     },
     {
       "id": "layout-missing-favicon",
       "bug": "The signup, login and dashboard pages render through a layout in the other app's directory, so a coverage check globbing this app's templates never saw it and they shipped without favicon links. The check now renders the real routes, so removing the links fails rather than going unnoticed.",
-      "file": "apps/lowendinsight_get/priv/lei/templates/layout.html.eex",
+      "file": "apps/lei_service/priv/lei/templates/layout.html.eex",
       "find": "  <link rel=\"icon\" href=\"/favicon.ico\" sizes=\"any\">\n  <link rel=\"icon\" type=\"image/png\" sizes=\"32x32\" href=\"/images/favicon-32.png\">\n  <link rel=\"icon\" type=\"image/png\" sizes=\"16x16\" href=\"/images/favicon-16.png\">\n  <link rel=\"apple-touch-icon\" sizes=\"180x180\" href=\"/images/apple-touch-icon.png\">\n",
       "replace": "",
-      "guarded_by": "test/lowendinsight_get/theme_test.exs",
-      "app": "apps/lowendinsight_get"
+      "guarded_by": "test/lei_service/theme_test.exs",
+      "app": "apps/lei_service"
     },
     {
       "id": "settlement-idempotency-boundary",
       "bug": "Every payment rail, on either side, credits the ledger through one function so there is a single idempotency boundary. Dropping the external_ref makes a replayed webhook or resubmitted payment proof credit twice -- duplicate settlement under concurrency being both a documented x402 attack class and this codebase's recurring failure.",
-      "file": "apps/lowendinsight_get/lib/lei/payments.ex",
+      "file": "apps/lei_service/lib/lei/payments.ex",
       "find": "      external_ref: \"#{rail}:#{ref}\",\n",
       "replace": "",
       "guarded_by": "test/lei/payments_test.exs",
-      "app": "apps/lowendinsight_get"
+      "app": "apps/lei_service"
     },
     {
       "id": "settlement-ref-not-namespaced",
       "bug": "external_ref is globally unique, so writing a rail's raw reference into it means two rails that ever mint the same string collapse into one another. Because {:error, :duplicate} is documented as an expected retry outcome, a caller following that contract treats a real second payment as an already-handled replay: money taken, no credits granted, and nothing in an append-only ledger to find it by.",
-      "file": "apps/lowendinsight_get/lib/lei/payments.ex",
+      "file": "apps/lei_service/lib/lei/payments.ex",
       "find": "      external_ref: \"#{rail}:#{ref}\",",
       "replace": "      external_ref: ref,",
       "guarded_by": "test/lei/payments_test.exs",
-      "app": "apps/lowendinsight_get"
+      "app": "apps/lei_service"
     },
     {
       "id": "reversal-ref-collides-with-purchase",
       "bug": "Rails commonly identify a refund by the payment it reverses. Sharing the purchase's namespace means the reversal collides with its own original on external_ref and is refused as a duplicate -- the money goes back and nothing in the ledger records it.",
-      "file": "apps/lowendinsight_get/lib/lei/payments.ex",
+      "file": "apps/lei_service/lib/lei/payments.ex",
       "find": "      external_ref: \"#{rail}:reversal:#{ref}\",",
       "replace": "      external_ref: \"#{rail}:#{ref}\",",
       "guarded_by": "test/lei/payments_test.exs",
-      "app": "apps/lowendinsight_get"
+      "app": "apps/lei_service"
     },
     {
       "id": "cadence-unchecked",
       "bug": "Rails declare which cadences they support and what they cost to collect through. Unchecked, a rail that declares none can never sell anything, and one declaring both :streaming and a minimum purchase has a contradiction -- streaming settles per interaction, so there is no purchase to apply a minimum to. Either is discovered at the first payment, which means discovered from a customer.",
-      "file": "apps/lowendinsight_get/lib/lei/payments.ex",
+      "file": "apps/lei_service/lib/lei/payments.ex",
       "find": "    Enum.each(rails, &validate_cadences!/1)\n",
       "replace": "",
       "guarded_by": "test/lei/payments_test.exs",
-      "app": "apps/lowendinsight_get"
+      "app": "apps/lei_service"
     },
     {
       "id": "mpp-substitution-id-only",
       "bug": "Cross-resource substitution is the documented x402 flaw, and its root cause is signatures that carry no context about what they pay for. MPP's credential echoes the challenge so the server can check it. Comparing only the id lets a client echo the right id while restating the price, which is a valid payment for something cheaper.",
-      "file": "apps/lowendinsight_get/lib/lei/payments/mpp/credential.ex",
+      "file": "apps/lei_service/lib/lei/payments/mpp/credential.ex",
       "find": "    echoed[\"id\"] == issued.id and\n      echoed[\"realm\"] == issued.realm and\n      echoed[\"method\"] == issued.method and\n      echoed[\"intent\"] == issued.intent and\n      request_matches?(echoed[\"request\"], issued.request)",
       "replace": "    echoed[\"id\"] == issued.id",
       "guarded_by": "test/lei/payments/mpp_protocol_test.exs",
-      "app": "apps/lowendinsight_get"
+      "app": "apps/lei_service"
     },
     {
       "id": "mpp-request-not-canonical",
       "bug": "The credential echoes the challenge request and the comparison is byte-for-byte, so the encoding has to be JCS-canonical. Sorting pairs and then putting them back into a map does nothing -- the map re-orders them -- and Elixir maps of 32 keys or fewer iterate sorted anyway, so the mistake is invisible until a request has 33 keys. At that point the bytes stop matching what the payment network signed and a legitimate payment is refused.",
-      "file": "apps/lowendinsight_get/lib/lei/payments/mpp/challenge.ex",
+      "file": "apps/lei_service/lib/lei/payments/mpp/challenge.ex",
       "find": "      |> Enum.sort_by(&elem(&1, 0))\n",
       "replace": "",
       "guarded_by": "test/lei/payments/mpp_protocol_test.exs",
-      "app": "apps/lowendinsight_get"
+      "app": "apps/lei_service"
     },
     {
       "id": "mpp-credits-presenter-not-payer",
       "bug": "A credential proves a payment happened; it does not prove who it was for. Crediting whoever presents one lets an intercepted credential top up the wrong org -- the payer's money, someone else's balance. The org is taken from the recorded challenge, never from the request.",
-      "file": "apps/lowendinsight_get/lib/lei/payments/http.ex",
+      "file": "apps/lei_service/lib/lei/payments/http.ex",
       "find": "         {:ok, org_id, issued_key} <- credit_payer(record, rail, settlement) do",
       "replace": "         {:ok, org_id, issued_key} <- credit_payer(%{record | org_id: Keyword.get(opts, :org_id, record.org_id)}, rail, settlement) do",
       "guarded_by": "test/lei/payments/mpp_http_test.exs",
-      "app": "apps/lowendinsight_get"
+      "app": "apps/lei_service"
     },
     {
       "id": "mpp-unsettled-payment-accepted",
       "bug": "A PaymentIntent that is processing, requires_action or requires_payment_method is not money. Accepting anything but a settled status gives away the work for a payment that may still fail, and the ledger records credits nobody paid for.",
-      "file": "apps/lowendinsight_get/lib/lei/payments/rails/mpp.ex",
+      "file": "apps/lei_service/lib/lei/payments/rails/mpp.ex",
       "find": "      {:ok, %{\"status\" => \"succeeded\"} = intent} ->",
       "replace": "      {:ok, %{\"status\" => _status} = intent} ->",
       "guarded_by": "test/lei/payments/mpp_rail_test.exs",
-      "app": "apps/lowendinsight_get"
+      "app": "apps/lei_service"
     },
     {
       "id": "auth-rejects-payment-scheme",
       "bug": "An agent paying with MPP puts its credential in Authorization, per the Payment auth scheme. Without a clause for it the value falls off the end of authenticate/1 and a paying agent gets a 500 for presenting a valid credential -- the one request it most needs to succeed.",
-      "file": "apps/lowendinsight_get/lib/lei/auth.ex",
+      "file": "apps/lei_service/lib/lei/auth.ex",
       "find": "  defp authenticate({conn, \"Payment \" <> _credential}) do\n    if Lei.Payments.Gate.paid_route?(conn),\n      do: assign(conn, :auth_method, :payment),\n      else: send_401(conn)\n  end\n\n",
       "replace": "",
       "guarded_by": "test/lei/payments/mpp_journey_test.exs",
-      "app": "apps/lowendinsight_get"
+      "app": "apps/lei_service"
     },
     {
       "id": "payment-settle-unlimited",
       "bug": "The settle path is unauthenticated by necessity and every attempt can reach Stripe, which makes it the half an attacker would use to grind through stolen tokens. Without a bucket it is an unbounded outbound-request amplifier pointed at our own payment processor.",
-      "file": "apps/lowendinsight_get/lib/lei/payments/http.ex",
+      "file": "apps/lei_service/lib/lei/payments/http.ex",
       "find": "    conn = Lei.Payments.RateLimit.check(conn, :payment_settle)\n",
       "replace": "",
       "guarded_by": "test/lei/payments/mpp_http_test.exs",
-      "app": "apps/lowendinsight_get"
+      "app": "apps/lei_service"
     },
     {
       "id": "paid-request-skips-quota",
       "bug": "A wallet agent has no API key, so without billing context from the settled payment the quota check sees no org and is skipped entirely. The paid request is then served for the wrong reason -- not because it paid, but because nothing was checked -- and an unpaid one would be served identically.",
-      "file": "apps/lowendinsight_get/lib/lei/payments/gate.ex",
+      "file": "apps/lei_service/lib/lei/payments/gate.ex",
       "find": "        case conn.assigns[:payment_org_id] && Lei.Repo.get(Lei.Org, conn.assigns[:payment_org_id]) do",
       "replace": "        case nil do",
       "guarded_by": "test/lei/payments/mpp_journey_test.exs",
-      "app": "apps/lowendinsight_get"
+      "app": "apps/lei_service"
     },
     {
       "id": "challenge-reaper-unsupervised",
       "bug": "purge_expired/1 existing is not the same as it running. Unanswered challenges are normal -- an agent asking the price and leaving -- and each is a row, so without a supervised sweep the table grows for as long as the service runs.",
-      "file": "apps/lowendinsight_get/lib/lei/boot.ex",
+      "file": "apps/lei_service/lib/lei/boot.ex",
       "find": "      Lei.Payments.ChallengeReaper,\n",
       "replace": "",
       "guarded_by": "test/lei/payments/challenge_reaper_test.exs",
-      "app": "apps/lowendinsight_get"
+      "app": "apps/lei_service"
     },
     {
       "id": "no-payment-rails-configured",
@@ -332,70 +332,70 @@
       "find": "  payment_rails: [Lei.Payments.Rails.Mpp, Lei.Payments.Rails.Tempo],\n",
       "replace": "  payment_rails: [],\n",
       "guarded_by": "test/lei/payments_test.exs",
-      "app": "apps/lowendinsight_get"
+      "app": "apps/lei_service"
     },
     {
       "id": "stripe-live-key-outside-production",
       "bug": "A live Stripe key boots anywhere. A laptop or staging deploy holding a live key charges real cards, and nothing says so until a statement does (#137).",
-      "file": "apps/lowendinsight_get/lib/lei/stripe/mode.ex",
+      "file": "apps/lei_service/lib/lei/stripe/mode.ex",
       "find": "        unless production?(deploy_env) do",
       "replace": "        unless true do",
       "guarded_by": "test/lei/stripe/mode_test.exs",
-      "app": "apps/lowendinsight_get"
+      "app": "apps/lei_service"
     },
     {
       "id": "stripe-mode-from-declared-flag",
       "bug": "Mode reported from something other than the key prefix: restricted live keys (rk_live_) read as test, so /readyz and the canary report sandbox while real money moves (#137).",
-      "file": "apps/lowendinsight_get/lib/lei/stripe/mode.ex",
+      "file": "apps/lei_service/lib/lei/stripe/mode.ex",
       "find": "  @live_prefixes [\"sk_live_\", \"rk_live_\"]",
       "replace": "  @live_prefixes [\"sk_live_\"]",
       "guarded_by": "test/lei/stripe/mode_test.exs",
-      "app": "apps/lowendinsight_get"
+      "app": "apps/lei_service"
     },
     {
       "id": "stripe-malformed-key-is-unconfigured",
       "bug": "A publishable key or webhook secret in STRIPE_SECRET_KEY reads as 'billing off' rather than a mistake, boots, and fails at the first customer (#137).",
-      "file": "apps/lowendinsight_get/lib/lei/stripe/mode.ex",
+      "file": "apps/lei_service/lib/lei/stripe/mode.ex",
       "find": "      String.starts_with?(key, @test_prefixes) -> :test\n      true -> :malformed\n",
       "replace": "      String.starts_with?(key, @test_prefixes) -> :test\n      true -> :unconfigured\n",
       "guarded_by": "test/lei/stripe/mode_test.exs",
-      "app": "apps/lowendinsight_get"
+      "app": "apps/lei_service"
     },
     {
       "id": "stripe-webhook-secret-not-validated",
       "bug": "An API key pasted into STRIPE_WEBHOOK_SECRET boots, and every webhook delivery then fails verification silently -- the pre-#62 failure (#137).",
-      "file": "apps/lowendinsight_get/lib/lei/stripe/mode.ex",
+      "file": "apps/lei_service/lib/lei/stripe/mode.ex",
       "find": "not String.starts_with?(webhook_secret, \"whsec_\")",
       "replace": "false",
       "guarded_by": "test/lei/stripe/mode_test.exs",
-      "app": "apps/lowendinsight_get"
+      "app": "apps/lei_service"
     },
     {
       "id": "stripe-mode-check-not-at-boot",
       "bug": "Mode validation exists but is not called at boot, so every refusal it makes is unreachable in a running system (#137).",
-      "file": "apps/lowendinsight_get/lib/lei/boot.ex",
+      "file": "apps/lei_service/lib/lei/boot.ex",
       "find": "    :ok = Lei.Stripe.Mode.validate!()\n",
       "replace": "",
       "guarded_by": "test/lei/stripe/mode_visibility_test.exs",
-      "app": "apps/lowendinsight_get"
+      "app": "apps/lei_service"
     },
     {
       "id": "stripe-missing-price-reads-unreachable",
       "bug": "A price from the other mode (404, 'No such price') is classified as a transient outage: the canary lets it through and the half-flip ships (#137).",
-      "file": "apps/lowendinsight_get/lib/lei/stripe/object_check.ex",
+      "file": "apps/lei_service/lib/lei/stripe/object_check.ex",
       "find": "      {:error, {404, _body}} -> \"mismatch\"\n",
       "replace": "",
       "guarded_by": "test/lei/stripe/object_check_test.exs",
-      "app": "apps/lowendinsight_get"
+      "app": "apps/lei_service"
     },
     {
       "id": "stripe-object-check-passes-unconfigured-production",
       "bug": "Production with no Stripe key or no price IDs reports ok: the check passes by examining nothing (#137).",
-      "file": "apps/lowendinsight_get/lib/lei/stripe/object_check.ex",
+      "file": "apps/lei_service/lib/lei/stripe/object_check.ex",
       "find": "        if Lei.Stripe.Mode.production?(deploy_env), do: \"unconfigured\", else: \"ok\"\n\n      _mode when",
       "replace": "        \"ok\"\n\n      _mode when",
       "guarded_by": "test/lei/stripe/object_check_test.exs",
-      "app": "apps/lowendinsight_get"
+      "app": "apps/lei_service"
     },
     {
       "id": "stripe-object-check-not-in-readiness",
@@ -404,529 +404,529 @@
       "find": "    stripe: {Lei.Stripe.ObjectCheck, :status, []}\n",
       "replace": "",
       "guarded_by": "test/lei/stripe/object_check_test.exs",
-      "app": "apps/lowendinsight_get"
+      "app": "apps/lei_service"
     },
     {
       "id": "stripe-mode-not-on-readyz",
       "bug": "The serving mode is not exposed on /readyz, so the canary cannot assert it and a human cannot see it (#137).",
-      "file": "apps/lowendinsight_get/lib/lei/web/router.ex",
+      "file": "apps/lei_service/lib/lei/web/router.ex",
       "find": "      |> Map.put(:stripe_mode, Lei.Stripe.Mode.current())\n",
       "replace": "",
       "guarded_by": "test/lei/stripe/mode_visibility_test.exs",
-      "app": "apps/lowendinsight_get"
+      "app": "apps/lei_service"
     },
     {
       "id": "stripe-object-check-unsupervised",
       "bug": "ObjectCheck exists and is registered with readiness but never started: status/0 reads not_running forever, so readiness is degraded for a reason that says nothing about Stripe, and the price check never runs (#137).",
-      "file": "apps/lowendinsight_get/lib/lei/boot.ex",
+      "file": "apps/lei_service/lib/lei/boot.ex",
       "find": "      Lei.Stripe.ObjectCheck\n",
       "replace": "",
       "guarded_by": "test/lei/stripe/object_check_test.exs",
-      "app": "apps/lowendinsight_get"
+      "app": "apps/lei_service"
     },
     {
       "id": "spt-sent-as-payment-method",
       "bug": "The Shared Payment Token is sent as payment_method. Stripe answers 'No such PaymentMethod' and every real card payment over MPP fails; the rail tests mocked this boundary and asserted the wrong call (#143).",
-      "file": "apps/lowendinsight_get/lib/lei/stripe.ex",
+      "file": "apps/lei_service/lib/lei/stripe.ex",
       "find": "        \"payment_method_data[shared_payment_granted_token]\" => params.spt,",
       "replace": "        \"payment_method\" => params.spt,",
       "guarded_by": "test/lei/stripe_test.exs",
-      "app": "apps/lowendinsight_get"
+      "app": "apps/lei_service"
     },
     {
       "id": "spt-no-idempotency-key",
       "bug": "No Idempotency-Key on the SPT charge. An SPT is single-use, so an agent retrying after a timeout gets a second intent refused as 'deactivated' -- turned away after paying (observed in sandbox, #143).",
-      "file": "apps/lowendinsight_get/lib/lei/payments/rails/mpp.ex",
+      "file": "apps/lei_service/lib/lei/payments/rails/mpp.ex",
       "find": "           idempotency_key: \"mpp_#{issued.id}_#{token}\",",
       "replace": "           idempotency_key: \"mpp_#{System.unique_integer()}\",",
       "guarded_by": "test/lei/payments/mpp_rail_test.exs",
-      "app": "apps/lowendinsight_get"
+      "app": "apps/lei_service"
     },
     {
       "id": "mpp-authorisation-counts-as-payment",
       "bug": "requires_capture accepted as settled. That is an authorisation, funds held not taken; ADR-002 grants credits against settled money only (#143).",
-      "file": "apps/lowendinsight_get/lib/lei/payments/rails/mpp.ex",
+      "file": "apps/lei_service/lib/lei/payments/rails/mpp.ex",
       "find": "      {:ok, %{\"status\" => \"succeeded\"} = intent} ->",
       "replace": "      {:ok, %{\"status\" => status} = intent} when status in [\"succeeded\", \"requires_capture\"] ->",
       "guarded_by": "test/lei/payments/mpp_rail_test.exs",
-      "app": "apps/lowendinsight_get"
+      "app": "apps/lei_service"
     },
     {
       "id": "mpp-challenge-without-network-id",
       "bug": "The challenge does not name the Stripe profile, so no agent wallet can mint a token scoped to us and the 402 is unpayable (#143).",
-      "file": "apps/lowendinsight_get/lib/lei/payments/rails/mpp.ex",
+      "file": "apps/lei_service/lib/lei/payments/rails/mpp.ex",
       "find": "             \"networkId\" => profile_id(),\n",
       "replace": "",
       "guarded_by": "test/lei/payments/mpp_rail_test.exs",
-      "app": "apps/lowendinsight_get"
+      "app": "apps/lei_service"
     },
     {
       "id": "mpp-challenge-issued-without-profile",
       "bug": "A challenge is issued with no Stripe profile configured: it looks payable and fails at the wallet (#143).",
-      "file": "apps/lowendinsight_get/lib/lei/payments/rails/mpp.ex",
+      "file": "apps/lei_service/lib/lei/payments/rails/mpp.ex",
       "find": "      is_nil(profile_id()) ->",
       "replace": "      false ->",
       "guarded_by": "test/lei/payments/mpp_rail_test.exs",
-      "app": "apps/lowendinsight_get"
+      "app": "apps/lei_service"
     },
     {
       "id": "stripe-profile-mode-not-checked",
       "bug": "A sandbox profile boots beside a live key: challenges name a profile no live wallet can pay (#143, extends #137).",
-      "file": "apps/lowendinsight_get/lib/lei/stripe/mode.ex",
+      "file": "apps/lei_service/lib/lei/stripe/mode.ex",
       "find": "      mode in [:live, :test] and profile_mode != mode ->",
       "replace": "      false ->",
       "guarded_by": "test/lei/stripe/mode_test.exs",
-      "app": "apps/lowendinsight_get"
+      "app": "apps/lei_service"
     },
     {
       "id": "tempo-memo-not-checked",
       "bug": "A transfer is accepted without the challenge's memo. Hashes are public: anyone watching the chain can present another agent's payment to us as their own and take its credits. (#144)",
-      "file": "apps/lowendinsight_get/lib/lei/tempo/transfer.ex",
+      "file": "apps/lei_service/lib/lei/tempo/transfer.ex",
       "find": "         true <- String.downcase(memo) == String.downcase(expected.memo),\n",
       "replace": "",
       "guarded_by": "test/lei/tempo/transfer_test.exs",
-      "app": "apps/lowendinsight_get"
+      "app": "apps/lei_service"
     },
     {
       "id": "tempo-recipient-not-checked",
       "bug": "A transfer to any address is accepted as payment to us. (#144)",
-      "file": "apps/lowendinsight_get/lib/lei/tempo/transfer.ex",
+      "file": "apps/lei_service/lib/lei/tempo/transfer.ex",
       "find": "         true <- address_from_topic(to) == String.downcase(expected.recipient),\n",
       "replace": "",
       "guarded_by": "test/lei/tempo/transfer_test.exs",
-      "app": "apps/lowendinsight_get"
+      "app": "apps/lei_service"
     },
     {
       "id": "tempo-token-not-checked",
       "bug": "A log from any contract is accepted, so a worthless look-alike token pays for credits. (#144)",
-      "file": "apps/lowendinsight_get/lib/lei/tempo/transfer.ex",
+      "file": "apps/lei_service/lib/lei/tempo/transfer.ex",
       "find": "         true <- String.downcase(address) == String.downcase(expected.token),\n",
       "replace": "",
       "guarded_by": "test/lei/tempo/transfer_test.exs",
-      "app": "apps/lowendinsight_get"
+      "app": "apps/lei_service"
     },
     {
       "id": "tempo-event-signature-not-checked",
       "bug": "Any four-topic event from the token is read as a transfer with memo. (#144)",
-      "file": "apps/lowendinsight_get/lib/lei/tempo/transfer.ex",
+      "file": "apps/lei_service/lib/lei/tempo/transfer.ex",
       "find": "    with true <- String.downcase(topic) == @transfer_with_memo,\n         true <-",
       "replace": "    with true <-",
       "guarded_by": "test/lei/tempo/transfer_test.exs",
-      "app": "apps/lowendinsight_get"
+      "app": "apps/lei_service"
     },
     {
       "id": "tempo-reverted-transaction-accepted",
       "bug": "A reverted transaction's logs are read as a payment that happened. (#144)",
-      "file": "apps/lowendinsight_get/lib/lei/tempo/transfer.ex",
+      "file": "apps/lei_service/lib/lei/tempo/transfer.ex",
       "find": "    if receipt[\"status\"] != \"0x1\" do",
       "replace": "    if false do",
       "guarded_by": "test/lei/tempo/transfer_test.exs",
-      "app": "apps/lowendinsight_get"
+      "app": "apps/lei_service"
     },
     {
       "id": "tempo-chain-read-skipped",
       "bug": "Stripe is asked, and credits granted, without the receipt binding the transfer to the challenge -- Stripe verifies the money but not whose it is. (#144)",
-      "file": "apps/lowendinsight_get/lib/lei/payments/rails/tempo.ex",
+      "file": "apps/lei_service/lib/lei/payments/rails/tempo.ex",
       "find": "         {:ok, transfer} <- check_receipt(network, hash, issued),\n",
       "replace": "         transfer = %{from: nil},\n",
       "guarded_by": "test/lei/payments/tempo_rail_test.exs",
-      "app": "apps/lowendinsight_get"
+      "app": "apps/lei_service"
     },
     {
       "id": "tempo-inexact-amount-accepted",
       "bug": "An overpayment passes the chain check; Stripe then declines it invalid_amount with the agent's money already sent. (#144)",
-      "file": "apps/lowendinsight_get/lib/lei/payments/rails/tempo.ex",
+      "file": "apps/lei_service/lib/lei/payments/rails/tempo.ex",
       "find": "          {:ok, %{amount: amount} = transfer} when amount == expected.amount -> {:ok, transfer}",
       "replace": "          {:ok, %{amount: _amount} = transfer} -> {:ok, transfer}",
       "guarded_by": "test/lei/payments/tempo_rail_test.exs",
-      "app": "apps/lowendinsight_get"
+      "app": "apps/lei_service"
     },
     {
       "id": "tempo-unconfirmed-deposit-address-offered",
       "bug": "A challenge names a deposit address Stripe has not confirmed for this key. A sandbox address beside a live key takes mainnet funds Stripe never credits. (#144)",
-      "file": "apps/lowendinsight_get/lib/lei/payments/rails/tempo.ex",
+      "file": "apps/lei_service/lib/lei/payments/rails/tempo.ex",
       "find": "      not Keyword.get(opts, :confirmed?, &Lei.Stripe.ObjectCheck.deposit_address_confirmed?/1).(",
       "replace": "      false and Keyword.get(opts, :confirmed?, &Lei.Stripe.ObjectCheck.deposit_address_confirmed?/1).(",
       "guarded_by": "test/lei/payments/tempo_rail_test.exs",
-      "app": "apps/lowendinsight_get"
+      "app": "apps/lei_service"
     },
     {
       "id": "tempo-network-switch-ignored",
       "bug": "A challenge issued on testnet is verified against mainnet after a mode switch, or the reverse. (#144)",
-      "file": "apps/lowendinsight_get/lib/lei/payments/rails/tempo.ex",
+      "file": "apps/lei_service/lib/lei/payments/rails/tempo.ex",
       "find": "    if network && network.chain_id == get_in(issued.request, [\"methodDetails\", \"chainId\"]) do",
       "replace": "    if network do",
       "guarded_by": "test/lei/payments/tempo_rail_test.exs",
-      "app": "apps/lowendinsight_get"
+      "app": "apps/lei_service"
     },
     {
       "id": "tempo-no-idempotency-key",
       "bug": "Each retry creates a new verification intent; Stripe refuses a second intent for one transfer, so the agent that paid is refused on retry. (#144)",
-      "file": "apps/lowendinsight_get/lib/lei/payments/rails/tempo.ex",
+      "file": "apps/lei_service/lib/lei/payments/rails/tempo.ex",
       "find": "      idempotency_key: \"tempo_#{hash}\",",
       "replace": "      idempotency_key: \"tempo_#{System.unique_integer()}\",",
       "guarded_by": "test/lei/payments/tempo_rail_test.exs",
-      "app": "apps/lowendinsight_get"
+      "app": "apps/lei_service"
     },
     {
       "id": "tempo-processing-counts-as-settled",
       "bug": "A verification intent still processing is treated as settled -- credits for money Stripe has not confirmed, which a fabricated hash never will. (#144)",
-      "file": "apps/lowendinsight_get/lib/lei/payments/rails/tempo.ex",
+      "file": "apps/lei_service/lib/lei/payments/rails/tempo.ex",
       "find": "  defp await_settlement(_id, %{\"status\" => \"succeeded\"} = intent, _deadline, _opts),",
       "replace": "  defp await_settlement(_id, %{\"status\" => _} = intent, _deadline, _opts),",
       "guarded_by": "test/lei/payments/tempo_rail_test.exs",
-      "app": "apps/lowendinsight_get"
+      "app": "apps/lei_service"
     },
     {
       "id": "stripe-deposit-address-mismatch-ok",
       "bug": "A deposit address absent from the key's account reads as ok, so a sandbox address beside a live key is confirmed. (#144)",
-      "file": "apps/lowendinsight_get/lib/lei/stripe/object_check.ex",
+      "file": "apps/lei_service/lib/lei/stripe/object_check.ex",
       "find": "if String.downcase(address) in addresses, do: \"ok\", else: \"mismatch\"",
       "replace": "if true, do: \"ok\", else: \"mismatch\"",
       "guarded_by": "test/lei/stripe/object_check_test.exs",
-      "app": "apps/lowendinsight_get"
+      "app": "apps/lei_service"
     },
     {
       "id": "stripe-deposit-address-always-confirmed",
       "bug": "deposit_address_confirmed?/1 answers yes without Stripe having listed the address. (#144)",
-      "file": "apps/lowendinsight_get/lib/lei/stripe/object_check.ex",
+      "file": "apps/lei_service/lib/lei/stripe/object_check.ex",
       "find": "    {:reply, state.deposit == {address, \"ok\"}, state}",
       "replace": "    {:reply, true, state}",
       "guarded_by": "test/lei/stripe/object_check_test.exs",
-      "app": "apps/lowendinsight_get"
+      "app": "apps/lei_service"
     },
     {
       "id": "payment-402-offers-one-method",
       "bug": "The 402 offers only the first available rail, so an agent holding stablecoin is shown a card challenge it cannot answer. (#144)",
-      "file": "apps/lowendinsight_get/lib/lei/payments/http.ex",
+      "file": "apps/lei_service/lib/lei/payments/http.ex",
       "find": "    offered = for {rail, {:ok, challenge}} <- results, do: {rail, challenge}",
       "replace": "    offered = Enum.take(for({rail, {:ok, challenge}} <- results, do: {rail, challenge}), 1)",
       "guarded_by": "test/lei/payments/tempo_http_test.exs",
-      "app": "apps/lowendinsight_get"
+      "app": "apps/lei_service"
     },
     {
       "id": "payment-gate-serves-anonymous",
       "bug": "A request with no org and no operator token is served rather than asked to pay -- free analysis for anyone who omits the Authorization header. (#147)",
-      "file": "apps/lowendinsight_get/lib/lei/payments/gate.ex",
+      "file": "apps/lei_service/lib/lei/payments/gate.ex",
       "find": "        if conn.assigns[:auth_method] == :jwt do",
       "replace": "        if true do",
-      "guarded_by": "test/lowendinsight_get/agent_payment_test.exs",
-      "app": "apps/lowendinsight_get"
+      "guarded_by": "test/lei_service/agent_payment_test.exs",
+      "app": "apps/lei_service"
     },
     {
       "id": "endpoint-auth-rejects-payment-scheme",
       "bug": "The deployed endpoint's auth plug answers an Authorization: Payment credential with 401, so no paying retry ever reaches settlement -- production's state for two releases. (#147)",
-      "file": "apps/lowendinsight_get/lib/lowendinsight_get/auth.ex",
+      "file": "apps/lei_service/lib/lei_service/auth.ex",
       "find": "      do: Plug.Conn.assign(conn, :auth_method, :payment),",
       "replace": "      do: send_401(conn),",
-      "guarded_by": "test/lowendinsight_get/agent_payment_test.exs",
-      "app": "apps/lowendinsight_get"
+      "guarded_by": "test/lei_service/agent_payment_test.exs",
+      "app": "apps/lei_service"
     },
     {
       "id": "endpoint-auth-401s-new-agent",
       "bug": "An agent with no credentials is told to authenticate with something it cannot have, instead of being asked to pay. (#147)",
-      "file": "apps/lowendinsight_get/lib/lowendinsight_get/auth.ex",
+      "file": "apps/lei_service/lib/lei_service/auth.ex",
       "find": "      do: Plug.Conn.assign(conn, :auth_method, :anonymous),",
       "replace": "      do: send_401(conn),",
-      "guarded_by": "test/lowendinsight_get/agent_payment_test.exs",
-      "app": "apps/lowendinsight_get"
+      "guarded_by": "test/lei_service/agent_payment_test.exs",
+      "app": "apps/lei_service"
     },
     {
       "id": "paid-route-opens-all-v1",
       "bug": "Every /v1 route accepts unauthenticated requests, not just the paid analysis routes. (#147)",
-      "file": "apps/lowendinsight_get/lib/lei/payments/gate.ex",
+      "file": "apps/lei_service/lib/lei/payments/gate.ex",
       "find": "    do: {method, path} in @paid_routes",
       "replace": "    do: method != nil and path != nil",
-      "guarded_by": "test/lowendinsight_get/agent_payment_test.exs",
-      "app": "apps/lowendinsight_get"
+      "guarded_by": "test/lei_service/agent_payment_test.exs",
+      "app": "apps/lei_service"
     },
     {
       "id": "card-offered-to-anonymous-agent",
       "bug": "A card challenge is offered to a caller with no org. A card token identifies no payer, so the payment could create no org -- money taken, nobody to credit. (#147)",
-      "file": "apps/lowendinsight_get/lib/lei/payments/http.ex",
+      "file": "apps/lei_service/lib/lei/payments/http.ex",
       "find": "      |> Enum.filter(&(org_id != nil or MachineRail.identifies_payer?(&1)))",
       "replace": "      |> Enum.filter(&(&1 != nil))",
-      "guarded_by": "test/lowendinsight_get/agent_payment_test.exs",
-      "app": "apps/lowendinsight_get"
+      "guarded_by": "test/lei_service/agent_payment_test.exs",
+      "app": "apps/lei_service"
     },
     {
       "id": "paid-agent-gets-no-key",
       "bug": "The agent that paid is not given a key, so the credits it bought are stranded: its next request is asked to pay again. (#147)",
-      "file": "apps/lowendinsight_get/lib/lei/payments/http.ex",
+      "file": "apps/lei_service/lib/lei/payments/http.ex",
       "find": "        |> maybe_put_key(issued_key)\n",
       "replace": "",
-      "guarded_by": "test/lowendinsight_get/agent_payment_test.exs",
-      "app": "apps/lowendinsight_get"
+      "guarded_by": "test/lei_service/agent_payment_test.exs",
+      "app": "apps/lei_service"
     },
     {
       "id": "transfer-signer-not-checked",
       "bug": "Tokens moved by an approved spender (transferFrom) identify the holder as payer, so anyone with an allowance can pay as a wallet and be issued its org and a key. (#147)",
-      "file": "apps/lowendinsight_get/lib/lei/tempo/transfer.ex",
+      "file": "apps/lei_service/lib/lei/tempo/transfer.ex",
       "find": "        %{from: ^signer} = payment -> {:ok, payment}",
       "replace": "        payment -> {:ok, payment}",
       "guarded_by": "test/lei/tempo/transfer_test.exs",
-      "app": "apps/lowendinsight_get"
+      "app": "apps/lei_service"
     },
     {
       "id": "analyze-bills-key-not-payer",
       "bug": "POST /v1/analyze bills only an API key's org. An agent that pays on the request has no key, so it is served with its balance never debited. (#147)",
-      "file": "apps/lowendinsight_get/lib/lei/payments/gate.ex",
+      "file": "apps/lei_service/lib/lei/payments/gate.ex",
       "find": "        case conn.assigns[:payment_org_id] && Lei.Repo.get(Lei.Org, conn.assigns[:payment_org_id]) do",
       "replace": "        case nil && conn.assigns[:payment_org_id] && Lei.Repo.get(Lei.Org, conn.assigns[:payment_org_id]) do",
-      "guarded_by": "test/lowendinsight_get/agent_payment_test.exs",
-      "app": "apps/lowendinsight_get"
+      "guarded_by": "test/lei_service/agent_payment_test.exs",
+      "app": "apps/lei_service"
     },
     {
       "id": "settle-bucket-spent-by-all-traffic",
       "bug": "The settle rate limit is charged before looking for a credential, capping all analysis from one IP at 10 a minute. (#147)",
-      "file": "apps/lowendinsight_get/lib/lei/payments/http.ex",
+      "file": "apps/lei_service/lib/lei/payments/http.ex",
       "find": "    if payment_credential?(conn) do",
       "replace": "    if payment_credential?(conn) or true do",
       "guarded_by": "test/lei/payments/mpp_http_test.exs",
-      "app": "apps/lowendinsight_get"
+      "app": "apps/lei_service"
     },
     {
       "id": "lei-auth-jwt-unmarked",
       "bug": "Lei.Auth does not mark an operator JWT, so the gate treats an operator's request as an anonymous caller and asks it to pay. (#147)",
-      "file": "apps/lowendinsight_get/lib/lei/auth.ex",
+      "file": "apps/lei_service/lib/lei/auth.ex",
       "find": "        assign(conn, :auth_method, :jwt)",
       "replace": "        conn",
       "guarded_by": "test/lei/web/router_test.exs",
-      "app": "apps/lowendinsight_get"
+      "app": "apps/lei_service"
     },
     {
       "id": "request-log-keeps-wallet-urls",
       "bug": "A wallet org's analysed repository URLs are recorded next to its org and key on the admin dashboard -- the link between a paying wallet and what it analysed that was decided against. (#149)",
-      "file": "apps/lowendinsight_get/lib/lowendinsight_get/request_logger.ex",
+      "file": "apps/lei_service/lib/lei_service/request_logger.ex",
       "find": "    urls = if withheld, do: [], else: repo_urls",
       "replace": "    urls = repo_urls",
-      "guarded_by": "test/lowendinsight_get/request_logger_privacy_test.exs",
-      "app": "apps/lowendinsight_get"
+      "guarded_by": "test/lei_service/request_logger_privacy_test.exs",
+      "app": "apps/lei_service"
     },
     {
       "id": "analyze-log-ignores-payment-org",
       "bug": "The request log attributes /v1/analyze only through an API key, so a paying agent's first request is logged with no org -- and, unrecognised as a wallet org, with its URLs. (#149)",
-      "file": "apps/lowendinsight_get/lib/lowendinsight_get/endpoint.ex",
+      "file": "apps/lei_service/lib/lei_service/endpoint.ex",
       "find": "        _ -> org_id && Lei.Repo.get(Lei.Org, org_id)",
       "replace": "        _ -> nil",
-      "guarded_by": "test/lowendinsight_get/agent_payment_test.exs",
-      "app": "apps/lowendinsight_get"
+      "guarded_by": "test/lei_service/agent_payment_test.exs",
+      "app": "apps/lei_service"
     },
     {
       "id": "worker-logs-urls-at-info",
       "bug": "The analysis worker names the repositories it processes at info, where production logs sit beside ledger timestamps. (#149)",
-      "file": "apps/lowendinsight_get/lib/lowendinsight_get/analysis.ex",
+      "file": "apps/lei_service/lib/lei_service/analysis.ex",
       "find": "    Logger.info(\"processing #{uuid} -> #{length(urls)} repos\")",
       "replace": "    Logger.info(\"processing #{uuid} -> #{inspect(urls)}\")",
-      "guarded_by": "test/lowendinsight_get/analysis_logging_test.exs",
-      "app": "apps/lowendinsight_get"
+      "guarded_by": "test/lei_service/analysis_logging_test.exs",
+      "app": "apps/lei_service"
     },
     {
       "id": "counter-agent-logs-url-at-info",
       "bug": "Each analysis process logs its repository URL at info. (#149)",
-      "file": "apps/lowendinsight_get/lib/lowendinsight_get/counter_agent.ex",
+      "file": "apps/lei_service/lib/lei_service/counter_agent.ex",
       "find": "      Logger.info(\"running process ##{map_size(proc) + 1}\")",
       "replace": "      Logger.info(\"running process ##{map_size(proc) + 1} -> #{url}\")",
-      "guarded_by": "test/lowendinsight_get/analysis_logging_test.exs",
-      "app": "apps/lowendinsight_get"
+      "guarded_by": "test/lei_service/analysis_logging_test.exs",
+      "app": "apps/lei_service"
     },
     {
       "id": "cache-hit-logs-url-at-info",
       "bug": "A cache hit logs the repository URL at info. (#149)",
-      "file": "apps/lowendinsight_get/lib/lowendinsight_get/analysis.ex",
+      "file": "apps/lei_service/lib/lei_service/analysis.ex",
       "find": "        Logger.debug(\"#{url} is cached, yay!\")",
       "replace": "        Logger.info(\"#{url} is cached, yay!\")",
-      "guarded_by": "test/lowendinsight_get/analysis_logging_test.exs",
-      "app": "apps/lowendinsight_get"
+      "guarded_by": "test/lei_service/analysis_logging_test.exs",
+      "app": "apps/lei_service"
     },
     {
       "id": "guide-price-hardcoded",
       "bug": "The homepage quotes a price that is not the rate the ledger charges, so a rate change leaves agents told the old price.",
-      "file": "apps/lowendinsight_get/lib/lowendinsight_get/agent_guide.ex",
+      "file": "apps/lei_service/lib/lei_service/agent_guide.ex",
       "find": "    hit = credits(:cache_hit_cost_cents, 0.5)",
       "replace": "    hit = 5",
-      "guarded_by": "test/lowendinsight_get/agent_guide_test.exs",
-      "app": "apps/lowendinsight_get"
+      "guarded_by": "test/lei_service/agent_guide_test.exs",
+      "app": "apps/lei_service"
     },
     {
       "id": "guide-rounds-half-cent",
       "bug": "A cache hit's half cent is shown as $0.01, doubling the stated price.",
-      "file": "apps/lowendinsight_get/lib/lowendinsight_get/agent_guide.ex",
+      "file": "apps/lei_service/lib/lei_service/agent_guide.ex",
       "find": "    if rem(frac, 10) == 0 do",
       "replace": "    if true do",
-      "guarded_by": "test/lowendinsight_get/agent_guide_test.exs",
-      "app": "apps/lowendinsight_get"
+      "guarded_by": "test/lei_service/agent_guide_test.exs",
+      "app": "apps/lei_service"
     },
     {
       "id": "guide-claims-stablecoin-available",
       "bug": "The homepage says stablecoin is available when the rail would issue no challenge -- telling agents to pay a way that will refuse them.",
-      "file": "apps/lowendinsight_get/lib/lowendinsight_get/agent_guide.ex",
+      "file": "apps/lei_service/lib/lei_service/agent_guide.ex",
       "find": "      match?({:ok, _}, safe(fn -> Tempo.requirements(Tempo.minimum_purchase_credits()) end))\n",
       "replace": "      true\n",
-      "guarded_by": "test/lowendinsight_get/agent_guide_test.exs",
-      "app": "apps/lowendinsight_get"
+      "guarded_by": "test/lei_service/agent_guide_test.exs",
+      "app": "apps/lei_service"
     },
     {
       "id": "guide-mode-not-from-key",
       "bug": "The homepage describes live USDC payments while the service runs on a test key, or test mode after go-live.",
-      "file": "apps/lowendinsight_get/lib/lowendinsight_get/agent_guide.ex",
+      "file": "apps/lei_service/lib/lei_service/agent_guide.ex",
       "find": "      live?: mode == :live,",
       "replace": "      live?: false,",
-      "guarded_by": "test/lowendinsight_get/agent_guide_test.exs",
-      "app": "apps/lowendinsight_get"
+      "guarded_by": "test/lei_service/agent_guide_test.exs",
+      "app": "apps/lei_service"
     },
     {
       "id": "homepage-without-agent-guide",
       "bug": "The homepage stops pointing agents at /llms.txt.",
-      "file": "apps/lowendinsight_get/priv/templates/analyze.html.eex",
+      "file": "apps/lei_service/priv/templates/analyze.html.eex",
       "find": "    <link rel=\"alternate\" type=\"text/markdown\" href=\"/llms.txt\" title=\"LowEndInsight for agents\">\n",
       "replace": "",
-      "guarded_by": "test/lowendinsight_get/agent_guide_test.exs",
-      "app": "apps/lowendinsight_get"
+      "guarded_by": "test/lei_service/agent_guide_test.exs",
+      "app": "apps/lei_service"
     },
     {
       "id": "sbom-analysis-unbilled",
       "bug": "POST /v1/analyze/sbom runs the analysis without debiting it: every repository an SBOM names, free. (#152)",
-      "file": "apps/lowendinsight_get/lib/lowendinsight_get/endpoint.ex",
+      "file": "apps/lei_service/lib/lei_service/endpoint.ex",
       "find": "         {:ok, conn, _billing} <- Lei.Payments.Gate.admit(conn, admission(split)) do",
       "replace": "         {:ok, conn, _billing} <- Lei.Payments.Gate.admit(conn, admission({0, 0})) do",
-      "guarded_by": "test/lowendinsight_get/unbilled_paths_test.exs",
-      "app": "apps/lowendinsight_get"
+      "guarded_by": "test/lei_service/unbilled_paths_test.exs",
+      "app": "apps/lei_service"
     },
     {
       "id": "sbom-not-gated",
       "bug": "POST /v1/analyze/sbom admits any key without checking balance or quota, so a wallet org with no credits is served. (#152)",
-      "file": "apps/lowendinsight_get/lib/lowendinsight_get/endpoint.ex",
+      "file": "apps/lei_service/lib/lei_service/endpoint.ex",
       "find": "         {:ok, conn, _billing} <- Lei.Payments.Gate.admit(conn, admission(split)) do",
       "replace": "         {:ok, conn, _billing} <- {:ok, conn, admission(split)} do",
-      "guarded_by": "test/lowendinsight_get/unbilled_paths_test.exs",
-      "app": "apps/lowendinsight_get"
+      "guarded_by": "test/lei_service/unbilled_paths_test.exs",
+      "app": "apps/lei_service"
     },
     {
       "id": "analyze-billed-from-response",
       "bug": "/v1/analyze bills from nothing the request knew in advance -- an async analysis of an uncached repository is recorded as zero and collected later for free. (#152)",
-      "file": "apps/lowendinsight_get/lib/lowendinsight_get/endpoint.ex",
+      "file": "apps/lei_service/lib/lei_service/endpoint.ex",
       "find": "         {:ok, conn, billing} <- Lei.Payments.Gate.admit(conn, admission(split)) do",
       "replace": "         {:ok, conn, billing} <- Lei.Payments.Gate.admit(conn, admission({0, 0})) do",
-      "guarded_by": "test/lowendinsight_get/unbilled_paths_test.exs",
-      "app": "apps/lowendinsight_get"
+      "guarded_by": "test/lei_service/unbilled_paths_test.exs",
+      "app": "apps/lei_service"
     },
     {
       "id": "required-credits-ignored",
       "bug": "A credit-funded org holding less than a request costs is admitted and run into debt: an SBOM of hundreds of uncached repositories on a balance of five credits. (#152)",
-      "file": "apps/lowendinsight_get/lib/lei/usage_tracker.ex",
+      "file": "apps/lei_service/lib/lei/usage_tracker.ex",
       "find": "        if balance > 0 and balance >= required_credits,",
       "replace": "        if balance > 0,",
-      "guarded_by": "test/lowendinsight_get/unbilled_paths_test.exs",
-      "app": "apps/lowendinsight_get"
+      "guarded_by": "test/lei_service/unbilled_paths_test.exs",
+      "app": "apps/lei_service"
     },
     {
       "id": "top-up-below-shortfall",
       "bug": "The top-up asked for is the default block even when the request needs more, so an agent pays and is refused again. (#152)",
-      "file": "apps/lowendinsight_get/lib/lei/payments/gate.ex",
+      "file": "apps/lei_service/lib/lei/payments/gate.ex",
       "find": "    max(default_top_up() - min(balance, 0), required - balance)",
       "replace": "    default_top_up() - min(balance, 0)",
-      "guarded_by": "test/lowendinsight_get/unbilled_paths_test.exs",
-      "app": "apps/lowendinsight_get"
+      "guarded_by": "test/lei_service/unbilled_paths_test.exs",
+      "app": "apps/lei_service"
     },
     {
       "id": "sbom-not-paid-route",
       "bug": "POST /v1/analyze/sbom answers an agent with no credentials 401 rather than asking it to pay. (#152)",
-      "file": "apps/lowendinsight_get/lib/lei/payments/gate.ex",
+      "file": "apps/lei_service/lib/lei/payments/gate.ex",
       "find": "    {\"POST\", \"/v1/analyze/sbom\"}\n",
       "replace": "    {\"POST\", \"/v1/analyze/sbom-disabled\"}\n",
-      "guarded_by": "test/lowendinsight_get/unbilled_paths_test.exs",
-      "app": "apps/lowendinsight_get"
+      "guarded_by": "test/lei_service/unbilled_paths_test.exs",
+      "app": "apps/lei_service"
     },
     {
       "id": "try-it-unlimited",
       "bug": "The Try It form runs fresh analyses for any caller without limit -- a free analysis path around the 402. (#152)",
-      "file": "apps/lowendinsight_get/lib/lowendinsight_get/endpoint.ex",
+      "file": "apps/lei_service/lib/lei_service/endpoint.ex",
       "find": "      case Lei.RateLimiter.check(\"try_it:#{ip}\", \"try_it\") do",
       "replace": "      case {:ok, 1} do",
-      "guarded_by": "test/lowendinsight_get/unbilled_paths_test.exs",
-      "app": "apps/lowendinsight_get"
+      "guarded_by": "test/lei_service/unbilled_paths_test.exs",
+      "app": "apps/lei_service"
     },
     {
       "id": "try-it-counts-cached-reports",
       "bug": "Cached reports count against the Try It allowance, so a person browsing already-analysed repositories is refused. (#152)",
-      "file": "apps/lowendinsight_get/lib/lowendinsight_get/endpoint.ex",
-      "find": "    if LowendinsightGet.Datastore.in_cache?(url) do\n      :ok",
+      "file": "apps/lei_service/lib/lei_service/endpoint.ex",
+      "find": "    if LeiService.Datastore.in_cache?(url) do\n      :ok",
       "replace": "    if false do\n      :ok",
-      "guarded_by": "test/lowendinsight_get/unbilled_paths_test.exs",
-      "app": "apps/lowendinsight_get"
+      "guarded_by": "test/lei_service/unbilled_paths_test.exs",
+      "app": "apps/lei_service"
     },
     {
       "id": "rate-limiter-cleanup-default-window",
       "bug": "Cleanup purges on the default minute, erasing an hourly bucket's history every two minutes so its limit is never reached. (#152)",
-      "file": "apps/lowendinsight_get/lib/lei/rate_limiter.ex",
+      "file": "apps/lei_service/lib/lei/rate_limiter.ex",
       "find": "    cutoff = now - longest_window()",
       "replace": "    cutoff = now - window_ms()",
       "guarded_by": "test/lei/rate_limiter_test.exs",
-      "app": "apps/lowendinsight_get"
+      "app": "apps/lei_service"
     },
     {
       "id": "rate-limiter-ignores-bucket-window",
       "bug": "Every bucket counts over the default minute, so an hourly limit is really a per-minute one. (#152)",
-      "file": "apps/lowendinsight_get/lib/lei/rate_limiter.ex",
+      "file": "apps/lei_service/lib/lei/rate_limiter.ex",
       "find": "    window = window_for(tier)",
       "replace": "    window = window_ms()",
       "guarded_by": "test/lei/rate_limiter_test.exs",
-      "app": "apps/lowendinsight_get"
+      "app": "apps/lei_service"
     },
     {
       "id": "trending-languages-concurrent",
       "bug": "Languages are analysed concurrently, so clones pile up until the 512 MB machine runs out of memory and every analysis dies -- production's state for days. (#158)",
-      "file": "apps/lowendinsight_get/lib/lowendinsight_get/github_trending.ex",
+      "file": "apps/lei_service/lib/lei_service/github_trending.ex",
       "find": "      |> Enum.map(fn language ->\n        result = refresh(language, opts)\n        extend_lock(token, lock_ms)\n        {language, result}\n      end)",
       "replace": "      |> Task.async_stream(fn language -> {language, refresh(language, opts)} end, max_concurrency: 8, timeout: :infinity)\n      |> Enum.map(fn {:ok, result} -> result end)",
-      "guarded_by": "test/lowendinsight_get/trending_refresh_test.exs",
-      "app": "apps/lowendinsight_get"
+      "guarded_by": "test/lei_service/trending_refresh_test.exs",
+      "app": "apps/lei_service"
     },
     {
       "id": "trending-publishes-incomplete",
       "bug": "A language's page is pointed at a report that has not completed, replacing the last good one with a placeholder that renders empty. (#158)",
-      "file": "apps/lowendinsight_get/lib/lowendinsight_get/github_trending.ex",
+      "file": "apps/lei_service/lib/lei_service/github_trending.ex",
       "find": "         :ok <- ensure_complete(uuid) do",
       "replace": "         true do",
-      "guarded_by": "test/lowendinsight_get/trending_refresh_test.exs",
-      "app": "apps/lowendinsight_get"
+      "guarded_by": "test/lei_service/trending_refresh_test.exs",
+      "app": "apps/lei_service"
     },
     {
       "id": "trending-redoes-completed-languages",
       "bug": "Every run redoes every language, so a run killed partway starts over and never reaches the end. (#158)",
-      "file": "apps/lowendinsight_get/lib/lowendinsight_get/github_trending.ex",
+      "file": "apps/lei_service/lib/lei_service/github_trending.ex",
       "find": "      |> Enum.filter(&(Keyword.get(opts, :force, false) or due?(&1, Keyword.get(opts, :now))))",
       "replace": "      |> Enum.filter(fn _ -> true end)",
-      "guarded_by": "test/lowendinsight_get/trending_refresh_test.exs",
-      "app": "apps/lowendinsight_get"
+      "guarded_by": "test/lei_service/trending_refresh_test.exs",
+      "app": "apps/lei_service"
     },
     {
       "id": "trending-runs-without-lock",
       "bug": "The hourly job and the manual trigger analyse at the same time, doubling the clones in memory. (#158)",
-      "file": "apps/lowendinsight_get/lib/lowendinsight_get/github_trending.ex",
+      "file": "apps/lei_service/lib/lei_service/github_trending.ex",
       "find": "    case Redix.command(:redix, [\"SET\", @lock_key, token, \"NX\", \"PX\", lock_ms]) do",
       "replace": "    case Redix.command(:redix, [\"SET\", @lock_key, token, \"PX\", lock_ms]) do",
-      "guarded_by": "test/lowendinsight_get/trending_refresh_test.exs",
-      "app": "apps/lowendinsight_get"
+      "guarded_by": "test/lei_service/trending_refresh_test.exs",
+      "app": "apps/lei_service"
     },
     {
       "id": "trending-analysis-crash-escapes",
       "bug": "An analysis that raises crashes the whole run instead of failing one language. (#158)",
-      "file": "apps/lowendinsight_get/lib/lowendinsight_get/github_trending.ex",
+      "file": "apps/lei_service/lib/lei_service/github_trending.ex",
       "find": "    e -> {:error, {:analysis_raised, Exception.message(e)}}",
       "replace": "    e -> reraise e, __STACKTRACE__",
-      "guarded_by": "test/lowendinsight_get/trending_refresh_test.exs",
-      "app": "apps/lowendinsight_get"
+      "guarded_by": "test/lei_service/trending_refresh_test.exs",
+      "app": "apps/lei_service"
     },
     {
       "id": "trending-analyses-oversized-repos",
       "bug": "Repositories over the size limit are sent for analysis. (#158)",
-      "file": "apps/lowendinsight_get/lib/lowendinsight_get/github_trending.ex",
+      "file": "apps/lei_service/lib/lei_service/github_trending.ex",
       "find": "  def keep_repo?(size, true) when is_integer(size),\n    do:\n      size <",
       "replace": "  def keep_repo?(size, true) when is_integer(size),\n    do:\n      0 <",
-      "guarded_by": "test/lowendinsight_get/github_trending_test.exs",
-      "app": "apps/lowendinsight_get"
+      "guarded_by": "test/lei_service/github_trending_test.exs",
+      "app": "apps/lei_service"
     },
     {
       "id": "trending-job-overlaps",
@@ -934,17 +934,17 @@
       "file": "config/config.exs",
       "find": "          overlap: false",
       "replace": "          overlap: true",
-      "guarded_by": "test/lowendinsight_get/trending_refresh_test.exs",
-      "app": "apps/lowendinsight_get"
+      "guarded_by": "test/lei_service/trending_refresh_test.exs",
+      "app": "apps/lei_service"
     },
     {
       "id": "trending-metrics-not-exposed",
       "bug": "Trending report completion and age are not on /metrics, so monitoring cannot see the job failing. (#158)",
       "file": "config/config.exs",
-      "find": "  metrics_collectors: [{LowendinsightGet.GithubTrending, :metrics, []}]",
+      "find": "  metrics_collectors: [{LeiService.GithubTrending, :metrics, []}]",
       "replace": "  metrics_collectors: []",
-      "guarded_by": "test/lowendinsight_get/trending_refresh_test.exs",
-      "app": "apps/lowendinsight_get"
+      "guarded_by": "test/lei_service/trending_refresh_test.exs",
+      "app": "apps/lei_service"
     },
     {
       "id": "utf8-repair-per-codepoint",
@@ -967,47 +967,47 @@
     {
       "id": "trending-lock-outlives-a-crash",
       "bug": "The trending lock lasts six hours, so an OOM kill mid-run keeps the job from running for the rest of the day. (#158)",
-      "file": "apps/lowendinsight_get/lib/lowendinsight_get/github_trending.ex",
+      "file": "apps/lei_service/lib/lei_service/github_trending.ex",
       "find": "  @lock_ms 90 * 60 * 1000",
       "replace": "  @lock_ms 6 * 3600 * 1000",
-      "guarded_by": "test/lowendinsight_get/trending_refresh_test.exs",
-      "app": "apps/lowendinsight_get"
+      "guarded_by": "test/lei_service/trending_refresh_test.exs",
+      "app": "apps/lei_service"
     },
     {
       "id": "trending-lock-not-extended",
       "bug": "The lock is not extended as languages complete, so a long run loses it partway and the next hourly run starts alongside. (#158)",
-      "file": "apps/lowendinsight_get/lib/lowendinsight_get/github_trending.ex",
+      "file": "apps/lei_service/lib/lei_service/github_trending.ex",
       "find": "        extend_lock(token, lock_ms)\n",
       "replace": "",
-      "guarded_by": "test/lowendinsight_get/trending_refresh_test.exs",
-      "app": "apps/lowendinsight_get"
+      "guarded_by": "test/lei_service/trending_refresh_test.exs",
+      "app": "apps/lei_service"
     },
     {
       "id": "trending-size-limit-1gb",
       "bug": "The size limit admits repositories up to 1 GB, several times the machine's memory. (#158)",
-      "file": "apps/lowendinsight_get/lib/lowendinsight_get/github_trending.ex",
+      "file": "apps/lei_service/lib/lei_service/github_trending.ex",
       "find": "  @default_max_repo_size_kb 250_000",
       "replace": "  @default_max_repo_size_kb 1_000_000",
-      "guarded_by": "test/lowendinsight_get/trending_refresh_test.exs",
-      "app": "apps/lowendinsight_get"
+      "guarded_by": "test/lei_service/trending_refresh_test.exs",
+      "app": "apps/lei_service"
     },
     {
       "id": "trending-fallback-most-starred",
       "bug": "The GitHub Search fallback returns the most-starred repositories with a recent push -- the largest, longest-history projects -- rather than rising ones. (#158)",
-      "file": "apps/lowendinsight_get/lib/lowendinsight_get/github_trending.ex",
+      "file": "apps/lei_service/lib/lei_service/github_trending.ex",
       "find": "    \"language:#{language} created:>#{since} stars:>=10 fork:false archived:false\"",
       "replace": "    \"language:#{language} pushed:>#{since} stars:>10\"",
-      "guarded_by": "test/lowendinsight_get/trending_refresh_test.exs",
-      "app": "apps/lowendinsight_get"
+      "guarded_by": "test/lei_service/trending_refresh_test.exs",
+      "app": "apps/lei_service"
     },
     {
       "id": "ossinsight-unavailable-unreported",
       "bug": "OSS Insight's stated 'ranking unavailable' answer is reported as a generic empty result, hiding why trending runs on the fallback. (#158)",
-      "file": "apps/lowendinsight_get/lib/lowendinsight_get/github_trending.ex",
+      "file": "apps/lei_service/lib/lei_service/github_trending.ex",
       "find": "      {:ok, %{\"data_quality\" => %{\"status\" => \"unavailable\"} = quality}} ->",
       "replace": "      {:ok, %{\"data_quality\" => %{\"status\" => \"never-matches\"} = quality}} ->",
-      "guarded_by": "test/lowendinsight_get/trending_refresh_test.exs",
-      "app": "apps/lowendinsight_get"
+      "guarded_by": "test/lei_service/trending_refresh_test.exs",
+      "app": "apps/lei_service"
     },
     {
       "id": "trending-job-left-disabled",
@@ -1015,17 +1015,17 @@
       "file": "config/config.exs",
       "find": "          overlap: false\n        ]",
       "replace": "          overlap: false,\n          state: :inactive\n        ]",
-      "guarded_by": "test/lowendinsight_get/trending_refresh_test.exs",
-      "app": "apps/lowendinsight_get"
+      "guarded_by": "test/lei_service/trending_refresh_test.exs",
+      "app": "apps/lei_service"
     },
     {
       "id": "trending-run-in-progress-always-zero",
       "bug": "The run-in-progress metric never reports a run, so the monitor fails -- and emails -- every 15 minutes while a first run fills in reports (#158 follow-up).",
-      "file": "apps/lowendinsight_get/lib/lowendinsight_get/github_trending.ex",
+      "file": "apps/lei_service/lib/lei_service/github_trending.ex",
       "find": "    match?({:ok, holder} when is_binary(holder), Redix.command(:redix, [\"GET\", @lock_key]))",
       "replace": "    false",
-      "guarded_by": "test/lowendinsight_get/trending_refresh_test.exs",
-      "app": "apps/lowendinsight_get"
+      "guarded_by": "test/lei_service/trending_refresh_test.exs",
+      "app": "apps/lei_service"
     },
     {
       "id": "report-publishes-application-env",
@@ -1043,7 +1043,7 @@
       "find": "    session_secret_key_base: session_secret\n",
       "replace": "",
       "guarded_by": "test/runtime_secrets_config_test.exs",
-      "app": "apps/lowendinsight_get"
+      "app": "apps/lei_service"
     },
     {
       "id": "session-secret-not-required",
@@ -1052,376 +1052,376 @@
       "find": "      raise \"LEI_SESSION_SECRET env var is required in production\"",
       "replace": "      \"lei_dev_session_secret_that_is_at_least_64_bytes_long_for_cookie_store_to_work_properly\"",
       "guarded_by": "test/runtime_secrets_config_test.exs",
-      "app": "apps/lowendinsight_get"
+      "app": "apps/lei_service"
     },
     {
       "id": "path-checks-on-raw-request-path",
       "bug": "Auth decided on the raw request_path while the router matched the percent-decoded path, so GET /%761/cache/stats was served unauthenticated in production (security, 2026-09-14).",
-      "file": "apps/lowendinsight_get/lib/lei/plugs/canonical_path.ex",
+      "file": "apps/lei_service/lib/lei/plugs/canonical_path.ex",
       "find": "    %{conn | request_path: \"/\" <> Enum.map_join(segments, \"/\", &URI.decode/1)}",
       "replace": "    _ = segments\n    conn",
-      "guarded_by": "test/lowendinsight_get/encoded_path_auth_test.exs",
-      "app": "apps/lowendinsight_get"
+      "guarded_by": "test/lei_service/encoded_path_auth_test.exs",
+      "app": "apps/lei_service"
     },
     {
       "id": "endpoint-skips-canonical-path",
       "bug": "The endpoint's path checks ran before (or without) canonicalising the path, reopening the percent-encoded auth bypass (security, 2026-09-14).",
-      "file": "apps/lowendinsight_get/lib/lowendinsight_get/endpoint.ex",
+      "file": "apps/lei_service/lib/lei_service/endpoint.ex",
       "find": "  plug(Lei.Plugs.CanonicalPath)\n",
       "replace": "",
-      "guarded_by": "test/lowendinsight_get/encoded_path_auth_test.exs",
-      "app": "apps/lowendinsight_get"
+      "guarded_by": "test/lei_service/encoded_path_auth_test.exs",
+      "app": "apps/lei_service"
     },
     {
       "id": "org-keys-without-ownership",
       "bug": "Org key routes do not check the caller's key belongs to the org in the path: any signup key mints, lists or revokes keys for any org -- a full takeover (security, 2026-09-14).",
-      "file": "apps/lowendinsight_get/lib/lei/web/router.ex",
+      "file": "apps/lei_service/lib/lei/web/router.ex",
       "find": "      {_, %Lei.ApiKey{org_id: org_id, scopes: scopes}, %Lei.Org{id: org_id} = org} ->",
       "replace": "      {_, %Lei.ApiKey{scopes: scopes}, %Lei.Org{} = org} ->",
-      "guarded_by": "test/lowendinsight_get/tenant_isolation_test.exs",
-      "app": "apps/lowendinsight_get"
+      "guarded_by": "test/lei_service/tenant_isolation_test.exs",
+      "app": "apps/lei_service"
     },
     {
       "id": "revoke-key-by-id-across-orgs",
       "bug": "Key revocation looks the key up by id alone, so any org's key can be revoked through any slug the caller controls (security, 2026-09-14).",
-      "file": "apps/lowendinsight_get/lib/lei/web/router.ex",
+      "file": "apps/lei_service/lib/lei/web/router.ex",
       "find": "         %Lei.ApiKey{} = key <-\n           Enum.find(Lei.ApiKeys.list_keys(org), &(to_string(&1.id) == key_id)),",
       "replace": "         %Lei.ApiKey{} = key <-\n           Lei.Repo.get(Lei.ApiKey, key_id),",
-      "guarded_by": "test/lowendinsight_get/tenant_isolation_test.exs",
-      "app": "apps/lowendinsight_get"
+      "guarded_by": "test/lei_service/tenant_isolation_test.exs",
+      "app": "apps/lei_service"
     },
     {
       "id": "org-admin-grants-platform-scope",
       "bug": "An org admin can mint a key with the platform 'cache' scope for its own org, escalating to import/export of every customer's reports (security, 2026-09-14).",
-      "file": "apps/lowendinsight_get/lib/lei/web/router.ex",
+      "file": "apps/lei_service/lib/lei/web/router.ex",
       "find": "      Enum.all?(scopes, &(&1 in @self_service_scopes)) -> :ok",
       "replace": "      is_list(scopes) -> :ok",
-      "guarded_by": "test/lowendinsight_get/tenant_isolation_test.exs",
-      "app": "apps/lowendinsight_get"
+      "guarded_by": "test/lei_service/tenant_isolation_test.exs",
+      "app": "apps/lei_service"
     },
     {
       "id": "cache-routes-accept-org-admin",
       "bug": "Cache routes accept the 'admin' scope that every signup key carries, so any stranger can export, import over or invalidate the shared cache (security, 2026-09-14).",
-      "file": "apps/lowendinsight_get/lib/lowendinsight_get/auth.ex",
+      "file": "apps/lei_service/lib/lei_service/auth.ex",
       "find": "      %{scopes: scopes} when is_list(scopes) -> required in scopes",
       "replace": "      %{scopes: scopes} when is_list(scopes) -> required in scopes or \"admin\" in scopes",
-      "guarded_by": "test/lowendinsight_get/tenant_isolation_test.exs",
-      "app": "apps/lowendinsight_get"
+      "guarded_by": "test/lei_service/tenant_isolation_test.exs",
+      "app": "apps/lei_service"
     },
     {
       "id": "org-creation-by-org-admin",
       "bug": "POST /v1/orgs accepts any signup key's 'admin' scope instead of requiring an operator (security, 2026-09-14).",
-      "file": "apps/lowendinsight_get/lib/lei/web/router.ex",
+      "file": "apps/lei_service/lib/lei/web/router.ex",
       "find": "      {method, _} when method != :jwt ->",
       "replace": "      {method, _} when method == :never ->",
-      "guarded_by": "test/lowendinsight_get/tenant_isolation_test.exs",
-      "app": "apps/lowendinsight_get"
+      "guarded_by": "test/lei_service/tenant_isolation_test.exs",
+      "app": "apps/lei_service"
     },
     {
       "id": "signup-success-activates-without-stripe",
       "bug": "GET /signup/success activated a pending Pro org and issued an admin key without asking Stripe whether the checkout was paid (security, 2026-09-14).",
-      "file": "apps/lowendinsight_get/lib/lei/web/router.ex",
+      "file": "apps/lei_service/lib/lei/web/router.ex",
       "find": "{:ok, org} <- Lei.Signup.confirm_paid_checkout(org, conn.params[\"session_id\"]),",
       "replace": "{:ok, org} <- Lei.ApiKeys.activate_org(org),",
       "guarded_by": "test/lei/web/signup_success_test.exs",
-      "app": "apps/lowendinsight_get"
+      "app": "apps/lei_service"
     },
     {
       "id": "checkout-paid-status-ignored",
       "bug": "An open or unpaid Checkout Session was accepted as payment (security, 2026-09-14).",
-      "file": "apps/lowendinsight_get/lib/lei/signup.ex",
+      "file": "apps/lei_service/lib/lei/signup.ex",
       "find": "  defp settled(_), do: {:error, :not_paid}",
       "replace": "  defp settled(_), do: :ok",
       "guarded_by": "test/lei/web/signup_success_test.exs",
-      "app": "apps/lowendinsight_get"
+      "app": "apps/lei_service"
     },
     {
       "id": "checkout-for-other-org-accepted",
       "bug": "A paid Checkout Session for one org activated a different org (security, 2026-09-14).",
-      "file": "apps/lowendinsight_get/lib/lei/signup.ex",
+      "file": "apps/lei_service/lib/lei/signup.ex",
       "find": "      else: {:error, :checkout_for_other_org}",
       "replace": "      else: :ok",
       "guarded_by": "test/lei/web/signup_success_test.exs",
-      "app": "apps/lowendinsight_get"
+      "app": "apps/lei_service"
     },
     {
       "id": "suspended-org-reactivated-by-success-page",
       "bug": "Revisiting the success page re-activated an org suspended for cancellation or failed payment (security, 2026-09-14).",
-      "file": "apps/lowendinsight_get/lib/lei/signup.ex",
+      "file": "apps/lei_service/lib/lei/signup.ex",
       "find": "  defp activate(%Org{status: \"suspended\"}, _checkout), do: {:error, :suspended}\n",
       "replace": "",
       "guarded_by": "test/lei/web/signup_success_test.exs",
-      "app": "apps/lowendinsight_get"
+      "app": "apps/lei_service"
     },
     {
       "id": "signup-credentials-minted-on-every-visit",
       "bug": "Replaying the signup session cookie minted a fresh admin key and recovery code on every visit (security, 2026-09-14).",
-      "file": "apps/lowendinsight_get/lib/lei/signup.ex",
+      "file": "apps/lei_service/lib/lei/signup.ex",
       "find": "      if Repo.exists?(from(k in ApiKey, where: k.org_id == ^org_id)) do",
       "replace": "      if false and Repo.exists?(from(k in ApiKey, where: k.org_id == ^org_id)) do",
       "guarded_by": "test/lei/web/signup_success_test.exs",
-      "app": "apps/lowendinsight_get"
+      "app": "apps/lei_service"
     },
     {
       "id": "checkout-read-permission-unchecked",
       "bug": "A Stripe key that cannot read Checkout Sessions passed the object check, so Pro activation would fail for every paying customer with no signal (2026-09-14).",
-      "file": "apps/lowendinsight_get/lib/lei/stripe/object_check.ex",
+      "file": "apps/lei_service/lib/lei/stripe/object_check.ex",
       "find": "      {:error, {status, _body}} when status in [401, 403] -> \"unauthorized\"\n      _ -> \"unreachable\"\n    end\n  end\n\n  # --- GenServer ---",
       "replace": "      {:error, {status, _body}} when status in [401, 403] -> \"ok\"\n      _ -> \"unreachable\"\n    end\n  end\n\n  # --- GenServer ---",
       "guarded_by": "test/lei/stripe/object_check_test.exs",
-      "app": "apps/lowendinsight_get"
+      "app": "apps/lei_service"
     },
     {
       "id": "free-tier-limit-not-per-request",
       "bug": "A free org with one analysis left could submit thousands of URLs in one request: the gate compared analyses remaining with a price in credits and admitted anyway (security, 2026-09-14).",
-      "file": "apps/lowendinsight_get/lib/lei/usage_tracker.ex",
+      "file": "apps/lei_service/lib/lei/usage_tracker.ex",
       "find": "        if used < limit and used + analyses <= limit,",
       "replace": "        if used < limit,",
-      "guarded_by": "test/lowendinsight_get/per_request_quota_test.exs",
-      "app": "apps/lowendinsight_get"
+      "guarded_by": "test/lei_service/per_request_quota_test.exs",
+      "app": "apps/lei_service"
     },
     {
       "id": "analyze-routes-omit-analysis-count",
       "bug": "/v1/analyze and /v1/analyze/sbom did not tell the gate how many analyses a request would run (security, 2026-09-14).",
-      "file": "apps/lowendinsight_get/lib/lowendinsight_get/endpoint.ex",
+      "file": "apps/lei_service/lib/lei_service/endpoint.ex",
       "find": "  defp admission(split), do: [required_credits: credits_for(split), usage: split]",
       "replace": "  defp admission(split), do: [required_credits: credits_for(split), usage: {0, 0}]",
-      "guarded_by": "test/lowendinsight_get/per_request_quota_test.exs",
-      "app": "apps/lowendinsight_get"
+      "guarded_by": "test/lei_service/per_request_quota_test.exs",
+      "app": "apps/lei_service"
     },
     {
       "id": "batch-admitted-without-price",
       "bug": "POST /v1/analyze/batch called the gate with no price, so a batch of any size was admitted to an org that could afford one analysis (security, 2026-09-14).",
-      "file": "apps/lowendinsight_get/lib/lei/web/router.ex",
+      "file": "apps/lei_service/lib/lei/web/router.ex",
       "find": "        case Lei.Payments.Gate.admit(conn, admission) do",
       "replace": "        _ = admission\n        case Lei.Payments.Gate.admit(conn) do",
       "guarded_by": "test/lei/web/batch_admission_test.exs",
-      "app": "apps/lowendinsight_get"
+      "app": "apps/lei_service"
     },
     {
       "id": "acp-purchase-grants-pro",
       "bug": "ACP created an unlimited tier: pro org from a one-off $29 charge that was never billed again (security, 2026-09-14).",
-      "file": "apps/lowendinsight_get/lib/lei/acp.ex",
+      "file": "apps/lei_service/lib/lei/acp.ex",
       "find": "ApiKeys.create_org(customer_name, tier: \"free\", status: \"active\")",
       "replace": "ApiKeys.create_org(customer_name, tier: \"pro\", status: \"active\")",
       "guarded_by": "test/lei/acp_credits_test.exs",
-      "app": "apps/lowendinsight_get"
+      "app": "apps/lei_service"
     },
     {
       "id": "acp-org-not-prepaid",
       "bug": "An ACP-purchased org fell back to the free tier's monthly quota instead of being admitted on its credits (2026-09-14).",
-      "file": "apps/lowendinsight_get/lib/lei/acp.ex",
+      "file": "apps/lei_service/lib/lei/acp.ex",
       "find": "change(prepaid: true, free_tier_analyses_limit: 0)",
       "replace": "change(prepaid: false, free_tier_analyses_limit: 0)",
       "guarded_by": "test/lei/acp_credits_test.exs",
-      "app": "apps/lowendinsight_get"
+      "app": "apps/lei_service"
     },
     {
       "id": "acp-free-sku-offered",
       "bug": "ACP offered a free SKU, handing any caller a free-tier org; ADR-002 rules out a free tier for agents (security, 2026-09-14).",
-      "file": "apps/lowendinsight_get/lib/lei/acp_checkout_session.ex",
+      "file": "apps/lei_service/lib/lei/acp_checkout_session.ex",
       "find": "    \"lei-credits-29000\" => 2900\n",
       "replace": "    \"lei-credits-29000\" => 2900,\n    \"lei-free\" => 0\n",
       "guarded_by": "test/lei/acp_credits_test.exs",
-      "app": "apps/lowendinsight_get"
+      "app": "apps/lei_service"
     },
     {
       "id": "prepaid-org-uses-free-quota",
       "bug": "A prepaid org without a wallet was checked against the free-tier quota rather than its credit balance (2026-09-14).",
-      "file": "apps/lowendinsight_get/lib/lei/usage_tracker.ex",
+      "file": "apps/lei_service/lib/lei/usage_tracker.ex",
       "find": "      %Org{prepaid: true} = org ->",
       "replace": "      %Org{prepaid: :never} = org ->",
       "guarded_by": "test/lei/acp_credits_test.exs",
-      "app": "apps/lowendinsight_get"
+      "app": "apps/lei_service"
     },
     {
       "id": "acp-charges-before-name-check",
       "bug": "ACP charged the card and then failed to create the org when the name was taken, taking money for nothing (2026-09-14).",
-      "file": "apps/lowendinsight_get/lib/lei/acp.ex",
+      "file": "apps/lei_service/lib/lei/acp.ex",
       "find": "      _ -> {:error, :name_taken}",
       "replace": "      _ -> :ok",
       "guarded_by": "test/lei/acp_credits_test.exs",
-      "app": "apps/lowendinsight_get"
+      "app": "apps/lei_service"
     },
     {
       "id": "acp-echoes-stripe-error",
       "bug": "ACP returned inspect() of Stripe's error body, which can carry the PaymentIntent and its client secret (security, 2026-09-14).",
-      "file": "apps/lowendinsight_get/lib/lei/acp.ex",
+      "file": "apps/lei_service/lib/lei/acp.ex",
       "find": "{:error, {:payment_failed, decline_code(reason)}}",
       "replace": "{:error, {:payment_failed, if(decline_code(reason), do: reason)}}",
       "guarded_by": "test/lei/acp_credits_test.exs",
-      "app": "apps/lowendinsight_get"
+      "app": "apps/lei_service"
     },
     {
       "id": "dashboard-revokes-any-key",
       "bug": "POST /keys/:key_id/revoke revoked whatever key id it was given, from any org (security, 2026-09-14).",
-      "file": "apps/lowendinsight_get/lib/lei/web/router.ex",
+      "file": "apps/lei_service/lib/lei/web/router.ex",
       "find": "      case Enum.find(Lei.ApiKeys.list_keys(org), &(to_string(&1.id) == key_id)) do",
       "replace": "      case Lei.Repo.get(Lei.ApiKey, key_id) do",
       "guarded_by": "test/lei/web/dashboard_security_test.exs",
-      "app": "apps/lowendinsight_get"
+      "app": "apps/lei_service"
     },
     {
       "id": "dashboard-grants-any-scope",
       "bug": "POST /keys granted any scope typed into the form, including cache (security, 2026-09-14).",
-      "file": "apps/lowendinsight_get/lib/lei/web/router.ex",
+      "file": "apps/lei_service/lib/lei/web/router.ex",
       "find": "      with [] <- scopes -- @self_service_scopes,",
       "replace": "      with [] <- scopes -- scopes,",
       "guarded_by": "test/lei/web/dashboard_security_test.exs",
-      "app": "apps/lowendinsight_get"
+      "app": "apps/lei_service"
     },
     {
       "id": "templates-render-unescaped",
       "bug": "Lei web templates wrote org and key names into the page as markup (security, 2026-09-14).",
-      "file": "apps/lowendinsight_get/lib/lei/web/html_engine.ex",
+      "file": "apps/lei_service/lib/lei/web/html_engine.ex",
       "find": "  def to_html(binary) when is_binary(binary), do: escape(binary)",
       "replace": "  def to_html(binary) when is_binary(binary), do: binary",
       "guarded_by": "test/lei/web/dashboard_security_test.exs",
-      "app": "apps/lowendinsight_get"
+      "app": "apps/lei_service"
     },
     {
       "id": "session-cookie-without-samesite",
       "bug": "The session cookie had no SameSite attribute, so another site could submit the dashboard's key forms as a signed-in user (security, 2026-09-14).",
-      "file": "apps/lowendinsight_get/lib/lei/web/router.ex",
+      "file": "apps/lei_service/lib/lei/web/router.ex",
       "find": "    same_site: \"Lax\",\n",
       "replace": "",
       "guarded_by": "test/lei/web/dashboard_security_test.exs",
-      "app": "apps/lowendinsight_get"
+      "app": "apps/lei_service"
     },
     {
       "id": "session-outlives-revoked-key",
       "bug": "A dashboard session stayed valid after the admin key that opened it was revoked (security, 2026-09-14).",
-      "file": "apps/lowendinsight_get/lib/lei/web/session_auth.ex",
+      "file": "apps/lei_service/lib/lei/web/session_auth.ex",
       "find": "%Lei.ApiKey{active: true, org:",
       "replace": "%Lei.ApiKey{org:",
       "guarded_by": "test/lei/web/dashboard_security_test.exs",
-      "app": "apps/lowendinsight_get"
+      "app": "apps/lei_service"
     },
     {
       "id": "session-never-expires",
       "bug": "A dashboard session never expired; a copied cookie worked indefinitely (security, 2026-09-14).",
-      "file": "apps/lowendinsight_get/lib/lei/web/session_auth.ex",
+      "file": "apps/lei_service/lib/lei/web/session_auth.ex",
       "find": "         true <- System.system_time(:second) - at < @max_age_seconds,",
       "replace": "         true <- is_integer(at),",
       "guarded_by": "test/lei/web/dashboard_security_test.exs",
-      "app": "apps/lowendinsight_get"
+      "app": "apps/lei_service"
     },
     {
       "id": "report-json-closes-script",
       "bug": "Report JSON was written into <script> with < unescaped, so a contributor named </script><script>... ran script on the Try It and trending pages (security, 2026-09-15).",
-      "file": "apps/lowendinsight_get/lib/lei/web/html_engine.ex",
+      "file": "apps/lei_service/lib/lei/web/html_engine.ex",
       "find": "    |> String.replace(\"<\", \"\\\\u003c\")\n",
       "replace": "",
-      "guarded_by": "test/lowendinsight_get/report_page_injection_test.exs",
-      "app": "apps/lowendinsight_get"
+      "guarded_by": "test/lei_service/report_page_injection_test.exs",
+      "app": "apps/lei_service"
     },
     {
       "id": "report-pages-plain-eex",
-      "bug": "lowendinsight_get pages were rendered with plain EEx, so a language in the trending URL and report fields were written into the page as markup (security, 2026-09-15).",
-      "file": "apps/lowendinsight_get/lib/lowendinsight_get/endpoint.ex",
+      "bug": "lei_service pages were rendered with plain EEx, so a language in the trending URL and report fields were written into the page as markup (security, 2026-09-15).",
+      "file": "apps/lei_service/lib/lei_service/endpoint.ex",
       "find": "      |> EEx.eval_file(assigns, engine: Lei.Web.HTMLEngine)",
       "replace": "      |> EEx.eval_file(assigns)",
-      "guarded_by": "test/lowendinsight_get/report_page_injection_test.exs",
-      "app": "apps/lowendinsight_get"
+      "guarded_by": "test/lei_service/report_page_injection_test.exs",
+      "app": "apps/lei_service"
     },
     {
       "id": "report-table-uses-innerhtml",
       "bug": "endpoints.js wrote report fields into the table with innerHTML, so a branch named <img onerror=...> ran script (security, 2026-09-15).",
-      "file": "apps/lowendinsight_get/priv/static/js/endpoints.js",
+      "file": "apps/lei_service/priv/static/js/endpoints.js",
       "find": "    cell.textContent = (value === null",
       "replace": "    cell.innerHTML = (value === null",
-      "guarded_by": "test/lowendinsight_get/report_page_injection_test.exs",
-      "app": "apps/lowendinsight_get"
+      "guarded_by": "test/lei_service/report_page_injection_test.exs",
+      "app": "apps/lei_service"
     },
     {
       "id": "report-link-any-scheme",
       "bug": "The project link used the report's repo URL as-is, so a javascript: URL ran on click (security, 2026-09-15).",
-      "file": "apps/lowendinsight_get/priv/static/js/endpoints.js",
+      "file": "apps/lei_service/priv/static/js/endpoints.js",
       "find": "    return /^https?:\\/\\//i.test(String(url)) ? String(url) : null;",
       "replace": "    return String(url);",
-      "guarded_by": "test/lowendinsight_get/report_page_injection_test.exs",
-      "app": "apps/lowendinsight_get"
+      "guarded_by": "test/lei_service/report_page_injection_test.exs",
+      "app": "apps/lei_service"
     },
     {
       "id": "trending-row-positional-args",
       "bug": "The trending page called display_row positionally and fell one argument behind when agentic_classification was added, so its view button got undefined and did nothing (2026-09-15).",
-      "file": "apps/lowendinsight_get/priv/templates/language.html.eex",
+      "file": "apps/lei_service/priv/templates/language.html.eex",
       "find": "display_report(<%= Lei.Web.HTML.script_json(slug) %>, <%= Lei.Web.HTML.script_json(repo) %>);",
       "replace": "display_row(<%= Lei.Web.HTML.script_json(slug) %>, <%= Lei.Web.HTML.script_json(repo) %>);",
-      "guarded_by": "test/lowendinsight_get/report_page_injection_test.exs",
-      "app": "apps/lowendinsight_get"
+      "guarded_by": "test/lei_service/report_page_injection_test.exs",
+      "app": "apps/lei_service"
     },
     {
       "id": "remote-url-allows-private-addresses",
       "bug": "The service cloned hosts resolving to loopback, cloud metadata or Fly's private network (security, 2026-09-15).",
-      "file": "apps/lowendinsight_get/lib/lowendinsight_get/remote_url.ex",
+      "file": "apps/lei_service/lib/lei_service/remote_url.ex",
       "find": "    if Enum.all?(addrs, &public?/1),",
       "replace": "    if true or Enum.all?(addrs, &public?/1),",
-      "guarded_by": "test/lowendinsight_get/remote_url_test.exs",
-      "app": "apps/lowendinsight_get"
+      "guarded_by": "test/lei_service/remote_url_test.exs",
+      "app": "apps/lei_service"
     },
     {
       "id": "remote-url-allows-any-scheme",
       "bug": "file://, http and git:// URLs reached the analyzer through the web service (security, 2026-09-15).",
-      "file": "apps/lowendinsight_get/lib/lowendinsight_get/remote_url.ex",
+      "file": "apps/lei_service/lib/lei_service/remote_url.ex",
       "find": "  defp https(_), do: {:error, \"only https URLs can be analyzed\"}",
       "replace": "  defp https(_), do: :ok",
-      "guarded_by": "test/lowendinsight_get/remote_url_test.exs",
-      "app": "apps/lowendinsight_get"
+      "guarded_by": "test/lei_service/remote_url_test.exs",
+      "app": "apps/lei_service"
     },
     {
       "id": "try-it-route-unvalidated",
       "bug": "GET /url= analysed whatever it was given, without validating the URL (security, 2026-09-15).",
-      "file": "apps/lowendinsight_get/lib/lowendinsight_get/endpoint.ex",
-      "find": "    with :ok <- LowendinsightGet.RemoteUrl.validate(url),\n         :ok <- try_it_allowance(conn, url) do",
+      "file": "apps/lei_service/lib/lei_service/endpoint.ex",
+      "find": "    with :ok <- LeiService.RemoteUrl.validate(url),\n         :ok <- try_it_allowance(conn, url) do",
       "replace": "    with :ok <- try_it_allowance(conn, url) do",
-      "guarded_by": "test/lowendinsight_get/remote_url_test.exs",
-      "app": "apps/lowendinsight_get"
+      "guarded_by": "test/lei_service/remote_url_test.exs",
+      "app": "apps/lei_service"
     },
     {
       "id": "analysis-entry-unvalidated",
-      "bug": "LowendinsightGet.Analysis.analyze/3 cloned any URL a caller passed (security, 2026-09-15).",
-      "file": "apps/lowendinsight_get/lib/lowendinsight_get/analysis.ex",
+      "bug": "LeiService.Analysis.analyze/3 cloned any URL a caller passed (security, 2026-09-15).",
+      "file": "apps/lei_service/lib/lei_service/analysis.ex",
       "find": "      {:error, reason} -> {:error, reason}\n    end\n  end\n\n  defp analyze_remote",
       "replace": "      {:error, _reason} -> analyze_remote(url, source, options)\n    end\n  end\n\n  defp analyze_remote",
-      "guarded_by": "test/lowendinsight_get/remote_url_test.exs",
-      "app": "apps/lowendinsight_get"
+      "guarded_by": "test/lei_service/remote_url_test.exs",
+      "app": "apps/lei_service"
     },
     {
       "id": "process-urls-unvalidated",
       "bug": "/v1/analyze and /v1/analyze/sbom passed private and file:// URLs to the analyzer (security, 2026-09-15).",
-      "file": "apps/lowendinsight_get/lib/lowendinsight_get/analysis.ex",
-      "find": " and :ok == LowendinsightGet.RemoteUrl.validate_all(urls)",
+      "file": "apps/lei_service/lib/lei_service/analysis.ex",
+      "find": " and :ok == LeiService.RemoteUrl.validate_all(urls)",
       "replace": "",
-      "guarded_by": "test/lowendinsight_get/remote_url_test.exs",
-      "app": "apps/lowendinsight_get"
+      "guarded_by": "test/lei_service/remote_url_test.exs",
+      "app": "apps/lei_service"
     },
     {
       "id": "admission-without-org-lock",
       "bug": "Admission and usage writes did not lock the org, so simultaneous requests spent one balance or allowance many times and usage writes lost debits (security, 2026-09-15).",
-      "file": "apps/lowendinsight_get/lib/lei/usage_tracker.ex",
+      "file": "apps/lei_service/lib/lei/usage_tracker.ex",
       "find": "    Repo.one!(from(o in Org, where: o.id == ^org_id, lock: \"FOR UPDATE\"))",
       "replace": "    Repo.one!(from(o in Org, where: o.id == ^org_id))",
       "guarded_by": "test/lei/admission_concurrency_test.exs",
-      "app": "apps/lowendinsight_get"
+      "app": "apps/lei_service"
     },
     {
       "id": "invalid-input-charged-at-admission",
       "bug": "A request the analyzer refuses was admitted, and so charged, before being refused (2026-09-15).",
-      "file": "apps/lowendinsight_get/lib/lowendinsight_get/endpoint.ex",
+      "file": "apps/lei_service/lib/lei_service/endpoint.ex",
       "find": "    with :ok <- analyzable(conn.body_params),",
       "replace": "    with _ <- analyzable(conn.body_params),",
-      "guarded_by": "test/lowendinsight_get/unbilled_paths_test.exs",
-      "app": "apps/lowendinsight_get"
+      "guarded_by": "test/lei_service/unbilled_paths_test.exs",
+      "app": "apps/lei_service"
     },
     {
       "id": "admission-checks-but-does-not-charge",
       "bug": "Admission checked the allowance but recorded usage only after the analysis, leaving the check-then-spend race (security, 2026-09-15).",
-      "file": "apps/lowendinsight_get/lib/lei/payments/gate.ex",
+      "file": "apps/lei_service/lib/lei/payments/gate.ex",
       "find": "        case Lei.UsageTracker.admit_usage(org_id, api_key_id, hits, misses, required) do",
       "replace": "        case Lei.UsageTracker.admit_usage(org_id, api_key_id, 0, 0, required) do",
-      "guarded_by": "test/lowendinsight_get/unbilled_paths_test.exs",
-      "app": "apps/lowendinsight_get"
+      "guarded_by": "test/lei_service/unbilled_paths_test.exs",
+      "app": "apps/lei_service"
     },
     {
       "id": "secret-scan-empty-input-passes",
@@ -1429,8 +1429,8 @@
       "file": "scripts/secret-scan.sh",
       "find": "  echo \"secret-scan: ${LABEL}: empty input, nothing scanned\" >&2\n  exit 2",
       "replace": "  echo \"secret-scan: ${LABEL}: empty input, nothing scanned\" >&2\n  exit 0",
-      "guarded_by": "test/lowendinsight_get/secret_scan_script_test.exs",
-      "app": "apps/lowendinsight_get"
+      "guarded_by": "test/lei_service/secret_scan_script_test.exs",
+      "app": "apps/lei_service"
     },
     {
       "id": "secret-scan-ignores-setting-names",
@@ -1438,8 +1438,8 @@
       "file": "scripts/secret-scan.sh",
       "find": "  'secret setting name|",
       "replace": "  'secret setting name disabled|NEVER_MATCHES_",
-      "guarded_by": "test/lowendinsight_get/secret_scan_script_test.exs",
-      "app": "apps/lowendinsight_get"
+      "guarded_by": "test/lei_service/secret_scan_script_test.exs",
+      "app": "apps/lei_service"
     },
     {
       "id": "canary-empty-body-counts-clean",
@@ -1447,8 +1447,8 @@
       "file": "scripts/canary.sh",
       "find": "    *) bad \"no secrets: ${label}\" \"nothing to scan (empty response)\" ;;",
       "replace": "    *) ok \"no secrets: ${label}\" ;;",
-      "guarded_by": "test/lowendinsight_get/canary_secret_scan_wiring_test.exs",
-      "app": "apps/lowendinsight_get"
+      "guarded_by": "test/lei_service/canary_secret_scan_wiring_test.exs",
+      "app": "apps/lei_service"
     },
     {
       "id": "canary-skips-report-scan",
@@ -1456,152 +1456,152 @@
       "file": "scripts/canary.sh",
       "find": "scan_body \"Try It report\" \"${REPORT:-}\"\n",
       "replace": "",
-      "guarded_by": "test/lowendinsight_get/canary_secret_scan_wiring_test.exs",
-      "app": "apps/lowendinsight_get"
+      "guarded_by": "test/lei_service/canary_secret_scan_wiring_test.exs",
+      "app": "apps/lei_service"
     },
     {
       "id": "webhook-timestamp-unchecked",
       "bug": "Stripe webhook signatures were accepted whatever their t= timestamp, so a captured signed delivery could be replayed forever (security, 2026-09-15).",
-      "file": "apps/lowendinsight_get/lib/lei/stripe.ex",
+      "file": "apps/lei_service/lib/lei/stripe.ex",
       "find": "    abs(System.system_time(:second) - timestamp) <= @webhook_tolerance_seconds",
       "replace": "    is_integer(timestamp)",
       "guarded_by": "test/lei/stripe_webhook_hardening_test.exs",
-      "app": "apps/lowendinsight_get"
+      "app": "apps/lei_service"
     },
     {
       "id": "webhook-first-v1-only",
       "bug": "Only the first v1 signature was compared, so deliveries failed during a signing-secret rotation (2026-09-15).",
-      "file": "apps/lowendinsight_get/lib/lei/stripe.ex",
+      "file": "apps/lei_service/lib/lei/stripe.ex",
       "find": "         true <- Enum.any?(v1_sigs, &secure_compare(expected, &1)) || :invalid_signature,",
       "replace": "         true <- secure_compare(expected, hd(v1_sigs)) || :invalid_signature,",
       "guarded_by": "test/lei/stripe_webhook_hardening_test.exs",
-      "app": "apps/lowendinsight_get"
+      "app": "apps/lei_service"
     },
     {
       "id": "webhook-events-not-deduplicated",
       "bug": "Stripe event ids were not recorded, so a redelivered or replayed event was applied again (security, 2026-09-15).",
-      "file": "apps/lowendinsight_get/lib/lei/stripe_webhook_handler.ex",
+      "file": "apps/lei_service/lib/lei/stripe_webhook_handler.ex",
       "find": "        {0, _} ->\n          :duplicate",
       "replace": "        {0, _} ->\n          handle_event(event)\n          :processed",
       "guarded_by": "test/lei/stripe_webhook_hardening_test.exs",
-      "app": "apps/lowendinsight_get"
+      "app": "apps/lei_service"
     },
     {
       "id": "webhook-completed-ignores-payment-status",
       "bug": "checkout.session.completed activated the org without checking payment_status (security, 2026-09-15).",
-      "file": "apps/lowendinsight_get/lib/lei/stripe_webhook_handler.ex",
+      "file": "apps/lei_service/lib/lei/stripe_webhook_handler.ex",
       "find": "      session[\"payment_status\"] not in [\"paid\", \"no_payment_required\"] ->",
       "replace": "      false ->",
       "guarded_by": "test/lei/stripe_webhook_hardening_test.exs",
-      "app": "apps/lowendinsight_get"
+      "app": "apps/lei_service"
     },
     {
       "id": "webhook-reactivates-suspended-org",
       "bug": "A checkout completion re-activated an org suspended for cancellation or failed payment (security, 2026-09-15).",
-      "file": "apps/lowendinsight_get/lib/lei/stripe_webhook_handler.ex",
+      "file": "apps/lei_service/lib/lei/stripe_webhook_handler.ex",
       "find": "  defp activate_paid(%Org{status: \"suspended\"} = org, _session) do",
       "replace": "  defp activate_paid(%Org{status: \"never-matches\"} = org, _session) do",
       "guarded_by": "test/lei/stripe_webhook_hardening_test.exs",
-      "app": "apps/lowendinsight_get"
+      "app": "apps/lei_service"
     },
     {
       "id": "webhook-failure-acknowledged",
       "bug": "The webhook route answered 200 when an event failed to apply, so Stripe never retried it (2026-09-15).",
-      "file": "apps/lowendinsight_get/lib/lei/web/router.ex",
+      "file": "apps/lei_service/lib/lei/web/router.ex",
       "find": "          {500, %{error: \"event could not be applied\"}}",
       "replace": "          {200, %{status: \"ok\"}}",
       "guarded_by": "test/lei/stripe_webhook_hardening_test.exs",
-      "app": "apps/lowendinsight_get"
+      "app": "apps/lei_service"
     },
     {
       "id": "stale-webhook-counted-as-invalid",
       "bug": "A replayed or clock-skewed Stripe delivery was counted as a signing-secret mismatch, raising the monitor's rotation alarm for something that is not one (2026-09-15).",
-      "file": "apps/lowendinsight_get/lib/lei/web/router.ex",
+      "file": "apps/lei_service/lib/lei/web/router.ex",
       "find": "            Lei.WebhookStats.record(:stale)",
       "replace": "            Lei.WebhookStats.record(:invalid)",
       "guarded_by": "test/lei/stripe_webhook_hardening_test.exs",
-      "app": "apps/lowendinsight_get"
+      "app": "apps/lei_service"
     },
     {
       "id": "job-ids-time-based",
       "bug": "API job ids were UUIDv1 (timestamp plus 14 random bits), and the id is the credential for reading a job (security, 2026-09-15).",
-      "file": "apps/lowendinsight_get/lib/lowendinsight_get/endpoint.ex",
+      "file": "apps/lei_service/lib/lei_service/endpoint.ex",
       "find": "    # Random, not time-based: the job id is the credential for reading the job\n    # (decided 2026-09-15), so it must not be guessable.\n    uuid = UUID.uuid4()\n\n    # Payment first",
       "replace": "    # Random, not time-based: the job id is the credential for reading the job\n    # (decided 2026-09-15), so it must not be guessable.\n    uuid = UUID.uuid1()\n\n    # Payment first",
-      "guarded_by": "test/lowendinsight_get/job_access_test.exs",
-      "app": "apps/lowendinsight_get"
+      "guarded_by": "test/lei_service/job_access_test.exs",
+      "app": "apps/lei_service"
     },
     {
       "id": "job-route-reads-any-redis-key",
       "bug": "The job routes used the id directly as a Redis key, so any value in the database could be read through them (security, 2026-09-15).",
-      "file": "apps/lowendinsight_get/lib/lowendinsight_get/endpoint.ex",
+      "file": "apps/lei_service/lib/lei_service/endpoint.ex",
       "find": "    if Regex.match?(@job_id, uuid), do: read_job(uuid), else: job_not_found()",
       "replace": "    if true or Regex.match?(@job_id, uuid), do: read_job(uuid), else: job_not_found()",
-      "guarded_by": "test/lowendinsight_get/job_access_test.exs",
-      "app": "apps/lowendinsight_get"
+      "guarded_by": "test/lei_service/job_access_test.exs",
+      "app": "apps/lei_service"
     },
     {
       "id": "job-poll-restarts-work-every-time",
       "bug": "Every poll of an incomplete job restarted analysis of its uncached URLs, re-cloning a failing repository on each request (security, 2026-09-15).",
-      "file": "apps/lowendinsight_get/lib/lowendinsight_get/endpoint.ex",
+      "file": "apps/lei_service/lib/lei_service/endpoint.ex",
       "find": "      {:ok, \"OK\"} ->\n        refresher =",
       "replace": "      _ignored_lock_result ->\n        refresher =",
-      "guarded_by": "test/lowendinsight_get/job_access_test.exs",
-      "app": "apps/lowendinsight_get"
+      "guarded_by": "test/lei_service/job_access_test.exs",
+      "app": "apps/lei_service"
     },
     {
       "id": "job-error-returns-exception-message",
       "bug": "A failure reading a job answered with the exception's message (2026-09-15).",
-      "file": "apps/lowendinsight_get/lib/lowendinsight_get/endpoint.ex",
+      "file": "apps/lei_service/lib/lei_service/endpoint.ex",
       "find": "        {500, Poison.encode!(%{error: \"Internal error fetching job\"})}",
       "replace": "        {500, Poison.encode!(%{error: \"Internal error fetching job\", details: Exception.message(e)})}",
-      "guarded_by": "test/lowendinsight_get/job_access_test.exs",
-      "app": "apps/lowendinsight_get"
+      "guarded_by": "test/lei_service/job_access_test.exs",
+      "app": "apps/lei_service"
     },
     {
       "id": "trending-trigger-any-key",
       "bug": "POST /v1/gh_trending/process forced a refresh of every language -- the job that exhausted production's memory -- for any API key (security, 2026-09-15).",
-      "file": "apps/lowendinsight_get/lib/lowendinsight_get/endpoint.ex",
-      "find": "    if conn.assigns[:auth_method] == :jwt do\n      Task.start_link(fn -> LowendinsightGet.GithubTrending.process_languages() end)",
-      "replace": "    if conn.assigns[:auth_method] in [:jwt, :api_key] do\n      Task.start_link(fn -> LowendinsightGet.GithubTrending.process_languages() end)",
-      "guarded_by": "test/lowendinsight_get/trending_trigger_auth_test.exs",
-      "app": "apps/lowendinsight_get"
+      "file": "apps/lei_service/lib/lei_service/endpoint.ex",
+      "find": "    if conn.assigns[:auth_method] == :jwt do\n      Task.start_link(fn -> LeiService.GithubTrending.process_languages() end)",
+      "replace": "    if conn.assigns[:auth_method] in [:jwt, :api_key] do\n      Task.start_link(fn -> LeiService.GithubTrending.process_languages() end)",
+      "guarded_by": "test/lei_service/trending_trigger_auth_test.exs",
+      "app": "apps/lei_service"
     },
     {
       "id": "report-page-renders-lossy-struct",
       "bug": "The report page rendered cached reports through the RepoReport structs, which drop header, git, files and agentic fields, so every cached repository -- every trending view -- showed mostly blanks (2026-09-15).",
-      "file": "apps/lowendinsight_get/lib/lowendinsight_get/endpoint.ex",
+      "file": "apps/lei_service/lib/lei_service/endpoint.ex",
       "find": "            render(conn, \"analysis.html\", report: full_report(url, report), url: url)",
       "replace": "            render(conn, \"analysis.html\", report: Poison.encode!(report), url: url)",
-      "guarded_by": "test/lowendinsight_get/report_detail_page_test.exs",
-      "app": "apps/lowendinsight_get"
+      "guarded_by": "test/lei_service/report_detail_page_test.exs",
+      "app": "apps/lei_service"
     },
     {
       "id": "trending-view-not-a-link",
       "bug": "Trending's view squeezed a JSON tree into a table cell instead of opening the report page (2026-09-15).",
-      "file": "apps/lowendinsight_get/priv/static/js/endpoints.js",
+      "file": "apps/lei_service/priv/static/js/endpoints.js",
       "find": "        view.href = \"/url=\" + encodeURIComponent(href);",
       "replace": "        view.href = \"#\";",
-      "guarded_by": "test/lowendinsight_get/report_detail_page_test.exs",
-      "app": "apps/lowendinsight_get"
+      "guarded_by": "test/lei_service/report_detail_page_test.exs",
+      "app": "apps/lei_service"
     },
     {
       "id": "report-page-drops-machine-readable-copy",
       "bug": "The report page stopped embedding the report as JSON, which scripts/canary.sh reads to check an analysis happened (2026-09-15).",
-      "file": "apps/lowendinsight_get/priv/templates/analysis.html.eex",
+      "file": "apps/lei_service/priv/templates/analysis.html.eex",
       "find": "        <script type=\"application/json\" id=\"report-data\"><%= Lei.Web.HTML.script_json(r) %></script>\n",
       "replace": "",
-      "guarded_by": "test/lowendinsight_get/report_detail_page_test.exs",
-      "app": "apps/lowendinsight_get"
+      "guarded_by": "test/lei_service/report_detail_page_test.exs",
+      "app": "apps/lei_service"
     },
     {
       "id": "lei-repo-migrations-path-ignored",
       "bug": "Lei.Repo's migrations path was set where Ecto ignores it, so the repo found none of its migrations: 'already up' on a migrated database, nothing created on an empty one (ADR-003 move, caught before merge).",
       "file": "config/config.exs",
-      "find": "config :lowendinsight_get, Lei.Repo, priv: \"priv/lei_repo\"",
-      "replace": "config :lowendinsight_get, Lei.Repo, priv_ignored: \"priv/lei_repo\"",
+      "find": "config :lei_service, Lei.Repo, priv: \"priv/lei_repo\"",
+      "replace": "config :lei_service, Lei.Repo, priv_ignored: \"priv/lei_repo\"",
       "guarded_by": "test/lei/repo_migrations_path_test.exs",
-      "app": "apps/lowendinsight_get"
+      "app": "apps/lei_service"
     }
   ]
 }

@@ -14,10 +14,10 @@ defmodule Lowendinsight.Umbrella.MixProject do
       aliases: aliases(),
       test_coverage: [tool: ExCoveralls],
       releases: [
-        lowendinsight_get: [
+        lei_service: [
           applications: [
             lowendinsight: :permanent,
-            lowendinsight_get: :permanent,
+            lei_service: :permanent,
             runtime_tools: :permanent
           ]
         ]
@@ -39,11 +39,11 @@ defmodule Lowendinsight.Umbrella.MixProject do
   end
 
   defp test_lei(args), do: run_in_app("lowendinsight", "mix test #{Enum.join(args, " ")}")
-  defp test_get(args), do: run_in_app("lowendinsight_get", "mix test #{Enum.join(args, " ")}")
-  defp ecto_setup(_), do: run_in_app("lowendinsight_get", "mix do ecto.create, ecto.migrate")
+  defp test_get(args), do: run_in_app("lei_service", "mix test #{Enum.join(args, " ")}")
+  defp ecto_setup(_), do: run_in_app("lei_service", "mix do ecto.create, ecto.migrate")
 
   defp ecto_reset(_),
-    do: run_in_app("lowendinsight_get", "mix do ecto.drop, ecto.create, ecto.migrate")
+    do: run_in_app("lei_service", "mix do ecto.drop, ecto.create, ecto.migrate")
 
   defp run_in_app(app, command) do
     {_, status} = System.shell(command, cd: Path.join("apps", app), into: IO.stream())

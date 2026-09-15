@@ -6,12 +6,12 @@ import Config
 
 config :logger, level: :info
 
-# --- lowendinsight_get prod overrides ---
+# --- lei_service prod overrides ---
 
-config :lowendinsight_get, LowendinsightGet.Endpoint,
+config :lei_service, LeiService.Endpoint,
   port: String.to_integer(System.get_env("PORT") || "4444")
 
-config :lowendinsight_get,
+config :lei_service,
   check_repo_size?: String.to_atom(System.get_env("LEI_CHECK_REPO_SIZE") || "false"),
   wait_time: String.to_integer(System.get_env("LEI_WAIT_TIME") || "7200000"),
   num_of_repos: String.to_integer(System.get_env("LEI_NUM_OF_REPOS") || "10"),
@@ -39,18 +39,18 @@ config :redix,
 
 database_url =
   System.get_env("DATABASE_URL") ||
-    "ecto://postgres:postgres@localhost/lowendinsight_get_prod"
+    "ecto://postgres:postgres@localhost/lei_service_prod"
 
-config :lowendinsight_get, LowendinsightGet.Repo,
+config :lei_service, LeiService.Repo,
   url: database_url,
   pool_size: 5
 
-config :lowendinsight_get, Lei.Repo,
+config :lei_service, Lei.Repo,
   url: database_url,
   pool_size: 5
 
-config :lowendinsight_get, Oban,
-  repo: LowendinsightGet.Repo,
+config :lei_service, Oban,
+  repo: LeiService.Repo,
   queues: [
     analysis: String.to_integer(System.get_env("OBAN_ANALYSIS_CONCURRENCY") || "5")
   ]

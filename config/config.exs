@@ -6,22 +6,22 @@ import Config
 
 config :logger, :console, format: "lei: $time $metadata[$level] $message\n"
 
-# --- lowendinsight_get base config ---
+# --- lei_service base config ---
 
-# Lei.Repo first: it owns orgs and api_keys, which LowendinsightGet reads.
-config :lowendinsight_get, ecto_repos: [Lei.Repo, LowendinsightGet.Repo]
+# Lei.Repo first: it owns orgs and api_keys, which LeiService reads.
+config :lei_service, ecto_repos: [Lei.Repo, LeiService.Repo]
 
-# Lei.Repo's migrations live apart from LowendinsightGet.Repo's (ADR-003). Read
+# Lei.Repo's migrations live apart from LeiService.Repo's (ADR-003). Read
 # from config, not from `use Ecto.Repo`: passed there it is ignored, Lei.Repo
 # falls back to priv/repo/migrations, and finds none of its own -- reporting
 # "already up" on a database that has them and creating nothing on one that
 # does not.
-config :lowendinsight_get, Lei.Repo, priv: "priv/lei_repo"
+config :lei_service, Lei.Repo, priv: "priv/lei_repo"
 
-config :lowendinsight_get, LowendinsightGet.Endpoint,
+config :lei_service, LeiService.Endpoint,
   port: String.to_integer(System.get_env("PORT") || "4000")
 
-config :lowendinsight_get,
+config :lei_service,
   jwt_secret: System.get_env("LEI_JWT_SECRET") || "my super secret",
   cache_ttl: String.to_integer(System.get_env("LEI_CACHE_TTL") || "30"),
   cache_ttl_seconds:
@@ -118,9 +118,9 @@ config :redix,
 
 # --- Scheduler ---
 
-config :lowendinsight_get, LowendinsightGet.Scheduler,
+config :lei_service, LeiService.Scheduler,
   jobs: [
-    {"*/5 * * * *", {LowendinsightGet.CacheCleaner, :clean, []}},
+    {"*/5 * * * *", {LeiService.CacheCleaner, :clean, []}},
     {
         # Hourly, never overlapping: each run refreshes only languages not
         # refreshed in the last day, one at a time, so a restart costs one
@@ -128,7 +128,7 @@ config :lowendinsight_get, LowendinsightGet.Scheduler,
         :github_trending,
         [
           schedule: "0 * * * *",
-          task: {LowendinsightGet.GithubTrending, :refresh_due, []},
+          task: {LeiService.GithubTrending, :refresh_due, []},
           # Re-enabled after #158: disabled 2026-09-14 when its first run
           # OOM-killed production. Bounded since by #162 (analysis memory no
           # longer scales with history) and #163 (rising repositories, 250 MB
@@ -145,11 +145,11 @@ config :lowendinsight_get, LowendinsightGet.Scheduler,
 # Metrics from the web app, collected by Lei.Metrics without the library
 # depending on it (#158).
 config :lowendinsight,
-  metrics_collectors: [{LowendinsightGet.GithubTrending, :metrics, []}]
+  metrics_collectors: [{LeiService.GithubTrending, :metrics, []}]
 
 config :lowendinsight,
   optional_health_checks: [
-    redis: {LowendinsightGet.Health, :check_redis, []},
+    redis: {LeiService.Health, :check_redis, []},
     # Whether the configured price IDs exist in the Stripe key's mode.
     stripe: {Lei.Stripe.ObjectCheck, :status, []}
   ]

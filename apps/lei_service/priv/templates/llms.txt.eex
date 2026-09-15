@@ -1,0 +1,44 @@
+# LowEndInsight
+
+> Open source supply chain risk analysis for any public git repository: contributor concentration, commit currency, large recent commits, SBOM risk, and how much of a project is written by agents. Agents pay per use over the Machine Payments Protocol (MPP), with no account.
+
+Operated by (r)evolve (https://revolveteam.com). Source: https://github.com/kitplummer/lowendinsight
+
+<%= if guide.live? do %>Stablecoin payments use <%= guide.stablecoin.token %> on <%= guide.stablecoin.chain %>, settled through Stripe.<% else %>**Payments are in test mode.** Stablecoin payments use <%= guide.stablecoin.token %> on <%= guide.stablecoin.chain %>, and no real money moves.<% end %>
+<%= unless guide.stablecoin.available? do %>
+**Stablecoin payment is not available right now.** A request without credentials receives a 402 saying so, and is not served.
+<% end %>
+## Analyze a repository without an account
+
+1. `POST https://lowendinsight.dev/v1/analyze` with body `{"urls": ["https://github.com/owner/repo"]}` and no credentials.
+2. The response is `402 Payment Required` with a `WWW-Authenticate: Payment` challenge (MPP): method `tempo`, intent `charge`, and a request naming the amount, token, recipient address, chain id and memo.
+3. Transfer exactly that amount, with that memo, to that address, from the wallet that signs the transaction. Retry the same request with `Authorization: Payment <credential>` carrying the transaction hash. An MPP client such as `mppx` does this for you.
+4. The response is `200` with the analysis, a `Payment-Receipt` header, and a `Lei-Api-Key` header.
+5. Keep the key. Send `Authorization: Bearer <key>` on later requests to spend the balance without paying again. The key is shown once.
+
+Other paid routes, same flow: `POST /v1/analyze/sbom` (a CycloneDX or SPDX SBOM; priced per repository it names) and `POST /v1/analyze/batch` (dependencies). `GET /v1/analyze/{uuid}` fetches a job's result. Full schema: https://lowendinsight.dev/openapi.json
+
+A request is priced before it runs, from which repositories already have cached reports. It is charged when accepted, whether it completes in the request or runs asynchronously. A balance smaller than the request is asked to top up by at least the difference.
+
+## Pricing
+
+- One credit is $0.001.
+- A repository with a cached report: <%= LeiService.AgentGuide.number(guide.hit_credits) %> credits (<%= guide.hit_usd %>).
+- A repository analyzed fresh: <%= LeiService.AgentGuide.number(guide.miss_credits) %> credits (<%= guide.miss_usd %>).
+- An agent buys a block of <%= LeiService.AgentGuide.number(guide.top_up_credits) %> credits (<%= guide.top_up_usd %>) when its balance runs out.
+
+## Ways to pay
+
+- **Stablecoin, MPP `tempo`** (<%= if guide.stablecoin.available?, do: "available", else: "unavailable" %>): any agent, no account. <%= guide.stablecoin.token %> on <%= guide.stablecoin.chain %>, verified and settled by Stripe.
+- **Card through an agent wallet, MPP `stripe`** (<%= if guide.card.available?, do: "available", else: "unavailable" %>): agents that already have an API key. A Shared Payment Token from an agent wallet such as Link. Not offered without an account: a card token identifies no one to hold the balance.
+- **Free tier**: people who sign up at https://lowendinsight.dev/signup, <%= LeiService.AgentGuide.number(guide.free_monthly_analyses) %> analyses a month.
+- **Pro**: people, through Stripe Checkout at signup. <%= guide.pro_price %>, including <%= guide.pro_included_usd %> of usage.
+
+## No account, and why
+
+- An agent has no signup, email or organization to give. The payment is the identity: the wallet that paid holds the balance.
+- **Kept:** money and counts. Purchases and debits are recorded with the paying wallet and amount, the financial record of what was paid and spent. Monthly analysis counts are also kept.
+- **Not kept:** which repositories a wallet analyzed. They aren't recorded against the payer, and routine production logs don't name them.
+- Reports are cached by repository, not by who asked, so a cached report is cheaper for everyone.
+- No free allowance for wallets: a wallet costs nothing to create, so a free allowance per wallet would be a free allowance per attacker.
+- A stablecoin transfer is public on the <%= guide.stablecoin.chain %> chain, as every on-chain payment is. What it paid for is not.
