@@ -16,6 +16,7 @@
 #   seed sweep       does it still, in a different order
 #   guards           would the tests catch the bug coming back
 #   backup grants    can the backup role still dump what migrations create
+#   library isolation does the library work for a project that has only it
 #
 # A stage that cannot run is a failure, not a skip. Reporting success for work
 # not done is the specific fault this script exists to prevent.
@@ -151,6 +152,14 @@ check_guards() {
   tail -2 /tmp/preflight-guards.out
 }
 
+check_library_isolation() {
+  ./scripts/library-isolation.sh >/tmp/preflight-isolation.out 2>&1 || {
+    tail -25 /tmp/preflight-isolation.out
+    return 1
+  }
+  grep -q "The library stands alone." /tmp/preflight-isolation.out && dim "   library stands alone"
+}
+
 check_backup_grants() {
   ./scripts/verify-backup-grants.sh >/tmp/preflight-grants.out 2>&1 || {
     tail -25 /tmp/preflight-grants.out
@@ -169,6 +178,7 @@ stage "compile"  check_compile
 stage "databases" check_databases
 stage "suite"    check_suite
 stage "guards"   check_guards
+stage "library isolation" check_library_isolation
 
 if [ "$QUICK" -eq 1 ]; then
   SKIPPED+=("seed sweep" "backup grants")

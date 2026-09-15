@@ -86,6 +86,23 @@ jobs:
     - name: Verify backup grants
       run: scripts/verify-backup-grants.sh
 
+  # The library as a project outside the umbrella sees it: only its own
+  # dependencies, no configuration, no database (ADR-003).
+  library-isolation:
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v4
+    - uses: erlef/setup-beam@v1
+      with:
+        elixir-version: 1.16.3
+        otp-version: 26.2
+    - name: Install Hex and rebar
+      run: |
+        mix local.rebar --force
+        mix local.hex --force
+    - name: Verify the library stands alone
+      run: scripts/library-isolation.sh
+
   # LEI library tests — requires Postgres for API key/auth features
   lei-lib:
     runs-on: ubuntu-latest
