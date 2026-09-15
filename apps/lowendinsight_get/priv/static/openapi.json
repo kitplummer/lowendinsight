@@ -606,7 +606,7 @@
     "/v1/gh_trending/process": {
       "post": {
         "summary": "Trigger GitHub trending analysis",
-        "description": "Kicks off a background task to analyze all configured trending languages from GitHub. For each language, fetches the daily trending repositories, optionally filters by repository size, and runs LowEndInsight analysis on the top N repos (configured via LEI_NUM_OF_REPOS, default 10). Results are cached in Redis and viewable via GET /gh_trending/:language. Returns immediately while processing continues in the background.",
+        "description": "Kicks off a background task to analyze all configured trending languages from GitHub. For each language, fetches the daily trending repositories, optionally filters by repository size, and runs LowEndInsight analysis on the top N repos (configured via LEI_NUM_OF_REPOS, default 10). Results are cached in Redis and viewable via GET /gh_trending/:language. Returns immediately while processing continues in the background. Operator only: requires a JWT signed with the deployment's LEI_JWT_SECRET; API keys are refused with 403.",
         "operationId": "processGhTrending",
         "tags": ["GitHub Trending"],
         "responses": {
@@ -623,6 +623,9 @@
           },
           "401": {
             "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "description": "Not an operator token"
           }
         }
       }
