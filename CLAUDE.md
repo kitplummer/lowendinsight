@@ -105,5 +105,6 @@ Each exists because the one above it was green while something was broken.
 
 ## Architecture decisions
 
-`docs/adr/` -- ADR-001 pricing, ADR-002 the credit ledger and payment rails.
+`docs/adr/` -- ADR-001 pricing, ADR-002 the credit ledger and payment rails,
+ADR-003 the library/service split, ADR-004 background work (proposed).
 Read ADR-002 before touching anything under `Lei.Credits`.
