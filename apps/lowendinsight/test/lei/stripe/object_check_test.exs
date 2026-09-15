@@ -16,8 +16,50 @@ defmodule Lei.Stripe.ObjectCheckTest do
   setup :set_mox_global
   setup :verify_on_exit!
 
+  # The Checkout Session read probe runs alongside every price check; tests
+  # about prices get the answer a key with read access gets.
+  setup do
+    stub(Lei.StripeMock, :retrieve_checkout_session, fn _ ->
+      {:error, {404, %{"error" => %{"code" => "resource_missing"}}}}
+    end)
+
+    :ok
+  end
+
   defp price(active \\ true), do: %{"id" => "price_x", "active" => active}
   defp missing, do: {404, %{"error" => %{"code" => "resource_missing"}}}
+
+  describe "check/4 -- reading Checkout Sessions" do
+    # Pro activation confirms payment by retrieving the Checkout Session. A
+    # restricted key without that permission would leave every paying customer
+    # on "could not confirm your payment", so it is a key fault like any other.
+    test "a key that may not read Checkout Sessions is unauthorized" do
+      stub(Lei.StripeMock, :retrieve_price, fn _ -> {:ok, price()} end)
+
+      expect(Lei.StripeMock, :retrieve_checkout_session, fn _ ->
+        {:error, {403, %{"error" => %{"type" => "invalid_request_error"}}}}
+      end)
+
+      assert ObjectCheck.check(@live, @prices, "production", Lei.StripeMock) == "unauthorized"
+    end
+
+    test "the probe's no-such-session answer is ok" do
+      stub(Lei.StripeMock, :retrieve_price, fn _ -> {:ok, price()} end)
+      expect(Lei.StripeMock, :retrieve_checkout_session, fn _ -> {:error, missing()} end)
+
+      assert ObjectCheck.check(@live, @prices, "production", Lei.StripeMock) == "ok"
+    end
+
+    test "Stripe failing to answer the probe is unreachable, not ok" do
+      stub(Lei.StripeMock, :retrieve_price, fn _ -> {:ok, price()} end)
+
+      expect(Lei.StripeMock, :retrieve_checkout_session, fn _ ->
+        {:error, %HTTPoison.Error{reason: :timeout}}
+      end)
+
+      assert ObjectCheck.check(@live, @prices, "production", Lei.StripeMock) == "unreachable"
+    end
+  end
 
   describe "check/4" do
     test "every price retrieved and active is ok" do
