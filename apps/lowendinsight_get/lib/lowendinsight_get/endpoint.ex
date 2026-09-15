@@ -697,7 +697,9 @@ defmodule LowendinsightGet.Endpoint do
       template_dir
       |> Path.join(template)
       |> String.replace_suffix(".html", ".html.eex")
-      |> EEx.eval_file(assigns)
+      # Escapes every <%= %>. Report pages render repository data that the
+      # repository's owner controls; with plain EEx it was written as markup.
+      |> EEx.eval_file(assigns, engine: Lei.Web.HTMLEngine)
 
     conn
     |> put_resp_content_type("text/html")

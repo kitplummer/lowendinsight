@@ -1305,6 +1305,51 @@
       "replace": "         true <- is_integer(at),",
       "guarded_by": "test/lei/web/dashboard_security_test.exs",
       "app": "apps/lowendinsight"
+    },
+    {
+      "id": "report-json-closes-script",
+      "bug": "Report JSON was written into <script> with < unescaped, so a contributor named </script><script>... ran script on the Try It and trending pages (security, 2026-09-15).",
+      "file": "apps/lowendinsight/lib/lei/web/html_engine.ex",
+      "find": "    |> String.replace(\"<\", \"\\\\u003c\")\n",
+      "replace": "",
+      "guarded_by": "test/lowendinsight_get/report_page_injection_test.exs",
+      "app": "apps/lowendinsight_get"
+    },
+    {
+      "id": "report-pages-plain-eex",
+      "bug": "lowendinsight_get pages were rendered with plain EEx, so a language in the trending URL and report fields were written into the page as markup (security, 2026-09-15).",
+      "file": "apps/lowendinsight_get/lib/lowendinsight_get/endpoint.ex",
+      "find": "      |> EEx.eval_file(assigns, engine: Lei.Web.HTMLEngine)",
+      "replace": "      |> EEx.eval_file(assigns)",
+      "guarded_by": "test/lowendinsight_get/report_page_injection_test.exs",
+      "app": "apps/lowendinsight_get"
+    },
+    {
+      "id": "report-table-uses-innerhtml",
+      "bug": "endpoints.js wrote report fields into the table with innerHTML, so a branch named <img onerror=...> ran script (security, 2026-09-15).",
+      "file": "apps/lowendinsight_get/priv/static/js/endpoints.js",
+      "find": "    cell.textContent = (value === null",
+      "replace": "    cell.innerHTML = (value === null",
+      "guarded_by": "test/lowendinsight_get/report_page_injection_test.exs",
+      "app": "apps/lowendinsight_get"
+    },
+    {
+      "id": "report-link-any-scheme",
+      "bug": "The project link used the report's repo URL as-is, so a javascript: URL ran on click (security, 2026-09-15).",
+      "file": "apps/lowendinsight_get/priv/static/js/endpoints.js",
+      "find": "    return /^https?:\\/\\//i.test(String(url)) ? String(url) : null;",
+      "replace": "    return String(url);",
+      "guarded_by": "test/lowendinsight_get/report_page_injection_test.exs",
+      "app": "apps/lowendinsight_get"
+    },
+    {
+      "id": "trending-row-positional-args",
+      "bug": "The trending page called display_row positionally and fell one argument behind when agentic_classification was added, so its view button got undefined and did nothing (2026-09-15).",
+      "file": "apps/lowendinsight_get/priv/templates/language.html.eex",
+      "find": "display_report(<%= Lei.Web.HTML.script_json(slug) %>, <%= Lei.Web.HTML.script_json(repo) %>);",
+      "replace": "display_row(<%= Lei.Web.HTML.script_json(slug) %>, <%= Lei.Web.HTML.script_json(repo) %>);",
+      "guarded_by": "test/lowendinsight_get/report_page_injection_test.exs",
+      "app": "apps/lowendinsight_get"
     }
   ]
 }

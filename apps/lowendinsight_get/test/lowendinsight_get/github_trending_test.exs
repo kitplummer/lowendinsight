@@ -142,7 +142,7 @@ defmodule LowendinsightGet.GithubTrendingTest do
       assert conn.status == 200
       # Rows, counted the way the canary counts them. (The page's "Report ID"
       # is the report's inner uuid, not the job's.)
-      rows = Regex.scan(~r/var project = "https?:\/\//, conn.resp_body) |> length()
+      rows = Regex.scan(~r/data-repo="https?:\/\//, conn.resp_body) |> length()
       assert rows == length(report["report"]["repos"])
       assert rows > 0
     end

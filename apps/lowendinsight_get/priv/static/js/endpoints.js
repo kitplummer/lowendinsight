@@ -149,7 +149,7 @@ function view_json_button(json_data, parent){
     } else {
         button.className = "button is-info is-family-code";   
     }
-    spanbutton.innerHTML = button_text;
+    spanbutton.textContent = button_text;
     spanbutton.style["font-weight"] = "bold";
     button.appendChild(spanbutton);
     parent.appendChild(button);
@@ -211,6 +211,40 @@ function format_date(value) {
     return d.toLocaleDateString();
 }
 
+// Every field below comes from a repository its owner controls -- commit
+// author names, the default branch, the repo size string. They are written
+// with textContent: writing them as HTML parsed a branch named
+// `<img src=x onerror=...>` as an element and ran it.
+function text_cell(cell, value) {
+    cell.textContent = (value === null || value === undefined || value === "") ? "N/A" : String(value);
+}
+
+// Only http(s). A report's repo URL is data; as an href, `javascript:...`
+// would run on click.
+function safe_href(url) {
+    return /^https?:\/\//i.test(String(url)) ? String(url) : null;
+}
+
+// Both report pages call this with the slug and the whole report, and the
+// fields are read here. The templates used to read them and pass seventeen
+// positional arguments; when agentic_classification was added to display_row
+// the trending page's call was not updated, every later argument shifted by
+// one, and json_data arrived undefined -- so its "view" button did nothing.
+function display_report(slug, report) {
+    var data = (report && report["data"]) || {};
+    var results = data["results"] || {};
+    var git = data["git"] || {};
+
+    display_row(data["repo"], slug, data["risk"],
+                results["contributor_count"], results["contributor_risk"],
+                results["functional_contributors"], results["functional_contributors_risk"],
+                results["large_recent_commit_risk"], results["recent_commit_size_in_percent_of_codebase"],
+                results["commit_currency_weeks"], results["commit_currency_risk"],
+                results["sbom_risk"], results["agentic_classification"], data["repo_size"],
+                git["last_commit_date"], git["total_commits_on_default_branch"], git["default_branch"],
+                report);
+}
+
 function display_row(project, slug, risk, ccount, contributor_risk, fccount, fc_risk,
                      large_commit_risk, recent_commit_pct, commit_currency, commit_currency_risk,
                      sbom_risk, agentic_classification, repo_size, last_commit, total_commits, default_branch, json_data) {
@@ -218,82 +252,60 @@ function display_row(project, slug, risk, ccount, contributor_risk, fccount, fc_
     var row = table.insertRow(-1);
     row.className = "row";
 
-    var i = 0;
-    var project_cell = row.insertCell(i++);
-    var risk_cell = row.insertCell(i++);
-    var ccount_cell = row.insertCell(i++);
-    var contributor_risk_cell = row.insertCell(i++);
-    var fccount_cell = row.insertCell(i++);
-    var fc_risk_cell = row.insertCell(i++);
-    var large_commit_risk_cell = row.insertCell(i++);
-    var recent_commit_pct_cell = row.insertCell(i++);
-    var ccurreny_cell = row.insertCell(i++);
-    var commit_currency_risk_cell = row.insertCell(i++);
-    var sbom_risk_cell = row.insertCell(i++);
-    var agentic_classification_cell = row.insertCell(i++);
-    var repo_size_cell = row.insertCell(i++);
-    var last_commit_cell = row.insertCell(i++);
-    var total_commits_cell = row.insertCell(i++);
-    var default_branch_cell = row.insertCell(i++);
-    var json_cell = row.insertCell(i++);
+    var columns = ["project", "risk", "ccount", "contributor_risk", "fccount", "fc_risk",
+                   "large_commit_risk", "recent_commit_pct", "commit_currency", "commit_currency_risk",
+                   "sbom_risk", "agentic_classification", "repo_size", "last_commit", "total_commits",
+                   "default_branch", "json"];
+    var cells = {};
+    columns.forEach(function (name, i) {
+        cells[name] = row.insertCell(i);
+        cells[name].className = "table-data is-family-code " + name;
+    });
 
-    project_cell.className = "table-data is-family-code project";
-    risk_cell.className = "table-data is-family-code risk";
-    ccount_cell.className = "table-data is-family-code ccount";
-    contributor_risk_cell.className = "table-data is-family-code contributor_risk";
-    fccount_cell.className = "table-data is-family-code fccount";
-    fc_risk_cell.className = "table-data is-family-code fc_risk";
-    large_commit_risk_cell.className = "table-data is-family-code large_commit_risk";
-    recent_commit_pct_cell.className = "table-data is-family-code recent_commit_pct";
-    ccurreny_cell.className = "table-data is-family-code commit_currency";
-    commit_currency_risk_cell.className = "table-data is-family-code commit_currency_risk";
-    sbom_risk_cell.className = "table-data is-family-code sbom_risk";
-    agentic_classification_cell.className = "table-data is-family-code agentic_classification";
-    repo_size_cell.className = "table-data is-family-code repo_size";
-    last_commit_cell.className = "table-data is-family-code last_commit";
-    total_commits_cell.className = "table-data is-family-code total_commits";
-    default_branch_cell.className = "table-data is-family-code default_branch";
-    json_cell.className = "table-data is-family-code json";
-
-    var a = document.createElement("a");
-    var link = document.createTextNode(slug);
-    a.appendChild(link);
-    a.href = project;
-    a.setAttribute("target", "_blank");
-    project_cell.appendChild(a);
-
-    var riskspan = document.createElement("span");
-    riskspan.innerHTML = risk;
-    risk_cell.appendChild(riskspan);
-
-    ccount_cell.innerHTML = ccount;
-    apply_risk_class(contributor_risk_cell, contributor_risk);
-    fccount_cell.innerHTML = fccount;
-    apply_risk_class(fc_risk_cell, fc_risk);
-    large_commit_risk_cell.innerHTML = large_commit_risk;
-    recent_commit_pct_cell.innerHTML = format_percent(recent_commit_pct);
-    ccurreny_cell.innerHTML = commit_currency;
-    apply_risk_class(commit_currency_risk_cell, commit_currency_risk);
-    apply_risk_class(sbom_risk_cell, sbom_risk);
-    agentic_classification_cell.innerHTML = agentic_classification || "N/A";
-    repo_size_cell.innerHTML = repo_size || "N/A";
-    last_commit_cell.innerHTML = format_date(last_commit);
-    total_commits_cell.innerHTML = total_commits || "N/A";
-    default_branch_cell.innerHTML = default_branch || "N/A";
-
-    switch(risk){
-        case "critical":
-            riskspan.className += " criticalrisk"; break;
-        case "high":
-            riskspan.className += " highrisk"; break;
-        case "medium":
-            riskspan.className += " mediumrisk"; break;
-        case "low":
-            riskspan.className += " lowrisk"; break;
-        default: break;
+    var href = safe_href(project);
+    var label = document.createTextNode(slug);
+    if (href) {
+        var a = document.createElement("a");
+        a.appendChild(label);
+        a.href = href;
+        a.setAttribute("target", "_blank");
+        a.setAttribute("rel", "noopener noreferrer");
+        cells["project"].appendChild(a);
+    } else {
+        cells["project"].appendChild(label);
     }
 
-    view_json_button(json_data, json_cell);
+    var riskspan = document.createElement("span");
+    riskspan.textContent = risk;
+    switch(risk){
+        case "critical":
+            riskspan.className = "criticalrisk"; break;
+        case "high":
+            riskspan.className = "highrisk"; break;
+        case "medium":
+            riskspan.className = "mediumrisk"; break;
+        case "low":
+            riskspan.className = "lowrisk"; break;
+        default: break;
+    }
+    cells["risk"].appendChild(riskspan);
+
+    text_cell(cells["ccount"], ccount);
+    apply_risk_class(cells["contributor_risk"], contributor_risk);
+    text_cell(cells["fccount"], fccount);
+    apply_risk_class(cells["fc_risk"], fc_risk);
+    text_cell(cells["large_commit_risk"], large_commit_risk);
+    text_cell(cells["recent_commit_pct"], format_percent(recent_commit_pct));
+    text_cell(cells["commit_currency"], commit_currency);
+    apply_risk_class(cells["commit_currency_risk"], commit_currency_risk);
+    apply_risk_class(cells["sbom_risk"], sbom_risk);
+    text_cell(cells["agentic_classification"], agentic_classification);
+    text_cell(cells["repo_size"], repo_size);
+    text_cell(cells["last_commit"], format_date(last_commit));
+    text_cell(cells["total_commits"], total_commits);
+    text_cell(cells["default_branch"], default_branch);
+
+    view_json_button(json_data, cells["json"]);
 }
 
 
