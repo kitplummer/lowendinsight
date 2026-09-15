@@ -123,9 +123,14 @@ defmodule LowendinsightGet.Endpoint do
   get "/url=:url" do
     url = URI.decode(url)
 
-    case try_it_allowance(conn, url) do
-      :ok -> try_it(conn, url)
+    # Before the allowance and before any work: this route cloned whatever it
+    # was given, including file:// paths and private addresses.
+    with :ok <- LowendinsightGet.RemoteUrl.validate(url),
+         :ok <- try_it_allowance(conn, url) do
+      try_it(conn, url)
+    else
       {:limited, retry_after} -> try_it_limited(conn, retry_after)
+      {:error, reason} -> send_json(conn, 400, %{error: "invalid url", reason: reason})
     end
   end
 
@@ -191,7 +196,7 @@ defmodule LowendinsightGet.Endpoint do
     url = URI.decode(url)
 
     {status, body} =
-      case Helpers.validate_url(url) do
+      case LowendinsightGet.RemoteUrl.validate(url) do
         :ok ->
           {200, Poison.encode!(%{:ok => "valid url"})}
 

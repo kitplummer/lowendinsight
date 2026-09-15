@@ -1350,6 +1350,51 @@
       "replace": "display_row(<%= Lei.Web.HTML.script_json(slug) %>, <%= Lei.Web.HTML.script_json(repo) %>);",
       "guarded_by": "test/lowendinsight_get/report_page_injection_test.exs",
       "app": "apps/lowendinsight_get"
+    },
+    {
+      "id": "remote-url-allows-private-addresses",
+      "bug": "The service cloned hosts resolving to loopback, cloud metadata or Fly's private network (security, 2026-09-15).",
+      "file": "apps/lowendinsight_get/lib/lowendinsight_get/remote_url.ex",
+      "find": "    if Enum.all?(addrs, &public?/1),",
+      "replace": "    if true or Enum.all?(addrs, &public?/1),",
+      "guarded_by": "test/lowendinsight_get/remote_url_test.exs",
+      "app": "apps/lowendinsight_get"
+    },
+    {
+      "id": "remote-url-allows-any-scheme",
+      "bug": "file://, http and git:// URLs reached the analyzer through the web service (security, 2026-09-15).",
+      "file": "apps/lowendinsight_get/lib/lowendinsight_get/remote_url.ex",
+      "find": "  defp https(_), do: {:error, \"only https URLs can be analyzed\"}",
+      "replace": "  defp https(_), do: :ok",
+      "guarded_by": "test/lowendinsight_get/remote_url_test.exs",
+      "app": "apps/lowendinsight_get"
+    },
+    {
+      "id": "try-it-route-unvalidated",
+      "bug": "GET /url= analysed whatever it was given, without validating the URL (security, 2026-09-15).",
+      "file": "apps/lowendinsight_get/lib/lowendinsight_get/endpoint.ex",
+      "find": "    with :ok <- LowendinsightGet.RemoteUrl.validate(url),\n         :ok <- try_it_allowance(conn, url) do",
+      "replace": "    with :ok <- try_it_allowance(conn, url) do",
+      "guarded_by": "test/lowendinsight_get/remote_url_test.exs",
+      "app": "apps/lowendinsight_get"
+    },
+    {
+      "id": "analysis-entry-unvalidated",
+      "bug": "LowendinsightGet.Analysis.analyze/3 cloned any URL a caller passed (security, 2026-09-15).",
+      "file": "apps/lowendinsight_get/lib/lowendinsight_get/analysis.ex",
+      "find": "      {:error, reason} -> {:error, reason}\n    end\n  end\n\n  defp analyze_remote",
+      "replace": "      {:error, _reason} -> analyze_remote(url, source, options)\n    end\n  end\n\n  defp analyze_remote",
+      "guarded_by": "test/lowendinsight_get/remote_url_test.exs",
+      "app": "apps/lowendinsight_get"
+    },
+    {
+      "id": "process-urls-unvalidated",
+      "bug": "/v1/analyze and /v1/analyze/sbom passed private and file:// URLs to the analyzer (security, 2026-09-15).",
+      "file": "apps/lowendinsight_get/lib/lowendinsight_get/analysis.ex",
+      "find": " and :ok == LowendinsightGet.RemoteUrl.validate_all(urls)",
+      "replace": "",
+      "guarded_by": "test/lowendinsight_get/remote_url_test.exs",
+      "app": "apps/lowendinsight_get"
     }
   ]
 }
