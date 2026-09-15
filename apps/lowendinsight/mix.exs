@@ -51,12 +51,12 @@ defmodule GithubModule.MixProject do
       {:ex_doc, "~> 0.34", only: :dev, runtime: false},
       {:jason, "~> 1.4"},
       {:credo, "~> 1.7", only: [:dev, :test], runtime: false},
-      {:mix_audit, "~> 0.1", only: [:dev, :test], runtime: false},
+      {:mix_audit, "~> 2.1", only: [:dev, :test], runtime: false},
       {:json_xema, "~> 0.6"},
       {:temp, "~> 0.4"},
       {:excoveralls, "~> 0.18", only: :test},
       {:mox, "~> 1.1", only: :test},
-      {:yarn_parser, "~> 0.3"},
+      {:yarn_parser, "~> 0.4"},
       {:sweet_xml, "~> 0.7.1"},
       # No database, web server or JWT here: those belong to the hosted
       # service, which depends on this library (ADR-003).
