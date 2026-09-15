@@ -30,7 +30,7 @@ defmodule LeiService.MixProject do
   defp deps do
     [
       {:plug, "~> 1.15"},
-      {:joken, "~> 2.5.0"},
+      {:joken, "~> 2.7"},
       {:elixir_uuid, "~> 1.2"},
       # Called directly (Stripe, Tempo RPC, GitHub); declared rather than
       # inherited from the library.

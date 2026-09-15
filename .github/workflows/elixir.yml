@@ -322,7 +322,5 @@ jobs:
         mix local.rebar --force
         mix local.hex --force
         mix deps.get
-    - name: Hex advisories
+    - name: Hex and mix_audit advisories
       run: scripts/dependency-audit.sh
-    - name: mix_audit
-      run: mix deps.audit
