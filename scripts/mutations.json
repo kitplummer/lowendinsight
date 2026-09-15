@@ -1521,6 +1521,42 @@
       "replace": "            Lei.WebhookStats.record(:invalid)",
       "guarded_by": "test/lei/stripe_webhook_hardening_test.exs",
       "app": "apps/lowendinsight"
+    },
+    {
+      "id": "job-ids-time-based",
+      "bug": "API job ids were UUIDv1 (timestamp plus 14 random bits), and the id is the credential for reading a job (security, 2026-09-15).",
+      "file": "apps/lowendinsight_get/lib/lowendinsight_get/endpoint.ex",
+      "find": "    # Random, not time-based: the job id is the credential for reading the job\n    # (decided 2026-09-15), so it must not be guessable.\n    uuid = UUID.uuid4()\n\n    # Payment first",
+      "replace": "    # Random, not time-based: the job id is the credential for reading the job\n    # (decided 2026-09-15), so it must not be guessable.\n    uuid = UUID.uuid1()\n\n    # Payment first",
+      "guarded_by": "test/lowendinsight_get/job_access_test.exs",
+      "app": "apps/lowendinsight_get"
+    },
+    {
+      "id": "job-route-reads-any-redis-key",
+      "bug": "The job routes used the id directly as a Redis key, so any value in the database could be read through them (security, 2026-09-15).",
+      "file": "apps/lowendinsight_get/lib/lowendinsight_get/endpoint.ex",
+      "find": "    if Regex.match?(@job_id, uuid), do: read_job(uuid), else: job_not_found()",
+      "replace": "    if true or Regex.match?(@job_id, uuid), do: read_job(uuid), else: job_not_found()",
+      "guarded_by": "test/lowendinsight_get/job_access_test.exs",
+      "app": "apps/lowendinsight_get"
+    },
+    {
+      "id": "job-poll-restarts-work-every-time",
+      "bug": "Every poll of an incomplete job restarted analysis of its uncached URLs, re-cloning a failing repository on each request (security, 2026-09-15).",
+      "file": "apps/lowendinsight_get/lib/lowendinsight_get/endpoint.ex",
+      "find": "      {:ok, \"OK\"} ->\n        refresher =",
+      "replace": "      _ignored_lock_result ->\n        refresher =",
+      "guarded_by": "test/lowendinsight_get/job_access_test.exs",
+      "app": "apps/lowendinsight_get"
+    },
+    {
+      "id": "job-error-returns-exception-message",
+      "bug": "A failure reading a job answered with the exception's message (2026-09-15).",
+      "file": "apps/lowendinsight_get/lib/lowendinsight_get/endpoint.ex",
+      "find": "        {500, Poison.encode!(%{error: \"Internal error fetching job\"})}",
+      "replace": "        {500, Poison.encode!(%{error: \"Internal error fetching job\", details: Exception.message(e)})}",
+      "guarded_by": "test/lowendinsight_get/job_access_test.exs",
+      "app": "apps/lowendinsight_get"
     }
   ]
 }
