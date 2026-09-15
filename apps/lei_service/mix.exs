@@ -40,7 +40,7 @@ defmodule LeiService.MixProject do
       {:credo, "~> 1.7", only: [:dev, :test], runtime: false},
       {:redix, ">= 0.0.0"},
       {:quantum, "~> 3.5"},
-      {:oban, "~> 2.17"},
+      {:oban, "~> 2.24"},
       {:ecto_sql, "~> 3.11"},
       {:jason, "~> 1.4"},
       {:postgrex, "~> 0.18"},

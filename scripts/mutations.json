@@ -1674,6 +1674,42 @@
       "replace": "",
       "guarded_by": "test/npm/yarnlock_test.exs",
       "app": "apps/lowendinsight"
+    },
+    {
+      "id": "oban-no-lifeline",
+      "bug": "Production Oban ran no plugins: jobs executing when a deploy stopped the node stayed executing forever and their analyses never finished (79 jobs, 2026-09-10..14).",
+      "file": "config/config.exs",
+      "find": "  lifeline: [rescue_after: {60, :minutes}],\n",
+      "replace": "",
+      "guarded_by": "test/lei_service/oban_production_config_test.exs",
+      "app": "apps/lei_service"
+    },
+    {
+      "id": "oban-lifeline-rescues-running-work",
+      "bug": "Lifeline rescues by time alone; a short rescue_after re-runs analyses that are still running.",
+      "file": "config/config.exs",
+      "find": "lifeline: [rescue_after: {60, :minutes}]",
+      "replace": "lifeline: [rescue_after: {5, :minutes}]",
+      "guarded_by": "test/lei_service/oban_production_config_test.exs",
+      "app": "apps/lei_service"
+    },
+    {
+      "id": "oban-no-pruner",
+      "bug": "Without Pruner, completed and discarded jobs accumulate in oban_jobs indefinitely.",
+      "file": "config/config.exs",
+      "find": "  pruner: [max_age: {7, :days}]\n",
+      "replace": "",
+      "guarded_by": "test/lei_service/oban_production_config_test.exs",
+      "app": "apps/lei_service"
+    },
+    {
+      "id": "oban-schema-behind-library",
+      "bug": "The only Oban migration pinned version 12, so production ran oban 2.20.3 (schema 13) without schema 13's indexes, and nothing reported it.",
+      "file": "apps/lei_service/priv/repo/migrations/20260916000000_upgrade_oban_jobs_to_v14.exs",
+      "find": "def up, do: Oban.Migration.up(version: 14)",
+      "replace": "def up, do: Oban.Migration.up(version: 13)",
+      "guarded_by": "test/lei_service/oban_schema_version_test.exs",
+      "app": "apps/lei_service"
     }
   ]
 }
