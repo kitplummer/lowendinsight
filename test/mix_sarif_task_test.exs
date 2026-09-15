@@ -31,7 +31,9 @@ defmodule Mix.Tasks.SarifTaskTest do
 
   describe "run/1 with minimal project (no network)" do
     setup do
-      tmp_dir = Path.join(System.tmp_dir!(), "lei_sarif_test_#{:erlang.unique_integer([:positive])}")
+      tmp_dir =
+        Path.join(System.tmp_dir!(), "lei_sarif_test_#{:erlang.unique_integer([:positive])}")
+
       File.mkdir_p!(tmp_dir)
       File.write!(Path.join(tmp_dir, "mix.exs"), @minimal_mix_exs)
       File.write!(Path.join(tmp_dir, "mix.lock"), "%{}")
@@ -48,7 +50,12 @@ defmodule Mix.Tasks.SarifTaskTest do
     end
 
     test "writes SARIF to output file", %{tmp_dir: tmp_dir} do
-      output = Path.join(System.tmp_dir!(), "lei-sarif-output-#{:erlang.unique_integer([:positive])}.sarif")
+      output =
+        Path.join(
+          System.tmp_dir!(),
+          "lei-sarif-output-#{:erlang.unique_integer([:positive])}.sarif"
+        )
+
       on_exit(fn -> File.rm(output) end)
 
       Mix.Tasks.Lei.Sarif.run([tmp_dir, "--output", output])
@@ -58,11 +65,23 @@ defmodule Mix.Tasks.SarifTaskTest do
     end
   end
 
-  describe "run/1 with no args uses default path" do
-    test "uses current directory as default path" do
-      # Running with no args uses "." as default path
-      # Since we're in the project root which exists, it should work
-      Mix.Tasks.Lei.Sarif.run([])
+  # Backported from main. This ran a real SARIF analysis of the whole
+  # repository against ExUnit's 60s default, and timed out on slower CI runners
+  # (release/0.9 pushes, 2026-09-15); a minimal project exercises the same path.
+  describe "run/1 with default path" do
+    setup do
+      tmp_dir =
+        Path.join(System.tmp_dir!(), "lei_sarif_default_#{:erlang.unique_integer([:positive])}")
+
+      File.mkdir_p!(tmp_dir)
+      File.write!(Path.join(tmp_dir, "mix.exs"), @minimal_mix_exs)
+      File.write!(Path.join(tmp_dir, "mix.lock"), "%{}")
+      on_exit(fn -> File.rm_rf!(tmp_dir) end)
+      {:ok, tmp_dir: tmp_dir}
+    end
+
+    test "generates SARIF for given path", %{tmp_dir: tmp_dir} do
+      Mix.Tasks.Lei.Sarif.run([tmp_dir])
       assert_received {:mix_shell, :info, [sarif_json]}
       decoded = Poison.decode!(sarif_json)
       assert decoded["version"] == "2.1.0"
