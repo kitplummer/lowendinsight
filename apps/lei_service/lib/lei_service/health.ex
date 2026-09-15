@@ -3,7 +3,7 @@ defmodule LeiService.Health do
   Dependency health checks owned by the web app.
 
   Registered with `Lei.Health` through
-  `config :lowendinsight, :optional_health_checks` so that the `:lowendinsight`
+  `config :lei_service, :optional_health_checks` so that the `:lei_service`
   library -- which is published to Hex and has no Redis dependency -- does not
   need to know about Redix.
   """

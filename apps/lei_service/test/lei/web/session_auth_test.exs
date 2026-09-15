@@ -8,7 +8,7 @@ defmodule Lei.Web.SessionAuthTest do
   end
 
   defp build_conn_with_session(session_data) do
-    secret = Application.get_env(:lowendinsight, :session_secret_key_base)
+    secret = Application.get_env(:lei_service, :session_secret_key_base)
 
     opts =
       Plug.Session.init(

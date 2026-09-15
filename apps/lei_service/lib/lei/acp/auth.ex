@@ -16,7 +16,7 @@ defmodule Lei.Acp.Auth do
   end
 
   defp verify_bearer(conn) do
-    expected = Application.get_env(:lowendinsight, :acp_bearer_token)
+    expected = Application.get_env(:lei_service, :acp_bearer_token)
 
     case get_req_header(conn, "authorization") do
       ["Bearer " <> token] when not is_nil(expected) ->
@@ -36,7 +36,7 @@ defmodule Lei.Acp.Auth do
   end
 
   defp verify_hmac(conn) do
-    signing_secret = Application.get_env(:lowendinsight, :acp_signing_secret)
+    signing_secret = Application.get_env(:lei_service, :acp_signing_secret)
 
     case {signing_secret, get_req_header(conn, "x-acp-signature")} do
       {nil, _} ->

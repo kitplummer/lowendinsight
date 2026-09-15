@@ -142,7 +142,7 @@ defmodule Lei.Metrics do
   # loaded is skipped; one that raises reports that it failed rather than
   # taking /metrics down with it.
   defp registered_metrics do
-    :lowendinsight
+    :lei_service
     |> Application.get_env(:metrics_collectors, [])
     |> Enum.flat_map(fn {module, function, args} ->
       if Code.ensure_loaded?(module) do

@@ -16,7 +16,7 @@ defmodule Lei.Tempo.Rpc do
 
   @behaviour Lei.Tempo.RpcBehaviour
 
-  def impl, do: Application.get_env(:lowendinsight, :tempo_rpc_module, __MODULE__)
+  def impl, do: Application.get_env(:lei_service, :tempo_rpc_module, __MODULE__)
 
   @impl true
   def get_transaction_receipt(rpc_url, hash) do

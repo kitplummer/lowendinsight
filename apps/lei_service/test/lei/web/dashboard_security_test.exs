@@ -62,7 +62,7 @@ defmodule Lei.Web.DashboardSecurityTest do
 
   # A signed session cookie holding exactly `data`, as a browser would present it.
   defp session_with(data) do
-    secret = Application.get_env(:lowendinsight, :session_secret_key_base)
+    secret = Application.get_env(:lei_service, :session_secret_key_base)
 
     opts =
       Plug.Session.init(

@@ -23,7 +23,7 @@ defmodule Lei.TestHygieneTest do
     offenders =
       for path <- test_files(),
           source = File.read!(path),
-          String.contains?(source, "Application.put_env(:lowendinsight"),
+          String.contains?(source, "Application.put_env(:lei_service"),
           # on_exit and try/after both survive a failed assertion. Restoring at
           # the end of the test body does not, which is the case being caught.
           not (String.contains?(source, "on_exit") or String.contains?(source, "\n    after\n")),
@@ -50,10 +50,10 @@ defmodule Lei.TestHygieneTest do
     offenders =
       for path <- test_files(),
           source = File.read!(path),
-          String.contains?(source, "Application.delete_env(:lowendinsight, :rate_limits)"),
+          String.contains?(source, "Application.delete_env(:lei_service, :rate_limits)"),
           not String.contains?(
             source,
-            "nil -> Application.delete_env(:lowendinsight, :rate_limits)"
+            "nil -> Application.delete_env(:lei_service, :rate_limits)"
           ),
           do: Path.relative_to(path, @test_root)
 

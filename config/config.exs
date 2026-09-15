@@ -61,8 +61,6 @@ config :lei_service,
 # --- lowendinsight (library) Ecto repo ---
 
 
-config :lowendinsight,
-  jwt_secret: System.get_env("LEI_JWT_SECRET") || "lei_dev_secret"
 
 # --- lowendinsight (library) risk thresholds ---
 
@@ -92,14 +90,19 @@ config :lowendinsight,
   base_temp_dir: System.get_env("LEI_BASE_TEMP_DIR") || "/tmp",
   critical_agentic_level: String.to_float(System.get_env("LEI_CRITICAL_AGENTIC_LEVEL") || "0.9"),
   high_agentic_level: String.to_float(System.get_env("LEI_HIGH_AGENTIC_LEVEL") || "0.7"),
-  medium_agentic_level: String.to_float(System.get_env("LEI_MEDIUM_AGENTIC_LEVEL") || "0.3"),
+  medium_agentic_level: String.to_float(System.get_env("LEI_MEDIUM_AGENTIC_LEVEL") || "0.3")
+
+# The service's settings live under :lei_service, never :lowendinsight: the
+# library's environment holds only analyzer settings (ADR-003), so nothing an
+# application configures for the service can reach a library report.
+config :lei_service,
   session_secret_key_base:
     System.get_env("LEI_SESSION_SECRET") ||
       "lei_dev_session_secret_that_is_at_least_64_bytes_long_for_cookie_store_to_work_properly"
 
 # --- Stripe + ACP ---
 
-config :lowendinsight,
+config :lei_service,
   stripe_secret_key: System.get_env("STRIPE_SECRET_KEY"),
   stripe_webhook_secret: System.get_env("STRIPE_WEBHOOK_SECRET"),
   stripe_pro_price_id: System.get_env("STRIPE_PRO_PRICE_ID"),
@@ -144,10 +147,10 @@ config :lei_service, LeiService.Scheduler,
 # than pulling the instance out of rotation.
 # Metrics from the web app, collected by Lei.Metrics without the library
 # depending on it (#158).
-config :lowendinsight,
+config :lei_service,
   metrics_collectors: [{LeiService.GithubTrending, :metrics, []}]
 
-config :lowendinsight,
+config :lei_service,
   optional_health_checks: [
     redis: {LeiService.Health, :check_redis, []},
     # Whether the configured price IDs exist in the Stripe key's mode.
@@ -158,7 +161,7 @@ config :lowendinsight,
 # key on client IP, because ACP is unauthenticated by design (ADR-001).
 # acp_complete is far tighter than acp because completion creates an org and an
 # API key, where the other endpoints only write a session row.
-config :lowendinsight,
+config :lei_service,
   # payment_settle is much tighter than payment_challenge: asking the price is
   # cheap, but every credential presented can reach Stripe, and that is the
   # half an attacker would use to grind through stolen tokens.

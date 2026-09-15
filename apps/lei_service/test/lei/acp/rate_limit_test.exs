@@ -34,7 +34,7 @@ defmodule Lei.Acp.RateLimitTest do
   # exist, so a hardcoded 20 silently tests nothing when config is not loaded --
   # which is exactly how this test flaked.
   defp limit_for(bucket) do
-    Application.get_env(:lowendinsight, :rate_limits, %{})
+    Application.get_env(:lei_service, :rate_limits, %{})
     |> Map.get(String.to_atom(bucket))
   end
 
@@ -68,7 +68,7 @@ defmodule Lei.Acp.RateLimitTest do
     # Lei.RateLimiter silently uses the free-tier limit and the tests pass
     # while asserting nothing.
     test "acp buckets are configured" do
-      limits = Application.get_env(:lowendinsight, :rate_limits)
+      limits = Application.get_env(:lei_service, :rate_limits)
 
       assert is_map(limits), ":rate_limits is not configured"
       assert limits[:acp] == 20

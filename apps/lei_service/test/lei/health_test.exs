@@ -23,13 +23,13 @@ defmodule Lei.HealthTest do
   setup do
     :ok = Ecto.Adapters.SQL.Sandbox.checkout(Lei.Repo)
     Ecto.Adapters.SQL.Sandbox.mode(Lei.Repo, {:shared, self()})
-    previous = Application.get_env(:lowendinsight, :optional_health_checks)
+    previous = Application.get_env(:lei_service, :optional_health_checks)
 
     on_exit(fn ->
       if previous do
-        Application.put_env(:lowendinsight, :optional_health_checks, previous)
+        Application.put_env(:lei_service, :optional_health_checks, previous)
       else
-        Application.delete_env(:lowendinsight, :optional_health_checks)
+        Application.delete_env(:lei_service, :optional_health_checks)
       end
     end)
 
@@ -37,7 +37,7 @@ defmodule Lei.HealthTest do
   end
 
   defp with_checks(checks) do
-    Application.put_env(:lowendinsight, :optional_health_checks, checks)
+    Application.put_env(:lei_service, :optional_health_checks, checks)
     Lei.Health.readiness()
   end
 

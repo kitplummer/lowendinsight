@@ -16,7 +16,7 @@ defmodule Lei.Health do
   outage.
 
   Optional checks are registered as `{name, {module, function, args}}` under
-  `config :lowendinsight, :optional_health_checks`. A check whose module is not
+  `config :lei_service, :optional_health_checks`. A check whose module is not
   loaded is skipped rather than reported as failing, which keeps this library
   free of a Redis dependency and lets the umbrella's web app supply the check.
   """
@@ -45,7 +45,7 @@ defmodule Lei.Health do
   end
 
   defp run_optional_checks do
-    :lowendinsight
+    :lei_service
     |> Application.get_env(:optional_health_checks, [])
     |> Enum.flat_map(fn {name, {module, function, args}} ->
       if Code.ensure_loaded?(module) do

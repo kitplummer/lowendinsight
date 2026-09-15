@@ -50,20 +50,20 @@ defmodule Lei.RateLimiter do
   end
 
   defp window_ms do
-    Application.get_env(:lowendinsight, :rate_limit_window_ms, @default_window_ms)
+    Application.get_env(:lei_service, :rate_limit_window_ms, @default_window_ms)
   end
 
   # A bucket may count over a longer window than the default minute -- the Try
   # It form is limited per hour (#152). Buckets without an entry use the default.
   defp window_for(tier) do
-    windows = Application.get_env(:lowendinsight, :rate_limit_windows, %{})
+    windows = Application.get_env(:lei_service, :rate_limit_windows, %{})
     Map.get(windows, String.to_existing_atom(tier), window_ms())
   rescue
     ArgumentError -> window_ms()
   end
 
   defp longest_window do
-    :lowendinsight
+    :lei_service
     |> Application.get_env(:rate_limit_windows, %{})
     |> Map.values()
     |> Enum.max(fn -> 0 end)
@@ -71,7 +71,7 @@ defmodule Lei.RateLimiter do
   end
 
   defp limit_for(tier) do
-    limits = Application.get_env(:lowendinsight, :rate_limits, @default_limits)
+    limits = Application.get_env(:lei_service, :rate_limits, @default_limits)
     Map.get(limits, String.to_existing_atom(tier), @default_limits.free)
   rescue
     ArgumentError -> @default_limits.free

@@ -181,7 +181,7 @@ defmodule Lei.CreditDebitTest do
 
   describe "the usage row and the debit are one transaction" do
     setup do
-      on_exit(fn -> Application.delete_env(:lowendinsight, :credit_debit_reason) end)
+      on_exit(fn -> Application.delete_env(:lei_service, :credit_debit_reason) end)
       :ok
     end
 
@@ -193,7 +193,7 @@ defmodule Lei.CreditDebitTest do
       # Without the transaction this leaves a committed usage row with no
       # matching ledger entry -- an analysis delivered and never accounted for,
       # discoverable only by reconciliation after the fact.
-      Application.put_env(:lowendinsight, :credit_debit_reason, "not:a:valid:reason")
+      Application.put_env(:lei_service, :credit_debit_reason, "not:a:valid:reason")
 
       assert {:error, _reason} = UsageTracker.record_usage(org.id, key.id, 5, 1)
 
@@ -206,7 +206,7 @@ defmodule Lei.CreditDebitTest do
       {:ok, first} = UsageTracker.record_usage(org.id, key.id, 2, 0)
       assert first.cache_hits == 2
 
-      Application.put_env(:lowendinsight, :credit_debit_reason, "not:a:valid:reason")
+      Application.put_env(:lei_service, :credit_debit_reason, "not:a:valid:reason")
 
       assert {:error, _} = UsageTracker.record_usage(org.id, key.id, 7, 3)
 

@@ -14,13 +14,13 @@ defmodule Lei.Stripe.ModeVisibilityTest do
 
     saved =
       for k <- [:stripe_secret_key, :stripe_webhook_secret, :stripe_profile_id, :deploy_env],
-          do: {k, Application.fetch_env(:lowendinsight, k)}
+          do: {k, Application.fetch_env(:lei_service, k)}
 
     on_exit(fn ->
       for {k, v} <- saved do
         case v do
-          {:ok, value} -> Application.put_env(:lowendinsight, k, value)
-          :error -> Application.delete_env(:lowendinsight, k)
+          {:ok, value} -> Application.put_env(:lei_service, k, value)
+          :error -> Application.delete_env(:lei_service, k)
         end
       end
     end)
@@ -29,8 +29,7 @@ defmodule Lei.Stripe.ModeVisibilityTest do
   end
 
   defp put_key(prefix),
-    do:
-      Application.put_env(:lowendinsight, :stripe_secret_key, prefix <> String.duplicate("x", 24))
+    do: Application.put_env(:lei_service, :stripe_secret_key, prefix <> String.duplicate("x", 24))
 
   defp readyz do
     conn = conn(:get, "/readyz") |> Lei.Web.Router.call(@opts)
@@ -44,7 +43,7 @@ defmodule Lei.Stripe.ModeVisibilityTest do
     put_key("rk_live_")
     assert readyz()["stripe_mode"] == "live"
 
-    Application.delete_env(:lowendinsight, :stripe_secret_key)
+    Application.delete_env(:lei_service, :stripe_secret_key)
     assert readyz()["stripe_mode"] == "unconfigured"
   end
 
@@ -69,21 +68,21 @@ defmodule Lei.Stripe.ModeVisibilityTest do
 
     test "refuse a live key when not deployed to production" do
       put_key("sk_live_")
-      Application.put_env(:lowendinsight, :deploy_env, "staging")
+      Application.put_env(:lei_service, :deploy_env, "staging")
       assert_raise ArgumentError, ~r/live Stripe key/, &Lei.Boot.checks!/0
     end
 
     test "refuse a sandbox profile beside a live key" do
       put_key("sk_live_")
-      Application.put_env(:lowendinsight, :deploy_env, "production")
-      Application.put_env(:lowendinsight, :stripe_profile_id, "profile_test_lei")
+      Application.put_env(:lei_service, :deploy_env, "production")
+      Application.put_env(:lei_service, :stripe_profile_id, "profile_test_lei")
       assert_raise ArgumentError, ~r/STRIPE_PROFILE_ID/, &Lei.Boot.checks!/0
     end
 
     test "accept a live key when deployed to production" do
       put_key("sk_live_")
-      Application.put_env(:lowendinsight, :stripe_profile_id, "profile_lei")
-      Application.put_env(:lowendinsight, :deploy_env, "production")
+      Application.put_env(:lei_service, :stripe_profile_id, "profile_lei")
+      Application.put_env(:lei_service, :deploy_env, "production")
       assert :ok = Lei.Boot.checks!()
     end
   end

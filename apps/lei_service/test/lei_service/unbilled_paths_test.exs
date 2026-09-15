@@ -28,13 +28,13 @@ defmodule LeiService.UnbilledPathsTest do
 
     saved =
       for k <- [:default_top_up_credits, :rate_limits],
-          do: {k, Application.fetch_env(:lowendinsight, k)}
+          do: {k, Application.fetch_env(:lei_service, k)}
 
     on_exit(fn ->
       for {k, v} <- saved do
         case v do
-          {:ok, value} -> Application.put_env(:lowendinsight, k, value)
-          :error -> Application.delete_env(:lowendinsight, k)
+          {:ok, value} -> Application.put_env(:lei_service, k, value)
+          :error -> Application.delete_env(:lei_service, k)
         end
       end
     end)
@@ -181,7 +181,7 @@ defmodule LeiService.UnbilledPathsTest do
     end
 
     test "a balance smaller than the request is asked to top up, not run into debt" do
-      Application.put_env(:lowendinsight, :default_top_up_credits, 10)
+      Application.put_env(:lei_service, :default_top_up_credits, 10)
       {org, key} = wallet_key(30)
 
       # One uncached repository costs 50 credits; the org holds 30.
@@ -213,7 +213,7 @@ defmodule LeiService.UnbilledPathsTest do
     end
 
     defp exhaust_try_it do
-      limits = Application.get_env(:lowendinsight, :rate_limits, %{})
+      limits = Application.get_env(:lei_service, :rate_limits, %{})
       limit = Map.get(limits, :try_it, 10)
       for _ <- 1..limit, do: Lei.RateLimiter.check("try_it:127.0.0.1", "try_it")
     end
@@ -236,9 +236,9 @@ defmodule LeiService.UnbilledPathsTest do
 
     test "cached reports do not count against the limit" do
       Application.put_env(
-        :lowendinsight,
+        :lei_service,
         :rate_limits,
-        Map.put(Application.get_env(:lowendinsight, :rate_limits, %{}), :try_it, 1)
+        Map.put(Application.get_env(:lei_service, :rate_limits, %{}), :try_it, 1)
       )
 
       url = cached_url()

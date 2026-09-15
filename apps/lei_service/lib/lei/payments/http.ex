@@ -343,6 +343,6 @@ defmodule Lei.Payments.Http do
   end
 
   defp configured_rails do
-    Application.get_env(:lowendinsight, :payment_rails, [Lei.Payments.Rails.Mpp])
+    Application.get_env(:lei_service, :payment_rails, [Lei.Payments.Rails.Mpp])
   end
 end

@@ -39,7 +39,7 @@ defmodule Lei.Stripe do
   @meter_event_name "analysis_cost"
 
   def impl do
-    Application.get_env(:lowendinsight, :stripe_module, __MODULE__)
+    Application.get_env(:lei_service, :stripe_module, __MODULE__)
   end
 
   def meter_event_name, do: @meter_event_name
@@ -49,7 +49,7 @@ defmodule Lei.Stripe do
   @stripe_preview_version "2026-07-29.preview"
 
   defp headers(version \\ @stripe_version) do
-    api_key = Application.get_env(:lowendinsight, :stripe_secret_key)
+    api_key = Application.get_env(:lei_service, :stripe_secret_key)
 
     [
       {"Authorization", "Bearer #{api_key}"},
@@ -160,7 +160,7 @@ defmodule Lei.Stripe do
         # is sent after paying.
         "return_url" =>
           params[:return_url] ||
-            Application.get_env(:lowendinsight, :lei_base_url, "http://localhost:4000")
+            Application.get_env(:lei_service, :lei_base_url, "http://localhost:4000")
       })
 
     case HTTPoison.post(

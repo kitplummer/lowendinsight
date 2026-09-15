@@ -1,7 +1,7 @@
 <h1 class="title">Dashboard &mdash; <%= @org.name %></h1>
 
 <% usage = Lei.UsageTracker.get_current_usage(@org.id) %>
-<% pro_credit = Application.get_env(:lowendinsight, :pro_tier_credit_cents, 1500) %>
+<% pro_credit = Application.get_env(:lei_service, :pro_tier_credit_cents, 1500) %>
 
 <h2 class="subtitle">Usage &mdash; <%= Date.to_iso8601(usage.period_start) %></h2>
 

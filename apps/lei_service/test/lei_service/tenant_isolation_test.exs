@@ -26,15 +26,15 @@ defmodule LeiService.TenantIsolationTest do
 
     # In production both auth plugs verify operator JWTs with the same secret
     # (config/runtime.exs); test config gives them different defaults.
-    previous = Application.get_env(:lowendinsight, :jwt_secret)
+    previous = Application.get_env(:lei_service, :jwt_secret)
 
     Application.put_env(
-      :lowendinsight,
+      :lei_service,
       :jwt_secret,
       Application.get_env(:lei_service, :jwt_secret)
     )
 
-    on_exit(fn -> Application.put_env(:lowendinsight, :jwt_secret, previous) end)
+    on_exit(fn -> Application.put_env(:lei_service, :jwt_secret, previous) end)
 
     victim = signup("Victim #{System.unique_integer([:positive])}")
     stranger = signup("Stranger #{System.unique_integer([:positive])}")

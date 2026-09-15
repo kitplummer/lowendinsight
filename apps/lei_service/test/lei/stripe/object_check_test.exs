@@ -269,7 +269,7 @@ defmodule Lei.Stripe.ObjectCheckTest do
   end
 
   test "the application's checker is registered as a readiness check" do
-    checks = Application.get_env(:lowendinsight, :optional_health_checks)
+    checks = Application.get_env(:lei_service, :optional_health_checks)
     assert checks[:stripe] == {ObjectCheck, :status, []}
     # And it is actually running, so the check reports something real.
     assert is_pid(Process.whereis(ObjectCheck))

@@ -112,8 +112,8 @@ defmodule LeiService.AcpRoutingTest do
     # parsers run, so the endpoint must be the one to stash conn.private[:raw_body].
     setup do
       secret = "acp-test-signing-secret"
-      Application.put_env(:lowendinsight, :acp_signing_secret, secret)
-      on_exit(fn -> Application.put_env(:lowendinsight, :acp_signing_secret, nil) end)
+      Application.put_env(:lei_service, :acp_signing_secret, secret)
+      on_exit(fn -> Application.put_env(:lei_service, :acp_signing_secret, nil) end)
       {:ok, secret: secret}
     end
 

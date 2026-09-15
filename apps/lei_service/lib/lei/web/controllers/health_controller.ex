@@ -9,7 +9,7 @@ defmodule Lei.Web.Controllers.HealthController do
 
   def get(conn) do
     version =
-      :lowendinsight
+      :lei_service
       |> Application.spec(:vsn)
       |> to_string()
 

@@ -21,12 +21,12 @@ defmodule Lei.WebhookMonitoringTest do
       Lei.Stripe.construct_webhook_event(payload, signature, secret)
     end)
 
-    original = Application.get_env(:lowendinsight, :stripe_webhook_secret)
+    original = Application.get_env(:lei_service, :stripe_webhook_secret)
 
     on_exit(fn ->
       case original do
-        nil -> Application.delete_env(:lowendinsight, :stripe_webhook_secret)
-        value -> Application.put_env(:lowendinsight, :stripe_webhook_secret, value)
+        nil -> Application.delete_env(:lei_service, :stripe_webhook_secret)
+        value -> Application.put_env(:lei_service, :stripe_webhook_secret, value)
       end
 
       WebhookStats.reset()
@@ -70,7 +70,7 @@ defmodule Lei.WebhookMonitoringTest do
     end
 
     test "a signed request with no secret configured counts as unconfigured" do
-      Application.delete_env(:lowendinsight, :stripe_webhook_secret)
+      Application.delete_env(:lei_service, :stripe_webhook_secret)
       body = ~s({"type":"checkout.session.completed"})
 
       conn = post_webhook(body, sign(body, @secret))
@@ -82,7 +82,7 @@ defmodule Lei.WebhookMonitoringTest do
 
     test "a signed request with the wrong secret counts as invalid" do
       # The rotation failure: endpoint rolled, Fly not updated.
-      Application.put_env(:lowendinsight, :stripe_webhook_secret, @secret)
+      Application.put_env(:lei_service, :stripe_webhook_secret, @secret)
       body = ~s({"type":"checkout.session.completed"})
 
       conn = post_webhook(body, sign(body, "whsec_a_different_secret"))
@@ -93,7 +93,7 @@ defmodule Lei.WebhookMonitoringTest do
     end
 
     test "a correctly signed request counts as ok" do
-      Application.put_env(:lowendinsight, :stripe_webhook_secret, @secret)
+      Application.put_env(:lei_service, :stripe_webhook_secret, @secret)
       # Real Stripe events always carry an id; one without is now refused.
       body = ~s({"id":"evt_monitoring_ok","type":"some.unhandled.event","data":{"object":{}}})
 
@@ -107,7 +107,7 @@ defmodule Lei.WebhookMonitoringTest do
     test "an empty-string secret is treated as unconfigured, not as a mismatch" do
       # An unset Fly secret arrives as "" rather than nil in some paths. Both
       # mean the same thing and must not be reported as a rotation problem.
-      Application.put_env(:lowendinsight, :stripe_webhook_secret, "")
+      Application.put_env(:lei_service, :stripe_webhook_secret, "")
       body = ~s({"type":"checkout.session.completed"})
 
       conn = post_webhook(body, sign(body, @secret))
@@ -120,7 +120,7 @@ defmodule Lei.WebhookMonitoringTest do
 
   describe "metrics exposure" do
     test "counters appear on the metrics endpoint" do
-      Application.put_env(:lowendinsight, :stripe_webhook_secret, @secret)
+      Application.put_env(:lei_service, :stripe_webhook_secret, @secret)
       body = ~s({"type":"x","data":{"object":{}}})
 
       post_webhook(body, sign(body, "whsec_wrong"))

@@ -1602,6 +1602,15 @@
       "replace": "config :lei_service, Lei.Repo, priv_ignored: \"priv/lei_repo\"",
       "guarded_by": "test/lei/repo_migrations_path_test.exs",
       "app": "apps/lei_service"
+    },
+    {
+      "id": "service-settings-in-library-env",
+      "bug": "The hosted service's settings (Stripe keys, signing secrets, pricing) lived in the :lowendinsight application environment, which reports once published whole (security, 2026-09-14; ADR-003).",
+      "file": "config/config.exs",
+      "find": "config :lei_service,\n  stripe_secret_key: System.get_env(\"STRIPE_SECRET_KEY\"),",
+      "replace": "config :lowendinsight,\n  stripe_secret_key: System.get_env(\"STRIPE_SECRET_KEY\"),",
+      "guarded_by": "test/library_env_test.exs",
+      "app": "apps/lowendinsight"
     }
   ]
 }

@@ -35,7 +35,7 @@ defmodule Lei.Tempo.Network do
     Map.put(
       network,
       :rpc_url,
-      Application.get_env(:lowendinsight, :tempo_rpc_url, network.rpc_url)
+      Application.get_env(:lei_service, :tempo_rpc_url, network.rpc_url)
     )
   end
 

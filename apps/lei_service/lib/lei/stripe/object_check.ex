@@ -235,14 +235,14 @@ defmodule Lei.Stripe.ObjectCheck do
 
   defp config do
     {
-      Application.get_env(:lowendinsight, :stripe_secret_key),
+      Application.get_env(:lei_service, :stripe_secret_key),
       [
-        Application.get_env(:lowendinsight, :stripe_pro_price_id),
-        Application.get_env(:lowendinsight, :stripe_metered_price_id)
+        Application.get_env(:lei_service, :stripe_pro_price_id),
+        Application.get_env(:lei_service, :stripe_metered_price_id)
       ],
-      Application.get_env(:lowendinsight, :deploy_env),
+      Application.get_env(:lei_service, :deploy_env),
       Lei.Stripe.impl(),
-      Application.get_env(:lowendinsight, :tempo_deposit_address)
+      Application.get_env(:lei_service, :tempo_deposit_address)
     }
   end
 end

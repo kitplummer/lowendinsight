@@ -115,7 +115,7 @@ defmodule Lei.Payments.Rails.Mpp do
   `profile_...` live; `Lei.Stripe.Mode` refuses a pairing with the other mode's key.
   """
   def profile_id do
-    case Application.get_env(:lowendinsight, :stripe_profile_id) do
+    case Application.get_env(:lei_service, :stripe_profile_id) do
       id when is_binary(id) and id != "" -> id
       _ -> nil
     end
@@ -227,7 +227,7 @@ defmodule Lei.Payments.Rails.Mpp do
   defp format_amount(_), do: nil
 
   defp realm do
-    Application.get_env(:lowendinsight, :lei_base_url, "http://localhost:4000")
+    Application.get_env(:lei_service, :lei_base_url, "http://localhost:4000")
     |> URI.parse()
     |> Map.get(:host)
     |> Kernel.||("localhost")

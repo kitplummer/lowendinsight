@@ -27,13 +27,13 @@ defmodule LeiService.AgentGuideTest do
       :free_tier_monthly_limit
     ]
 
-    saved = for k <- keys, do: {k, Application.fetch_env(:lowendinsight, k)}
+    saved = for k <- keys, do: {k, Application.fetch_env(:lei_service, k)}
 
     on_exit(fn ->
       for {k, v} <- saved do
         case v do
-          {:ok, value} -> Application.put_env(:lowendinsight, k, value)
-          :error -> Application.delete_env(:lowendinsight, k)
+          {:ok, value} -> Application.put_env(:lei_service, k, value)
+          :error -> Application.delete_env(:lei_service, k)
         end
       end
 
@@ -49,7 +49,7 @@ defmodule LeiService.AgentGuideTest do
   defp test_key,
     do:
       Application.put_env(
-        :lowendinsight,
+        :lei_service,
         :stripe_secret_key,
         "sk_test_" <> String.duplicate("x", 24)
       )
@@ -57,13 +57,13 @@ defmodule LeiService.AgentGuideTest do
   defp live_key,
     do:
       Application.put_env(
-        :lowendinsight,
+        :lei_service,
         :stripe_secret_key,
         "sk_live_" <> String.duplicate("x", 24)
       )
 
   defp confirm_deposit_address do
-    Application.put_env(:lowendinsight, :tempo_deposit_address, @deposit)
+    Application.put_env(:lei_service, :tempo_deposit_address, @deposit)
     stub(Lei.StripeMock, :retrieve_price, fn _ -> {:ok, %{"active" => true}} end)
     stub(Lei.StripeMock, :list_deposit_addresses, fn _ -> {:ok, [@deposit]} end)
     send(Lei.Stripe.ObjectCheck, :check)
@@ -94,10 +94,10 @@ defmodule LeiService.AgentGuideTest do
 
   describe "prices" do
     test "come from the rates the ledger charges, on the page and in llms.txt" do
-      Application.put_env(:lowendinsight, :cache_hit_cost_cents, 0.7)
-      Application.put_env(:lowendinsight, :cache_miss_cost_cents, 6.0)
-      Application.put_env(:lowendinsight, :default_top_up_credits, 20_000)
-      Application.put_env(:lowendinsight, :free_tier_monthly_limit, 321)
+      Application.put_env(:lei_service, :cache_hit_cost_cents, 0.7)
+      Application.put_env(:lei_service, :cache_miss_cost_cents, 6.0)
+      Application.put_env(:lei_service, :default_top_up_credits, 20_000)
+      Application.put_env(:lei_service, :free_tier_monthly_limit, 321)
 
       for body <- [page().resp_body, llms().resp_body] do
         assert body =~ "7 credits"
@@ -137,7 +137,7 @@ defmodule LeiService.AgentGuideTest do
   describe "availability" do
     test "stablecoin is unavailable when the rail would issue no challenge, and the page says so" do
       test_key()
-      Application.delete_env(:lowendinsight, :tempo_deposit_address)
+      Application.delete_env(:lei_service, :tempo_deposit_address)
 
       assert AgentGuide.facts().stablecoin.available? == false
       assert page().resp_body =~ "Stablecoin payment is not available right now"
