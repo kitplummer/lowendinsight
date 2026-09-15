@@ -1647,6 +1647,33 @@
       "replace": "  @registry \"https://replicate.npmjs.com/\"",
       "guarded_by": "test/npm_registry_test.exs",
       "app": "apps/lowendinsight"
+    },
+    {
+      "id": "yarn-scoped-name-empty",
+      "bug": "Splitting a yarn.lock key at its first '@' gave every scoped package (@babel/core) an empty name.",
+      "file": "apps/lowendinsight/lib/npm/yarnlockfile.ex",
+      "find": "~r/^(@?[^@]+)@/",
+      "replace": "~r/^([^@]*)@/",
+      "guarded_by": "test/npm/yarnlock_test.exs",
+      "app": "apps/lowendinsight"
+    },
+    {
+      "id": "yarn-versions-as-floats",
+      "bug": "Duplicate yarn.lock versions were compared with Float.parse, so 1.10.0 (1.1) lost to 1.9.0.",
+      "file": "apps/lowendinsight/lib/npm/yarnlockfile.ex",
+      "find": "if compare_versions(a, b) == :lt, do: b, else: a",
+      "replace": "if Float.parse(a) < Float.parse(b), do: b, else: a",
+      "guarded_by": "test/npm/yarnlock_test.exs",
+      "app": "apps/lowendinsight"
+    },
+    {
+      "id": "yarn-workspace-as-dependency",
+      "bug": "A yarn 2+ workspace entry (the project itself, linkType soft) would be counted and analysed as a dependency.",
+      "file": "apps/lowendinsight/lib/npm/yarnlockfile.ex",
+      "find": "  defp package_version({_spec, %{\"linkType\" => \"soft\"}}), do: []\n",
+      "replace": "",
+      "guarded_by": "test/npm/yarnlock_test.exs",
+      "app": "apps/lowendinsight"
     }
   ]
 }

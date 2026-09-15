@@ -20,9 +20,9 @@ ACK="scripts/acknowledged-advisories.txt"
 [ -f "$ACK" ] || { echo "FAIL: $ACK is missing"; exit 1; }
 
 # Every entry needs a reason, or the list becomes a place to hide findings.
-if grep -vE '^\s*(#|$)' "$ACK" | grep -vqE '^[A-Za-z0-9-]+ # .{10,}$'; then
-  echo "FAIL: every entry in $ACK must be '<ID> # <reason>':"
-  grep -vE '^\s*(#|$)' "$ACK" | grep -vE '^[A-Za-z0-9-]+ # .{10,}$'
+if grep -vE '^\s*(#|$)' "$ACK" | grep -vqE '^[A-Za-z0-9-]+(,[A-Za-z0-9-]+)* # .{10,}$'; then
+  echo "FAIL: every entry in $ACK must be '<ID>[,<ID>...] # <reason>':"
+  grep -vE '^\s*(#|$)' "$ACK" | grep -vE '^[A-Za-z0-9-]+(,[A-Za-z0-9-]+)* # .{10,}$'
   exit 1
 fi
 IDS=$(grep -vE '^\s*(#|$)' "$ACK" | awk '{print $1}' | paste -sd, -)
@@ -51,5 +51,19 @@ if [ -z "$HEX_VERSION" ] || ! printf '2.5.0\n%s\n' "$HEX_VERSION" | sort -VC; th
   echo "FAIL: Hex '${HEX_VERSION:-unknown}' does not check security advisories (need >= 2.5.0)"
   exit 1
 fi
+
+# mix_audit reads GitHub's advisory database, which Hex's does not always
+# mirror. Run it too, with the same acknowledgements.
+MIX_AUDIT=$(MIX_ENV=test mix deps.audit --ignore-advisory-ids "$IDS" 2>&1)
+MIX_AUDIT_STATUS=$?
+printf '%s\n' "$MIX_AUDIT"
+if [ "$MIX_AUDIT_STATUS" -ne 0 ]; then
+  echo "FAIL: mix_audit found unacknowledged vulnerabilities (above)"
+  exit 1
+fi
+printf '%s\n' "$MIX_AUDIT" | grep -q "No vulnerabilities found" || {
+  echo "FAIL: mix_audit did not report a result; it may not have run"
+  exit 1
+}
 
 echo "Dependency audit passed: no unacknowledged advisories."
