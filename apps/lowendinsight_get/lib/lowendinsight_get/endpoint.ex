@@ -579,12 +579,20 @@ defmodule LowendinsightGet.Endpoint do
     end
   end
 
+  # Operator only. This forces a refresh of every language -- the job that
+  # exhausted production's memory (#158) -- and any API key could start it,
+  # again the moment the last run released its lock (security review,
+  # 2026-09-14). An operator token is signed with the deployment's own secret.
   post "/v1/gh_trending/process" do
-    Task.start_link(fn -> LowendinsightGet.GithubTrending.process_languages() end)
+    if conn.assigns[:auth_method] == :jwt do
+      Task.start_link(fn -> LowendinsightGet.GithubTrending.process_languages() end)
 
-    conn
-    |> put_resp_content_type(@content_type)
-    |> send_resp(200, "Processing languages...")
+      conn
+      |> put_resp_content_type(@content_type)
+      |> send_resp(200, "Processing languages...")
+    else
+      send_json(conn, 403, %{error: "operator credentials required"})
+    end
   end
 
   match _ do

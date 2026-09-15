@@ -336,7 +336,7 @@ For each language, this endpoint:
 3. Runs LowEndInsight analysis on the top N repos (configured via `LEI_NUM_OF_REPOS`, default 10)
 4. Stores results in Redis, viewable via `GET /gh_trending/:language`
 
-**Authentication:** Bearer token required
+**Authentication:** operator token (a JWT signed with the deployment's `LEI_JWT_SECRET`). API keys are refused with `403`, whatever their scopes: a forced refresh clones and analyses every trending repository.
 
 **Response (200 OK):**
 ```

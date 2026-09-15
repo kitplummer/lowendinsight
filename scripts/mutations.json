@@ -1557,6 +1557,15 @@
       "replace": "        {500, Poison.encode!(%{error: \"Internal error fetching job\", details: Exception.message(e)})}",
       "guarded_by": "test/lowendinsight_get/job_access_test.exs",
       "app": "apps/lowendinsight_get"
+    },
+    {
+      "id": "trending-trigger-any-key",
+      "bug": "POST /v1/gh_trending/process forced a refresh of every language -- the job that exhausted production's memory -- for any API key (security, 2026-09-15).",
+      "file": "apps/lowendinsight_get/lib/lowendinsight_get/endpoint.ex",
+      "find": "    if conn.assigns[:auth_method] == :jwt do\n      Task.start_link(fn -> LowendinsightGet.GithubTrending.process_languages() end)",
+      "replace": "    if conn.assigns[:auth_method] in [:jwt, :api_key] do\n      Task.start_link(fn -> LowendinsightGet.GithubTrending.process_languages() end)",
+      "guarded_by": "test/lowendinsight_get/trending_trigger_auth_test.exs",
+      "app": "apps/lowendinsight_get"
     }
   ]
 }
