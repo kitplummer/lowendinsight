@@ -151,6 +151,19 @@ defmodule LowendinsightGet.Endpoint do
     end
   end
 
+  # The report page shows the whole report. Analysis.analyze/3 decodes a cache
+  # hit into the RepoReport/Data/Results structs, which keep only the original
+  # fields -- no header, git, files, size or agentic results -- so a cached
+  # repository, which every trending "view" is, rendered mostly as blanks. The
+  # full JSON is in the cache once analyze/3 has returned; the struct is only
+  # the fallback if it cannot be read.
+  defp full_report(url, report) do
+    case LowendinsightGet.Datastore.get_from_cache_any_age(url) do
+      {:ok, json, _} when is_binary(json) -> json
+      _ -> Poison.encode!(report)
+    end
+  end
+
   defp try_it_limited(conn, retry_after) do
     conn
     |> put_resp_header("retry-after", Integer.to_string(retry_after))
@@ -175,10 +188,7 @@ defmodule LowendinsightGet.Endpoint do
 
         case error_key? do
           :error ->
-            render(conn, "analysis.html",
-              report: Poison.encode!(report, as: %RepoReport{data: %Data{results: %Results{}}}),
-              url: url
-            )
+            render(conn, "analysis.html", report: full_report(url, report), url: url)
 
           _ ->
             conn

@@ -9,7 +9,6 @@
     <link rel="apple-touch-icon" sizes="180x180" href="/images/apple-touch-icon.png">
     <title>LowEndInsight</title>
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bulma@0.8.0/css/bulma.min.css">
-    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/json-tree-viewer@0.0.2/libs/jsonTree/jsonTree.css">
     <link rel="stylesheet" href = "../css/endpoints.css">
     <link rel="stylesheet" href="/css/theme.css">
     <script>
@@ -22,7 +21,6 @@
         } catch (e) {}
       })();
     </script>
-    <script src="https://cdn.jsdelivr.net/npm/json-tree-viewer@0.0.2/libs/jsonTree/jsonTree.min.js"></script>
     <script type="text/javascript" defer src="https://use.fontawesome.com/releases/v5.3.1/js/all.js"></script>
     <a href="https://github.com/kitplummer/lowendinsight" target="_blank" class="github-corner" aria-label="View source on GitHub">
       <svg class="svg" width="80" height="80" viewBox="0 0 250 250" aria-hidden="true">
@@ -78,49 +76,117 @@
         </div>
       </div>
     </section>
-    <section class="section" id="report">
-      <div class="table-container">
-        <table class="table is-fullwidth is-striped" id="repo">
-          <thead>
-            <tr class="tablehead">
-              <th>Project</th>
-              <th>Risk</th>
-              <th>Contributor Count</th>
-              <th>Contributor Risk</th>
-              <th>Functional Contributors
-                <div class="tooltip">
-                    <i class="fas fa-info-circle"></i>
-                    <span class="tooltiptext">A functional contributor is one that contributes above a certain
-                    percentage of commits equal to or greater than their "fair" share.</span>
-                </div>
-              </th>
-              <th>Functional Contributors Risk</th>
-              <th>Large Recent Commit Risk
-                <div class="tooltip">
-                    <i class="fas fa-info-circle"></i>
-                    <span class="tooltiptext">Large Recent Commit Risk is a measure of how large the most recent
-                    commit is in relation to the size of the codebase.</span>
-                </div>
-              </th>
-              <th>Recent Commit Size %</th>
-              <th>Commit Currency (weeks)</th>
-              <th>Commit Currency Risk</th>
-              <th>SBOM Risk</th>
-              <th>Agentic Classification</th>
-              <th>Repo Size</th>
-              <th>Last Commit</th>
-              <th>Total Commits</th>
-              <th>Default Branch</th>
-              <th>JSON</th>
-            </tr>
-          </thead>
-          <tbody>
-            <% {:ok, slug} = Helpers.get_slug(url) %>
-              <script defer type="text/javascript">
-                display_report(<%= Lei.Web.HTML.script_json(slug) %>, <%= Lei.Web.HTML.script_json_text(report) %>);
-              </script>
-          </tbody>
-        </table>
+    <% v = LowendinsightGet.ReportView %>
+    <% r = v.decode(report) %>
+    <% data = r["data"] || %{} %>
+    <% results = data["results"] || %{} %>
+    <% git = data["git"] || %{} %>
+    <% files = data["files"] || %{} %>
+    <% header = r["header"] || %{} %>
+    <% {:ok, slug} = Helpers.get_slug(url) %>
+    <section class="section report-detail" id="report">
+      <div class="container">
+        <%# Not <header>: endpoints.css fixes every header at 50px tall. %>
+        <div class="report-head">
+          <p class="report-kicker">Repository report</p>
+          <h2 class="title is-3 report-title">
+            <%= if href = v.project_href(data["repo"]) do %>
+              <a href="<%= href %>" target="_blank" rel="noopener noreferrer"><%= slug %></a>
+            <% else %>
+              <%= slug %>
+            <% end %>
+          </h2>
+          <p class="report-meta">
+            Analyzed <%= v.date(header["end_time"]) %> · LowEndInsight <%= v.show(header["library_version"]) %>
+          </p>
+          <p class="report-overall">
+            <span class="report-overall-label">Overall risk</span>
+            <span class="risk-badge <%= v.risk_class(data["risk"]) %>"><%= v.risk_label(data["risk"]) %></span>
+          </p>
+        </div>
+
+        <div class="columns is-multiline report-cards">
+          <%= for {title, value, detail, risk} <- [
+                {"Contributors", v.show(results["contributor_count"]), "people with commits", results["contributor_risk"]},
+                {"Functional contributors", v.show(results["functional_contributors"]), "carrying their share of commits", results["functional_contributors_risk"]},
+                {"Commit currency", v.show(results["commit_currency_weeks"]), "weeks since the last commit", results["commit_currency_risk"]},
+                {"Large recent commit", v.percent(results["recent_commit_size_in_percent_of_codebase"]), "of the codebase in the latest commit", results["large_recent_commit_risk"]},
+                {"SBOM", "", "whether the project publishes a bill of materials", results["sbom_risk"]},
+                {"Agentic contribution", v.show(results["agentic_classification"]), "#{v.ratio(results["agentic_contribution_ratio"])} of commits by agents", nil}
+              ] do %>
+            <div class="column is-half-tablet is-one-third-desktop">
+              <div class="report-card">
+                <p class="report-card-title"><%= title %></p>
+                <%= if value != "" do %>
+                  <p class="report-card-value"><%= value %></p>
+                <% end %>
+                <p class="report-card-detail"><%= detail %></p>
+                <%= if risk do %>
+                  <span class="risk-badge <%= v.risk_class(risk) %>"><%= v.risk_label(risk) %></span>
+                <% end %>
+              </div>
+            </div>
+          <% end %>
+        </div>
+
+        <h3 class="title is-5 report-section">Repository</h3>
+        <div class="table-container">
+          <table class="table is-fullwidth report-facts">
+            <tbody>
+              <tr><th>Default branch</th><td><code><%= v.branch(git["default_branch"]) %></code></td></tr>
+              <tr><th>Last commit</th><td><%= v.date(git["last_commit_date"]) %></td></tr>
+              <tr><th>Commits on default branch</th><td><%= v.show(git["total_commits_on_default_branch"]) %></td></tr>
+              <tr><th>Files</th><td><%= v.show(files["total_file_count"]) %> (<%= v.show(files["binary_files_count"]) %> binary)</td></tr>
+              <tr><th>README · LICENSE · CONTRIBUTING</th><td><%= v.show(files["has_readme"]) %> · <%= v.show(files["has_license"]) %> · <%= v.show(files["has_contributing"]) %></td></tr>
+              <tr><th>Loose objects</th><td><%= v.loose_objects(data["repo_size"]) %></td></tr>
+            </tbody>
+          </table>
+        </div>
+
+        <h3 class="title is-5 report-section">Top contributors</h3>
+        <%= if (results["top10_contributors"] || []) == [] do %>
+          <p class="report-empty">No contributors recorded.</p>
+        <% else %>
+          <div class="table-container">
+            <table class="table is-fullwidth is-striped report-contributors">
+              <thead>
+                <tr><th>Name</th><th>Commits</th><th>Merges</th><th>Last contribution</th><th>Classification</th></tr>
+              </thead>
+              <tbody>
+                <%= for c <- results["top10_contributors"] do %>
+                  <tr>
+                    <td><%= v.show(c["name"]) %></td>
+                    <td><%= v.show(c["contributions"]) %></td>
+                    <td><%= v.show(c["merges"]) %></td>
+                    <td><%= v.date(c["last_contribution_date"]) %></td>
+                    <td><%= v.show(c["classification"]) %></td>
+                  </tr>
+                <% end %>
+              </tbody>
+            </table>
+          </div>
+        <% end %>
+
+        <details class="report-details">
+          <summary>Scoring thresholds</summary>
+          <div class="table-container">
+            <table class="table is-narrow report-facts">
+              <tbody>
+                <%= for {k, val} <- v.thresholds(data["config"]) do %>
+                  <tr><th><code><%= k %></code></th><td><%= v.show(val) %></td></tr>
+                <% end %>
+              </tbody>
+            </table>
+          </div>
+        </details>
+
+        <details class="report-details report-json">
+          <summary>Full report (JSON)</summary>
+          <pre><%= v.pretty_json(r) %></pre>
+        </details>
+
+        <%# Machine-readable copy: scripts/canary.sh reads the report from here. %>
+        <script type="application/json" id="report-data"><%= Lei.Web.HTML.script_json(r) %></script>
       </div>
     </section>
       <button id="theme-toggle" class="theme-toggle" type="button">Dark mode</button>

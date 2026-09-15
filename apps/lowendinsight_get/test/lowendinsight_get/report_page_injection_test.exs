@@ -143,7 +143,10 @@ defmodule LowendinsightGet.ReportPageInjectionTest do
       assert page.resp_body =~ "\\u003c/script\\u003e\\u003cscript\\u003ealert(1)"
       # Encoded as a JSON string the quote is `\"`; unescaped, it ends one.
       refute page.resp_body =~ ~r/(?<!\\)";alert\(2\)/
-      assert page.resp_body =~ "display_report("
+      # The report page renders the report server-side, escaped, and keeps a
+      # machine-readable copy in a JSON script element.
+      assert page.resp_body =~ ~s(<script type="application/json" id="report-data">)
+      assert page.resp_body =~ "&lt;/script&gt;&lt;script&gt;alert(1)"
     end
   end
 

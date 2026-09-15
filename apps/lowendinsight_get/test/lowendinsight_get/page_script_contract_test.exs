@@ -22,6 +22,13 @@ defmodule LowendinsightGet.PageScriptContractTest do
     "analysis.html.eex" => "priv/templates/analysis.html.eex"
   }
 
+  # Pages that load the script without the analyze form. The trending page's
+  # table is the one display_row fills; the report page lays its report out
+  # server-side instead.
+  @script_only_templates %{
+    "language.html.eex" => "priv/templates/language.html.eex"
+  }
+
   # Ids used by the submit path: the form, its input, the button's loading
   # state and the error message. `repo` is deliberately absent -- it belongs to
   # the results table, which only the report page has.
@@ -41,7 +48,7 @@ defmodule LowendinsightGet.PageScriptContractTest do
   end
 
   defp ids_in(template) do
-    read(@templates[template])
+    read(Map.merge(@templates, @script_only_templates)[template])
     |> then(&Regex.scan(~r/id="([^"]+)"/, &1))
     |> Enum.map(fn [_, id] -> id end)
     |> MapSet.new()
@@ -83,6 +90,7 @@ defmodule LowendinsightGet.PageScriptContractTest do
     # Catches the reverse: a script reaching for something no template provides.
     everywhere =
       @templates
+      |> Map.merge(@script_only_templates)
       |> Map.keys()
       |> Enum.map(&ids_in/1)
       |> Enum.reduce(&MapSet.union/2)

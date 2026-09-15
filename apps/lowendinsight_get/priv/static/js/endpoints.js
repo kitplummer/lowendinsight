@@ -139,39 +139,6 @@ function languages_button_event(){
     });
 }
 
-function view_json_button(json_data, parent){
-    var button_text = "view";
-    
-    var spanbutton = document.createElement("span");
-    var button = document.createElement("Button");
-    if (window.matchMedia('(max-device-width: 768px)').matches) {
-        button.className = "button is-info is-small is-family-code";
-    } else {
-        button.className = "button is-info is-family-code";   
-    }
-    spanbutton.textContent = button_text;
-    spanbutton.style["font-weight"] = "bold";
-    button.appendChild(spanbutton);
-    parent.appendChild(button);
-
-    var div = document.createElement("div");
-    div.className = "box tree";
-    div.style.display = "none";
-    var tree = jsonTree.create(json_data, div);
-    parent.appendChild(div);
-
-    button.addEventListener('click', () => {
-        if (div.style.display == "none") {
-            spanbutton.textContent = "hide";
-            div.style.display = "block";
-        } else {
-            spanbutton.textContent = button_text;
-            tree.collapse();
-            div.style.display = "none";
-        }
-    });
-}
-
 function apply_risk_class(cell, value) {
     var span = document.createElement("span");
     span.textContent = value;
@@ -195,9 +162,6 @@ function apply_risk_class(cell, value) {
     }
     cell.appendChild(span);
 }
-
-// agentic_classification, agentic_contribution_ratio, and restricted_contributors
-// are rendered automatically by view_json_button's JSON tree viewer.
 
 function format_percent(value) {
     if (value === null || value === undefined || value === "") return "N/A";
@@ -305,7 +269,16 @@ function display_row(project, slug, risk, ccount, contributor_risk, fccount, fc_
     text_cell(cells["total_commits"], total_commits);
     text_cell(cells["default_branch"], default_branch);
 
-    view_json_button(json_data, cells["json"]);
+    // The full report is its own page. It was a JSON tree squeezed into this
+    // column, unreadable at any width. The trending run cached the report, so
+    // the page is served from cache.
+    if (href) {
+        var view = document.createElement("a");
+        view.className = "button is-info is-small is-family-code";
+        view.textContent = "view";
+        view.href = "/url=" + encodeURIComponent(href);
+        cells["json"].appendChild(view);
+    }
 }
 
 
