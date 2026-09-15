@@ -49,8 +49,17 @@ defmodule Lei.Web.SessionAuthTest do
 
   test "assigns current_org when session is valid" do
     {:ok, org} = Lei.ApiKeys.find_or_create_org("Session Test Org", status: "active")
+    {:ok, _raw, key} = Lei.ApiKeys.create_api_key(org, "admin", ["admin"])
 
-    conn = build_conn_with_session(%{"org_slug" => org.slug})
+    # A session names the admin key that opened it and when; a slug alone is
+    # refused (Lei.Web.DashboardSecurityTest).
+    conn =
+      build_conn_with_session(%{
+        "org_slug" => org.slug,
+        "api_key_id" => key.id,
+        "signed_in_at" => System.system_time(:second)
+      })
+
     conn = Lei.Web.SessionAuth.call(conn, [])
 
     refute conn.halted

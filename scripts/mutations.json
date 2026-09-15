@@ -1085,8 +1085,8 @@
       "id": "revoke-key-by-id-across-orgs",
       "bug": "Key revocation looks the key up by id alone, so any org's key can be revoked through any slug the caller controls (security, 2026-09-14).",
       "file": "apps/lowendinsight/lib/lei/web/router.ex",
-      "find": "Enum.find(Lei.ApiKeys.list_keys(org), &(to_string(&1.id) == key_id))",
-      "replace": "Lei.Repo.get(Lei.ApiKey, key_id)",
+      "find": "         %Lei.ApiKey{} = key <-\n           Enum.find(Lei.ApiKeys.list_keys(org), &(to_string(&1.id) == key_id)),",
+      "replace": "         %Lei.ApiKey{} = key <-\n           Lei.Repo.get(Lei.ApiKey, key_id),",
       "guarded_by": "test/lowendinsight_get/tenant_isolation_test.exs",
       "app": "apps/lowendinsight_get"
     },
@@ -1250,6 +1250,60 @@
       "find": "{:error, {:payment_failed, decline_code(reason)}}",
       "replace": "{:error, {:payment_failed, if(decline_code(reason), do: reason)}}",
       "guarded_by": "test/lei/acp_credits_test.exs",
+      "app": "apps/lowendinsight"
+    },
+    {
+      "id": "dashboard-revokes-any-key",
+      "bug": "POST /keys/:key_id/revoke revoked whatever key id it was given, from any org (security, 2026-09-14).",
+      "file": "apps/lowendinsight/lib/lei/web/router.ex",
+      "find": "      case Enum.find(Lei.ApiKeys.list_keys(org), &(to_string(&1.id) == key_id)) do",
+      "replace": "      case Lei.Repo.get(Lei.ApiKey, key_id) do",
+      "guarded_by": "test/lei/web/dashboard_security_test.exs",
+      "app": "apps/lowendinsight"
+    },
+    {
+      "id": "dashboard-grants-any-scope",
+      "bug": "POST /keys granted any scope typed into the form, including cache (security, 2026-09-14).",
+      "file": "apps/lowendinsight/lib/lei/web/router.ex",
+      "find": "      with [] <- scopes -- @self_service_scopes,",
+      "replace": "      with [] <- scopes -- scopes,",
+      "guarded_by": "test/lei/web/dashboard_security_test.exs",
+      "app": "apps/lowendinsight"
+    },
+    {
+      "id": "templates-render-unescaped",
+      "bug": "Lei web templates wrote org and key names into the page as markup (security, 2026-09-14).",
+      "file": "apps/lowendinsight/lib/lei/web/html_engine.ex",
+      "find": "  def to_html(binary) when is_binary(binary), do: escape(binary)",
+      "replace": "  def to_html(binary) when is_binary(binary), do: binary",
+      "guarded_by": "test/lei/web/dashboard_security_test.exs",
+      "app": "apps/lowendinsight"
+    },
+    {
+      "id": "session-cookie-without-samesite",
+      "bug": "The session cookie had no SameSite attribute, so another site could submit the dashboard's key forms as a signed-in user (security, 2026-09-14).",
+      "file": "apps/lowendinsight/lib/lei/web/router.ex",
+      "find": "    same_site: \"Lax\",\n",
+      "replace": "",
+      "guarded_by": "test/lei/web/dashboard_security_test.exs",
+      "app": "apps/lowendinsight"
+    },
+    {
+      "id": "session-outlives-revoked-key",
+      "bug": "A dashboard session stayed valid after the admin key that opened it was revoked (security, 2026-09-14).",
+      "file": "apps/lowendinsight/lib/lei/web/session_auth.ex",
+      "find": "%Lei.ApiKey{active: true, org:",
+      "replace": "%Lei.ApiKey{org:",
+      "guarded_by": "test/lei/web/dashboard_security_test.exs",
+      "app": "apps/lowendinsight"
+    },
+    {
+      "id": "session-never-expires",
+      "bug": "A dashboard session never expired; a copied cookie worked indefinitely (security, 2026-09-14).",
+      "file": "apps/lowendinsight/lib/lei/web/session_auth.ex",
+      "find": "         true <- System.system_time(:second) - at < @max_age_seconds,",
+      "replace": "         true <- is_integer(at),",
+      "guarded_by": "test/lei/web/dashboard_security_test.exs",
       "app": "apps/lowendinsight"
     }
   ]
