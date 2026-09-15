@@ -11,6 +11,10 @@ defmodule Lei.Web.Router do
 
   @otp_app :lowendinsight
 
+  # Scopes an org admin may grant. "cache" reaches every customer's reports and
+  # is an operator's to hand out; "admin" here means admin of the same org.
+  @self_service_scopes ["admin", "analyze"]
+
   # Also served standalone on port 4000, so it cannot rely on the endpoint
   # having canonicalised the path. Idempotent when it has.
   plug(Lei.Plugs.CanonicalPath)
@@ -18,10 +22,17 @@ defmodule Lei.Web.Router do
 
   plug(:put_secret_key_base)
 
+  # SameSite=Lax keeps the cookie off cross-site POSTs, so another site cannot
+  # submit the dashboard's forms (create or revoke keys) as a signed-in user.
+  # Lax rather than Strict: Stripe returns the customer to /signup/success with
+  # a top-level cross-site GET, and Strict would drop the pending signup.
   plug(Plug.Session,
     store: :cookie,
     key: "_lei_session",
-    signing_salt: "lei_auth"
+    signing_salt: "lei_auth",
+    http_only: true,
+    same_site: "Lax",
+    secure: Mix.env() == :prod
   )
 
   plug(Plug.Static,
@@ -123,8 +134,7 @@ defmodule Lei.Web.Router do
         {:ok, api_key} ->
           if "admin" in api_key.scopes do
             conn
-            |> fetch_session()
-            |> put_session("org_slug", api_key.org.slug)
+            |> Lei.Web.SessionAuth.sign_in(api_key)
             |> put_resp_header("location", "/dashboard")
             |> send_resp(302, "")
           else
@@ -171,24 +181,26 @@ defmodule Lei.Web.Router do
 
       scopes =
         case conn.body_params["scopes"] do
-          nil -> []
-          "" -> []
-          s -> s |> String.split(",") |> Enum.map(&String.trim/1) |> Enum.filter(&(&1 != ""))
+          s when is_binary(s) ->
+            s |> String.split(",") |> Enum.map(&String.trim/1) |> Enum.filter(&(&1 != ""))
+
+          _ ->
+            []
         end
 
-      case Lei.ApiKeys.create_api_key(org, name, scopes) do
-        {:ok, raw_key, _api_key} ->
-          keys = Lei.ApiKeys.list_keys(org)
-          render_page(conn, "dashboard.html.eex", org: org, keys: keys, new_key: raw_key)
+      # The same rule as POST /v1/orgs/:slug/keys: an org grants itself only
+      # self-service scopes. This form granted whatever was typed into it.
+      with [] <- scopes -- @self_service_scopes,
+           {:ok, raw_key, _api_key} <- Lei.ApiKeys.create_api_key(org, name, scopes) do
+        render_dashboard(conn, org, new_key: raw_key)
+      else
+        refused when is_list(refused) ->
+          render_dashboard(conn, org,
+            flash_error: "Scope #{Enum.join(refused, ", ")} cannot be granted here."
+          )
 
         {:error, _changeset} ->
-          keys = Lei.ApiKeys.list_keys(org)
-
-          render_page(conn, "dashboard.html.eex",
-            org: org,
-            keys: keys,
-            flash_error: "Failed to create key."
-          )
+          render_dashboard(conn, org, flash_error: "Failed to create key.")
       end
     end
   end
@@ -200,9 +212,18 @@ defmodule Lei.Web.Router do
       conn
     else
       org = conn.assigns[:current_org]
-      Lei.ApiKeys.revoke_key(key_id)
-      keys = Lei.ApiKeys.list_keys(org)
-      render_page(conn, "dashboard.html.eex", org: org, keys: keys, flash_info: "Key revoked.")
+
+      # Only a key of the signed-in org. This revoked whatever id it was given.
+      case Enum.find(Lei.ApiKeys.list_keys(org), &(to_string(&1.id) == key_id)) do
+        %Lei.ApiKey{} = key ->
+          {:ok, _} = Lei.ApiKeys.revoke_key(key.id)
+          render_dashboard(conn, org, flash_info: "Key revoked.")
+
+        nil ->
+          conn
+          |> put_status(404)
+          |> render_dashboard(org, flash_error: "Key not found.")
+      end
     end
   end
 
@@ -560,10 +581,6 @@ defmodule Lei.Web.Router do
     end
   end
 
-  # Scopes an org admin may grant. "cache" reaches every customer's reports and
-  # is an operator's to hand out; "admin" here means admin of the same org.
-  @self_service_scopes ["admin", "analyze"]
-
   defp authorize_scopes(conn, scopes) when is_list(scopes) do
     cond do
       conn.assigns[:auth_method] == :jwt -> :ok
@@ -692,20 +709,36 @@ defmodule Lei.Web.Router do
     Map.put(conn, :secret_key_base, secret)
   end
 
+  defp render_dashboard(conn, org, assigns) do
+    render_page(
+      conn,
+      "dashboard.html.eex",
+      [org: org, keys: Lei.ApiKeys.list_keys(org)] ++ assigns
+    )
+  end
+
   defp render_page(conn, template, assigns \\ []) do
     tpl_dir = Path.join(:code.priv_dir(@otp_app) |> to_string(), "templates")
     assigns = Keyword.put(assigns, :conn, conn)
-    inner = EEx.eval_file(Path.join(tpl_dir, template), assigns: Enum.into(assigns, %{}))
-    layout_assigns = Keyword.put(assigns, :inner_content, inner)
+    # Lei.Web.HTMLEngine escapes every <%= %>. Plain EEx escaped nothing, so org
+    # and key names were written into the page as markup.
+    inner =
+      EEx.eval_file(Path.join(tpl_dir, template), [assigns: Enum.into(assigns, %{})],
+        engine: Lei.Web.HTMLEngine
+      )
+
+    layout_assigns = Keyword.put(assigns, :inner_content, Lei.Web.HTML.safe(inner))
 
     body =
-      EEx.eval_file(Path.join(tpl_dir, "layout.html.eex"),
-        assigns: Enum.into(layout_assigns, %{})
+      EEx.eval_file(
+        Path.join(tpl_dir, "layout.html.eex"),
+        [assigns: Enum.into(layout_assigns, %{})],
+        engine: Lei.Web.HTMLEngine
       )
 
     conn
     |> put_resp_content_type("text/html")
-    |> send_resp(200, body)
+    |> send_resp(conn.status || 200, body)
   end
 
   defp validate_batch_request(params) do
