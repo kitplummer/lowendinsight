@@ -24,6 +24,30 @@ defmodule Mix.Tasks.SbomTaskTest do
       assert_received {:mix_shell, :error, [msg]}
       assert msg =~ "Unknown format"
     end
+
+    test "an unknown format is refused before anything is cloned" do
+      # The task analysed first and validated the format afterwards, so this
+      # cloned a repository from GitHub to report a typo -- which is why the
+      # test above timed out at 60s under load.
+      assert {:error, msg} =
+               Mix.Tasks.Lei.Sbom.parse_args([
+                 "https://github.com/kitplummer/xmpp4rails",
+                 "--format",
+                 "invalid_format"
+               ])
+
+      assert msg =~ "Unknown format"
+    end
+
+    test "parse_args accepts the formats the task supports" do
+      assert {:ok, %{url: "u", format: "cyclonedx", output: nil}} =
+               Mix.Tasks.Lei.Sbom.parse_args(["u"])
+
+      assert {:ok, %{format: "spdx"}} = Mix.Tasks.Lei.Sbom.parse_args(["u", "--format", "spdx"])
+      assert {:ok, %{output: "bom.json"}} = Mix.Tasks.Lei.Sbom.parse_args(["u", "-o", "bom.json"])
+      assert {:error, msg} = Mix.Tasks.Lei.Sbom.parse_args([])
+      assert msg =~ "Usage"
+    end
   end
 
   describe "run/1 with local repo (no network)" do
