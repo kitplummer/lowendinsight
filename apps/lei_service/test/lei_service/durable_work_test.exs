@@ -51,14 +51,14 @@ defmodule LeiService.DurableWorkTest do
   end
 
   test "the fire-and-forget sites that remain are only ones whose loss is harmless" do
-    # api_keys touches last_used_at: losing one costs nothing (ADR-004).
-    # The trending trigger is step 6.
+    # api_keys touches last_used_at: losing one costs nothing (ADR-004). The
+    # trending trigger was the other one; step 6 made it queue a job.
     remaining =
       Path.wildcard(Path.join(@service_lib, "**/*.ex"))
       |> Enum.filter(&(File.read!(&1) =~ ~r/Task\.start(_link)?\(/))
       |> Enum.map(&Path.relative_to(&1, @service_lib))
       |> Enum.sort()
 
-    assert remaining == ["lei/api_keys.ex", "lei_service/endpoint.ex"]
+    assert remaining == ["lei/api_keys.ex"]
   end
 end

@@ -52,7 +52,12 @@ config :lei_service, Lei.Repo,
 config :lei_service, Oban,
   repo: LeiService.Repo,
   queues: [
-    analysis: String.to_integer(System.get_env("OBAN_ANALYSIS_CONCURRENCY") || "5")
+    analysis: String.to_integer(System.get_env("OBAN_ANALYSIS_CONCURRENCY") || "5"),
+    # One at a time: a second trending analysis alongside the first is what
+    # exhausted the machine's memory (#158). Lower priority than analysis, so
+    # a large clone never starves a paying request.
+    trending: 1,
+    maintenance: 1
   ]
 
 # --- lowendinsight (library) prod overrides ---

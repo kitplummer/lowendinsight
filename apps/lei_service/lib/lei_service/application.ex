@@ -84,12 +84,8 @@ defmodule LeiService.Application do
           {Task.Supervisor, name: LeiService.AnalysisSupervisor}
         ]
 
-    kids =
-      case Application.get_env(:lei_service, :cache_clean_enable) do
-        true -> kids ++ [LeiService.Scheduler]
-        false -> kids
-      end
-
+    # Scheduled work is Oban cron now (ADR-004); :cache_clean_enable is read by
+    # LeiService.CacheCleanerWorker, not by a supervised scheduler.
     kids
   end
 

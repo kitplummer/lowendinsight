@@ -27,7 +27,7 @@ config :lei_service, LeiService.Repo,
 
 config :lei_service, Oban,
   repo: LeiService.Repo,
-  queues: [analysis: 2]
+  queues: [analysis: 2, trending: 1, maintenance: 1]
 
 # --- lowendinsight (library) dev overrides ---
 

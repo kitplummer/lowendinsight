@@ -143,8 +143,9 @@ if config_env() == :prod do
   config :lei_service, Oban,
     repo: LeiService.Repo,
     queues: [
-      analysis:
-        String.to_integer(System.get_env("OBAN_ANALYSIS_CONCURRENCY") || "5")
+      analysis: String.to_integer(System.get_env("OBAN_ANALYSIS_CONCURRENCY") || "5"),
+      trending: 1,
+      maintenance: 1
     ]
 
   # Redis
@@ -156,27 +157,6 @@ if config_env() == :prod do
   config :lei_service,
     redis_socket_opts:
       if(System.get_env("LEI_REDIS_IPV6", "true") == "true", do: [:inet6], else: [])
-
-  # Scheduler
-  config :lei_service, LeiService.Scheduler,
-    jobs: [
-      {"*/5 * * * *", {LeiService.CacheCleaner, :clean, []}},
-      {
-        # Hourly, never overlapping: each run refreshes only languages not
-        # refreshed in the last day, one at a time, so a restart costs one
-        # language rather than the night (#158).
-        :github_trending,
-        [
-          schedule: "0 * * * *",
-          task: {LeiService.GithubTrending, :refresh_due, []},
-          # Re-enabled after #158: disabled 2026-09-14 when its first run
-          # OOM-killed production. Bounded since by #162 (analysis memory no
-          # longer scales with history) and #163 (rising repositories, 250 MB
-          # cap, 90-minute lock).
-          overlap: false
-        ]
-      }
-    ]
 
   # Stripe + ACP
   config :lei_service,
