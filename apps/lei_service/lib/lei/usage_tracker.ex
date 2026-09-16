@@ -260,16 +260,6 @@ defmodule Lei.UsageTracker do
     Decimal.add(hit_cost, miss_cost)
   end
 
-  @doc """
-  Record usage asynchronously (fire-and-forget), matching the pattern
-  used by Lei.ApiKeys.touch_last_used/1.
-  """
-  def record_usage_async(org_id, api_key_id, cache_hits, cache_misses) do
-    Task.start(fn ->
-      record_usage(org_id, api_key_id, cache_hits, cache_misses)
-    end)
-  end
-
   @doc "Returns the first day of the current month as the billing period start."
   def current_period_start do
     today = Date.utc_today()

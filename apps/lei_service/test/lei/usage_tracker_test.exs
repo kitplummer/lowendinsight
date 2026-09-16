@@ -111,14 +111,4 @@ defmodule Lei.UsageTrackerTest do
       assert UsageTracker.current_period_start() == Date.new!(today.year, today.month, 1)
     end
   end
-
-  describe "record_usage_async/4" do
-    test "fires without blocking", %{org: org, api_key: api_key} do
-      assert {:ok, _pid} = UsageTracker.record_usage_async(org.id, api_key.id, 1, 0)
-      # Give the async task a moment to complete
-      Process.sleep(100)
-      usage = UsageTracker.get_current_usage(org.id)
-      assert usage.cache_hits == 1
-    end
-  end
 end

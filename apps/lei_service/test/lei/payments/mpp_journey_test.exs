@@ -155,7 +155,7 @@ defmodule Lei.Payments.JourneyTest do
                "without an org, not because it paid"
 
       # Deliberately not asserting the balance. Usage is recorded through
-      # record_usage_async, so the debit lands some time after the response --
+      # a task, so the debit landed some time after the response --
       # asserting on it either way races, and both directions of that
       # assertion have now failed here under load. What is synchronous is the
       # purchase, so that is what is checked.
