@@ -187,4 +187,13 @@ config :lei_service,
   },
   rate_limit_windows: %{try_it: 3_600_000}
 
-import_config "#{Mix.env()}.exs"
+# Oban runs no plugins unless configured. Without Lifeline a job that was
+# executing when the node stopped (a deploy) stays `executing` forever and its
+# analysis never finishes; without Pruner finished jobs accumulate. Lifeline
+# rescues by time alone, so rescue_after must exceed the longest real analysis.
+# Environment files add repo and queues; test.exs sets plugins: false.
+config :lei_service, Oban,
+  lifeline: [rescue_after: {60, :minutes}],
+  pruner: [max_age: {7, :days}]
+
+import_config "#{config_env()}.exs"
