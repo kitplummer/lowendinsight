@@ -156,11 +156,21 @@ defmodule Lei.WebhookMonitoringTest do
     test "the table is created on demand, not only at boot" do
       # Plug init/1 runs at compile time in a release, so boot-time setup is
       # absent at runtime. That took down /v1/analyze once (#91).
+      #
+      # The table belongs to the application (LeiService.Application), and the
+      # one recreated below belongs to this test process, which exits. Left
+      # alone, every later test in the run would count into a table that no
+      # longer exists -- Lei.StatsTableOwnerTest failed that way under seed
+      # 536199. So it goes back to its owner afterwards.
+      owner = :ets.info(:lei_webhook_stats, :owner)
       :ets.delete(:lei_webhook_stats)
 
       assert WebhookStats.count(:ok) == 0
       assert :ok = WebhookStats.record(:ok)
       assert WebhookStats.count(:ok) == 1
+
+      if is_pid(owner) and Process.alive?(owner),
+        do: :ets.give_away(:lei_webhook_stats, owner, :returned_by_test)
     end
   end
 end
