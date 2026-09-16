@@ -10,7 +10,7 @@ Supply chain security analysis API for git repositories.
 
 - **URL Analysis**: Analyze single or multiple git repository URLs
 - **SBOM Analysis**: Parse CycloneDX/SPDX SBOMs and analyze all dependencies
-- **GitHub Trending**: Analyze trending repositories across programming languages
+- **GitHub Trending**: parked (#206) -- the endpoints answer, nothing refreshes them
 - **Caching**: Redis-backed cache with configurable TTL
 - **Cache Modes**: `blocking`, `async`, `stale` for flexible cache-miss handling
 - **Air-Gap Support**: Export/import cache for disconnected environments
@@ -138,7 +138,7 @@ Full API documentation: **[docs/API.md](docs/API.md)**
 | `GET` | `/v1/cache/export` | Export cache for air-gapped deployment |
 | `POST` | `/v1/cache/import` | Import pre-warmed cache |
 
-### GitHub Trending
+### GitHub Trending (parked, #206: nothing refreshes these)
 
 | Method | Endpoint | Description |
 |--------|----------|-------------|
