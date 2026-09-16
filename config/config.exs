@@ -203,6 +203,10 @@ config :lei_service,
 config :lei_service, :queue_health, stuck_after_minutes: 90, backlog_after_minutes: 15
 
 config :lei_service, Oban,
+  # A deploy stops the node: wait for a running analysis instead of killing
+  # it. fly.toml's kill_timeout must stay above this, or Fly kills the
+  # machine mid-wait (ADR-004).
+  shutdown_grace_period: 60_000,
   lifeline: [rescue_after: {60, :minutes}],
   pruner: [max_age: {7, :days}]
 
