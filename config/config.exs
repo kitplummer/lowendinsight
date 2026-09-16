@@ -168,11 +168,27 @@ config :lei_service,
     acp_complete: 5,
     payment_challenge: 30,
     payment_settle: 10,
+    # The unauthenticated account routes, per IP, per hour (windows below).
+    # recover is tightest: it answers with a new admin API key, so guesses at
+    # a recovery code are an organisation takeover attempt.
+    signup: 5,
+    login: 10,
+    recover: 5,
     # Fresh analyses through the homepage's Try It form, per IP, per hour
     # (window below). Cached reports are not counted (#152).
     try_it: 10
   },
-  rate_limit_windows: %{try_it: 3_600_000}
+  rate_limit_windows: %{
+    try_it: 3_600_000,
+    signup: 3_600_000,
+    login: 3_600_000,
+    recover: 3_600_000
+  }
+
+# An operator token may be valid for at most this long. Without a ceiling a
+# token minted with a distant exp is the forever-credential that missing
+# expiry checks allowed (security review, 2026-09-14).
+config :lei_service, operator_token_max_lifetime_seconds: 86_400
 
 # Oban runs no plugins unless configured. Without Lifeline a job that was
 # executing when the node stopped (a deploy) stays `executing` forever and its

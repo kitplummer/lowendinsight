@@ -43,7 +43,7 @@ defmodule Lei.AuthTest do
   test "JWT still works" do
     secret = Application.get_env(:lei_service, :jwt_secret, "lei_dev_secret")
     signer = Joken.Signer.create("HS256", secret)
-    {:ok, jwt, _claims} = Joken.generate_and_sign(%{}, %{}, signer)
+    {:ok, jwt, _claims} = Joken.generate_and_sign(%{}, operator_claims(), signer)
 
     conn =
       conn(:post, "/v1/analyze")
@@ -158,5 +158,11 @@ defmodule Lei.AuthTest do
     assert conn3.halted
     body = Poison.decode!(conn3.resp_body)
     assert body["error"] == "rate limit exceeded"
+  end
+
+  # An operator token needs an expiry now: one without it is refused, and one
+  # too far out is too (Lei.OperatorToken).
+  defp operator_claims do
+    %{"exp" => DateTime.utc_now() |> DateTime.add(3600) |> DateTime.to_unix()}
   end
 end

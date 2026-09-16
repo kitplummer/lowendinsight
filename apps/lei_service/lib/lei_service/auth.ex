@@ -32,7 +32,8 @@ defmodule LeiService.Auth do
   end
 
   defp authenticate({conn, "Bearer " <> jwt}) when jwt != "" do
-    case Joken.verify(jwt, signer()) do
+    # Signature and claims; see Lei.OperatorToken.
+    case Lei.OperatorToken.verify(jwt) do
       {:ok, _} ->
         Logger.debug("Valid Token, proceed")
         # Marked explicitly so the scope check can tell a signed operator token

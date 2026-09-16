@@ -3,8 +3,7 @@ defmodule LeiService.AnalysisTest do
   use Plug.Test
 
   @opts LeiService.Endpoint.init([])
-  @token "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJhdWQiOiJKb2tlbiIsImV4cCI6MTY3MDQzNTQ1MSwiaWF0IjoxNjcwNDI4MjUxLCJpc3MiOiJKb2tlbiIsImp0aSI6IjJzbjhyOThiczNiZzNwZWwwZzAwMDA3MiIsIm5iZiI6MTY3MDQyODI1MX0.kQgqr-7lmQtlVeq96hmIIYHEniJq638NQ10VW26kT9k"
-  @headers [{"authorization", "Bearer #{@token}"}]
+  defp headers, do: [{"authorization", "Bearer #{operator_token()}"}]
 
   setup do
     # Use a unique DB prefix per test to avoid collisions
@@ -123,7 +122,7 @@ defmodule LeiService.AnalysisTest do
 
       # POST to start analysis
       conn = conn(:post, "/v1/analyze", %{urls: [url]})
-      conn = Plug.Conn.merge_req_headers(conn, @headers)
+      conn = Plug.Conn.merge_req_headers(conn, headers())
       conn = LeiService.Endpoint.call(conn, @opts)
 
       assert conn.status == 200
@@ -141,7 +140,7 @@ defmodule LeiService.AnalysisTest do
     @tag timeout: 180_000
     test "GET /v1/analyze/:uuid returns 404 for nonexistent job" do
       conn = conn(:get, "/v1/analyze/nonexistent-uuid-12345")
-      conn = Plug.Conn.merge_req_headers(conn, @headers)
+      conn = Plug.Conn.merge_req_headers(conn, headers())
       conn = LeiService.Endpoint.call(conn, @opts)
 
       assert conn.status == 404
@@ -159,7 +158,7 @@ defmodule LeiService.AnalysisTest do
       Redix.command(:redix, ["DEL", key])
 
       conn = conn(:post, "/v1/analyze", %{urls: [url]})
-      conn = Plug.Conn.merge_req_headers(conn, @headers)
+      conn = Plug.Conn.merge_req_headers(conn, headers())
       conn = LeiService.Endpoint.call(conn, @opts)
       assert conn.status == 200
       body1 = Poison.decode!(conn.resp_body)
@@ -169,7 +168,7 @@ defmodule LeiService.AnalysisTest do
 
       # Second run - should hit cache
       conn2 = conn(:post, "/v1/analyze", %{urls: [url]})
-      conn2 = Plug.Conn.merge_req_headers(conn2, @headers)
+      conn2 = Plug.Conn.merge_req_headers(conn2, headers())
       conn2 = LeiService.Endpoint.call(conn2, @opts)
       assert conn2.status == 200
       body2 = Poison.decode!(conn2.resp_body)
@@ -232,14 +231,14 @@ defmodule LeiService.AnalysisTest do
   defp poll_until_complete(uuid, timeout_seconds, elapsed) when elapsed >= timeout_seconds do
     # Final attempt
     conn = conn(:get, "/v1/analyze/#{uuid}")
-    conn = Plug.Conn.merge_req_headers(conn, @headers)
+    conn = Plug.Conn.merge_req_headers(conn, headers())
     conn = LeiService.Endpoint.call(conn, @opts)
     Poison.decode!(conn.resp_body)
   end
 
   defp poll_until_complete(uuid, timeout_seconds, elapsed) do
     conn = conn(:get, "/v1/analyze/#{uuid}")
-    conn = Plug.Conn.merge_req_headers(conn, @headers)
+    conn = Plug.Conn.merge_req_headers(conn, headers())
     conn = LeiService.Endpoint.call(conn, @opts)
     body = Poison.decode!(conn.resp_body)
 
@@ -251,5 +250,19 @@ defmodule LeiService.AnalysisTest do
         :timer.sleep(2000)
         poll_until_complete(uuid, timeout_seconds, elapsed + 2)
     end
+  end
+
+  # Minted per run: this was a literal whose exp was 2022-12-07, accepted
+  # because nothing checked expiry (Lei.OperatorToken).
+  defp operator_token do
+    signer =
+      Joken.Signer.create(
+        "HS256",
+        Application.get_env(:lei_service, :jwt_secret, "lei_dev_secret")
+      )
+
+    claims = %{"exp" => DateTime.utc_now() |> DateTime.add(3600) |> DateTime.to_unix()}
+    {:ok, jwt, _} = Joken.generate_and_sign(%{}, claims, signer)
+    jwt
   end
 end

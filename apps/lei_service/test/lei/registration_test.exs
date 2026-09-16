@@ -21,7 +21,7 @@ defmodule Lei.RegistrationTest do
         Application.get_env(:lei_service, :jwt_secret, "lei_dev_secret")
       )
 
-    {:ok, operator, _} = Joken.generate_and_sign(%{}, %{}, signer)
+    {:ok, operator, _} = Joken.generate_and_sign(%{}, operator_claims(), signer)
 
     %{admin_key: admin_key, org: org, operator: operator}
   end
@@ -174,5 +174,11 @@ defmodule Lei.RegistrationTest do
 
       assert conn.status == 404
     end
+  end
+
+  # An operator token needs an expiry now: one without it is refused, and one
+  # too far out is too (Lei.OperatorToken).
+  defp operator_claims do
+    %{"exp" => DateTime.utc_now() |> DateTime.add(3600) |> DateTime.to_unix()}
   end
 end

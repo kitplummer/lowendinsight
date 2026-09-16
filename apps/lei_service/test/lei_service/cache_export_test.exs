@@ -9,8 +9,7 @@ defmodule LeiService.CacheExportTest do
   alias LeiService.Datastore
 
   @opts LeiService.Endpoint.init([])
-  @token "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJhdWQiOiJKb2tlbiIsImV4cCI6MTY3MDQzNTQ1MSwiaWF0IjoxNjcwNDI4MjUxLCJpc3MiOiJKb2tlbiIsImp0aSI6IjJzbjhyOThiczNiZzNwZWwwZzAwMDA3MiIsIm5iZiI6MTY3MDQyODI1MX0.kQgqr-7lmQtlVeq96hmIIYHEniJq638NQ10VW26kT9k"
-  @headers [{"authorization", "Bearer #{@token}"}]
+  defp headers, do: [{"authorization", "Bearer #{operator_token()}"}]
 
   setup do
     # Clean up test keys
@@ -182,7 +181,7 @@ defmodule LeiService.CacheExportTest do
   describe "Cache endpoint integration" do
     test "GET /v1/cache/stats returns statistics" do
       conn = conn(:get, "/v1/cache/stats")
-      conn = Plug.Conn.merge_req_headers(conn, @headers)
+      conn = Plug.Conn.merge_req_headers(conn, headers())
       conn = LeiService.Endpoint.call(conn, @opts)
 
       assert conn.status == 200
@@ -193,7 +192,7 @@ defmodule LeiService.CacheExportTest do
 
     test "GET /v1/cache/export returns export data" do
       conn = conn(:get, "/v1/cache/export")
-      conn = Plug.Conn.merge_req_headers(conn, @headers)
+      conn = Plug.Conn.merge_req_headers(conn, headers())
       conn = LeiService.Endpoint.call(conn, @opts)
 
       assert conn.status == 200
@@ -212,7 +211,7 @@ defmodule LeiService.CacheExportTest do
       ]
 
       conn = conn(:post, "/v1/cache/import", %{"entries" => entries})
-      conn = Plug.Conn.merge_req_headers(conn, @headers)
+      conn = Plug.Conn.merge_req_headers(conn, headers())
       conn = LeiService.Endpoint.call(conn, @opts)
 
       assert conn.status == 200
@@ -223,7 +222,7 @@ defmodule LeiService.CacheExportTest do
 
     test "POST /v1/cache/import with invalid body returns 422" do
       conn = conn(:post, "/v1/cache/import", %{})
-      conn = Plug.Conn.merge_req_headers(conn, @headers)
+      conn = Plug.Conn.merge_req_headers(conn, headers())
       conn = LeiService.Endpoint.call(conn, @opts)
 
       assert conn.status == 422
@@ -247,7 +246,7 @@ defmodule LeiService.CacheExportTest do
 
       # Export
       conn = conn(:get, "/v1/cache/export")
-      conn = Plug.Conn.merge_req_headers(conn, @headers)
+      conn = Plug.Conn.merge_req_headers(conn, headers())
       conn = LeiService.Endpoint.call(conn, @opts)
       export_json = Poison.decode!(conn.resp_body)
 
@@ -264,7 +263,7 @@ defmodule LeiService.CacheExportTest do
 
       # Import just our entry
       conn = conn(:post, "/v1/cache/import", %{"entries" => [entry]})
-      conn = Plug.Conn.merge_req_headers(conn, @headers)
+      conn = Plug.Conn.merge_req_headers(conn, headers())
       conn = LeiService.Endpoint.call(conn, @opts)
       assert conn.status == 200
 
@@ -273,5 +272,19 @@ defmodule LeiService.CacheExportTest do
       restored_data = Poison.decode!(restored)
       assert restored_data["data"]["risk"] == "low"
     end
+  end
+
+  # Minted per run: this was a literal whose exp was 2022-12-07, accepted
+  # because nothing checked expiry (Lei.OperatorToken).
+  defp operator_token do
+    signer =
+      Joken.Signer.create(
+        "HS256",
+        Application.get_env(:lei_service, :jwt_secret, "lei_dev_secret")
+      )
+
+    claims = %{"exp" => DateTime.utc_now() |> DateTime.add(3600) |> DateTime.to_unix()}
+    {:ok, jwt, _} = Joken.generate_and_sign(%{}, claims, signer)
+    jwt
   end
 end

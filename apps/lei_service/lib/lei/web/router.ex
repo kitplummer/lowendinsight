@@ -40,6 +40,10 @@ defmodule Lei.Web.Router do
     from: {:lei_service, "priv/lei/static"}
   )
 
+  # Before the body is parsed: an attempt that is over the limit is refused
+  # without reading what it sent (Lei.Web.AuthRateLimit).
+  plug(:rate_limit_auth_routes)
+
   plug(Plug.Parsers,
     parsers: [:urlencoded, :json],
     json_decoder: Poison,
@@ -49,6 +53,20 @@ defmodule Lei.Web.Router do
   plug(Lei.Auth)
   plug(:match)
   plug(:dispatch)
+
+  # Signup, login and recovery are unauthenticated by necessity, so a per-IP
+  # limit is the only lever. Recovery answers with a new admin API key, which
+  # is why it is the tightest bucket (security review, 2026-09-14).
+  defp rate_limit_auth_routes(%Plug.Conn{method: "POST"} = conn, _opts) do
+    case conn.path_info do
+      ["signup"] -> Lei.Web.AuthRateLimit.check(conn, :signup)
+      ["login"] -> Lei.Web.AuthRateLimit.check(conn, :login)
+      ["recover"] -> Lei.Web.AuthRateLimit.check(conn, :recover)
+      _ -> conn
+    end
+  end
+
+  defp rate_limit_auth_routes(conn, _opts), do: conn
 
   # --- HTML UI routes ---
 

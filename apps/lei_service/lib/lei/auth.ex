@@ -75,10 +75,9 @@ defmodule Lei.Auth do
   end
 
   defp authenticate({conn, "Bearer " <> jwt}) do
-    secret = Application.get_env(:lei_service, :jwt_secret, "lei_dev_secret")
-    signer = Joken.Signer.create("HS256", secret)
-
-    case Joken.verify(jwt, signer) do
+    # Signature and claims: Joken.verify/2 alone accepted an expired token,
+    # and one minted without exp never expired (Lei.OperatorToken).
+    case Lei.OperatorToken.verify(jwt) do
       {:ok, _} ->
         Logger.debug("Valid JWT, proceed")
         # Marked, as LeiService.Auth marks it. Lei.Payments.Gate serves an

@@ -60,7 +60,7 @@ defmodule Lei.ScopeTest do
   test "JWT auth bypasses scope check" do
     secret = Application.get_env(:lei_service, :jwt_secret, "lei_dev_secret")
     signer = Joken.Signer.create("HS256", secret)
-    {:ok, jwt, _} = Joken.generate_and_sign(%{}, %{}, signer)
+    {:ok, jwt, _} = Joken.generate_and_sign(%{}, operator_claims(), signer)
 
     conn =
       conn(:post, "/v1/analyze/batch")
@@ -69,5 +69,11 @@ defmodule Lei.ScopeTest do
 
     refute conn.status == 403
     refute conn.halted
+  end
+
+  # An operator token needs an expiry now: one without it is refused, and one
+  # too far out is too (Lei.OperatorToken).
+  defp operator_claims do
+    %{"exp" => DateTime.utc_now() |> DateTime.add(3600) |> DateTime.to_unix()}
   end
 end
