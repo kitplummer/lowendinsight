@@ -208,40 +208,9 @@ bold "the other main-page destinations"
 DOC_STATUS=$(curl -s -o /dev/null -w '%{http_code}' --max-time 15 "$BASE_URL/doc")
 [ "$DOC_STATUS" = "200" ] && ok "manual loads" || bad "manual loads" "status ${DOC_STATUS}"
 
-TRENDING=$(curl -s --max-time 60 "$BASE_URL/gh_trending/elixir")
-TRENDING_RC=$?
-
-if [ "$TRENDING_RC" -ne 0 ]; then
-  bad "trending returns" "curl exit ${TRENDING_RC}"
-else
-  ok "trending returns"
-
-  # This check used to grep the page for "github.com" -- and matched the
-  # Source link in the page chrome, so it passed while every trending report
-  # was an empty placeholder (#158). It now reads what the report contains:
-  # one row per analysed repository, each a script element carrying
-  # `data-repo="<url>"`. (Rows used to assign `var project = "<url>"`; that
-  # markup went when report fields stopped being written into script source.)
-  ROWS=$(printf '%s' "$TRENDING" | grep -oE 'data-repo="https?://' | wc -l | tr -d ' ')
-  COMPLETED=$(curl -s --max-time 15 "$BASE_URL/metrics" \
-    | grep 'lei_trending_report_completed{language="elixir"}' | awk '{print $2}' | tr -d '\r')
-
-  if [ "${COMPLETED:-}" = "1" ]; then
-    if [ "${ROWS:-0}" -gt 0 ]; then
-      ok "trending shows analysed repositories (${ROWS})"
-    else
-      bad "trending shows analysed repositories" "a completed report is recorded but the page has no repository rows"
-    fi
-  else
-    # Not failed here in either mode. A deploy can precede the first hourly
-    # refresh, and a rollback over that would never let the fix ship; and
-    # freshness is already the monitor's "Check trending reports are fresh"
-    # step, from lei_trending_report_age_seconds. Said out loud, not passed.
-    echo "  ---- no completed elixir trending report (completed=${COMPLETED:-absent});"
-    echo "       freshness is enforced by the monitor's trending step, not here."
-  fi
-fi
-echo
+# Trending is parked (#206): its pages still answer, but nothing refreshes
+# them, so their content says nothing about this deploy. The freshness and
+# row checks that lived here went with it.
 
 # --- an agent that has never been here --------------------------------------
 
@@ -328,7 +297,6 @@ scan_body() {
 scan_body "home page" "$HOME_BODY"
 scan_body "llms.txt" "$LLMS_BODY"
 scan_body "Try It report" "${REPORT:-}"
-scan_body "trending (elixir)" "${TRENDING:-}"
 scan_body "readyz" "${READYZ:-}"
 
 for path in /gh_trending /doc /openapi.json /metrics /signup /login; do

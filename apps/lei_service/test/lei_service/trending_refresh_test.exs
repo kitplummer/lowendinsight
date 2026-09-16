@@ -409,20 +409,22 @@ defmodule LeiService.TrendingRefreshTest do
   end
 
   describe "the schedule" do
-    test "runs hourly, and one language at a time" do
-      # Quantum's overlap: false is now the trending queue's concurrency of 1:
-      # a language's refresh is its own job, and only one runs (ADR-004).
-      crontab = Application.get_env(:lei_service, Oban)[:cron][:crontab]
+    test "is parked: nothing schedules it (#206)" do
+      # It ran hourly, one language at a time, on its own queue (#158,
+      # ADR-004). Parked 2026-09-16: its upstream ranking has been unavailable
+      # since 2026-03-01, what remained was a GitHub Search proxy, and nothing
+      # showed demand. The refresh code below still works and is still tested;
+      # only the schedule is gone.
+      crontab = Application.get_env(:lei_service, Oban)[:cron][:crontab] || []
+      workers = Enum.map(crontab, fn {_schedule, worker} -> worker end)
 
-      assert {"0 * * * *", LeiService.TrendingScheduleWorker} in crontab,
-             "the trending job is not scheduled"
+      refute LeiService.TrendingScheduleWorker in workers
     end
 
-    test "is enabled (#158)" do
-      # It was disabled after its first production run OOM-killed the service,
-      # and re-enabled once #162 and #163 bounded that. A schedule left out
-      # shows only as a monitor warning, so it is asserted here.
-      assert GithubTrending.metrics() |> Enum.join("\n") =~ "lei_trending_job_active 1"
+    test "the metric says so, rather than reading as a failure (#206)" do
+      # lei_trending_job_active follows the schedule. 0 is the parked state,
+      # which is why the monitor no longer treats it as something to warn on.
+      assert GithubTrending.metrics() |> Enum.join("\n") =~ "lei_trending_job_active 0"
     end
   end
 
@@ -443,13 +445,19 @@ defmodule LeiService.TrendingRefreshTest do
 
       lines = GithubTrending.metrics(later) |> Enum.join("\n")
 
-      # Follows the schedule, both ways.
-      assert lines =~ "lei_trending_job_active 1"
+      # Follows the schedule, both ways. Parked, so 0 is the live value; 1
+      # appears only when something schedules the worker again (#206).
+      assert lines =~ "lei_trending_job_active 0"
 
       oban = Application.get_env(:lei_service, Oban)
-      Application.put_env(:lei_service, Oban, Keyword.put(oban, :cron, crontab: []))
+      cron = Keyword.get(oban, :cron, crontab: [])
+
+      rescheduled =
+        Keyword.put(cron, :crontab, [{"0 * * * *", LeiService.TrendingScheduleWorker}])
+
+      Application.put_env(:lei_service, Oban, Keyword.put(oban, :cron, rescheduled))
       on_exit(fn -> Application.put_env(:lei_service, Oban, oban) end)
-      assert GithubTrending.metrics(later) |> Enum.join("\n") =~ "lei_trending_job_active 0"
+      assert GithubTrending.metrics(later) |> Enum.join("\n") =~ "lei_trending_job_active 1"
       Application.put_env(:lei_service, Oban, oban)
 
       assert lines =~ ~s(lei_trending_report_completed{language="zz-trend-a"} 1)

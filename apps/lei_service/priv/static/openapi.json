@@ -26,7 +26,9 @@
         "summary": "Submit URLs for analysis",
         "description": "Accepts a list of git repository URLs and returns an analysis report. Supports three cache modes: `blocking` (waits for completion), `async` (returns immediately with a job UUID to poll), and `stale` (returns stale cached data if available while refreshing in the background).",
         "operationId": "analyzeUrls",
-        "tags": ["Analysis"],
+        "tags": [
+          "Analysis"
+        ],
         "requestBody": {
           "required": true,
           "content": {
@@ -124,7 +126,9 @@
                     "cache_status": {
                       "hits": 0,
                       "misses": 1,
-                      "per_repo": ["miss"]
+                      "per_repo": [
+                        "miss"
+                      ]
                     }
                   }
                 }
@@ -170,7 +174,9 @@
         "summary": "Fetch analysis result by UUID",
         "description": "Retrieves a previously submitted analysis job. If the job is incomplete, the server attempts to refresh it from cache before returning.",
         "operationId": "getAnalysis",
-        "tags": ["Analysis"],
+        "tags": [
+          "Analysis"
+        ],
         "parameters": [
           {
             "name": "uuid",
@@ -218,7 +224,9 @@
         "summary": "Fetch job by ID",
         "description": "Alias for GET /v1/analyze/:uuid. Retrieves a job by its ID.",
         "operationId": "getJob",
-        "tags": ["Analysis"],
+        "tags": [
+          "Analysis"
+        ],
         "parameters": [
           {
             "name": "id",
@@ -266,7 +274,9 @@
         "summary": "Analyze an SBOM",
         "description": "Accepts a CycloneDX or SPDX JSON SBOM, extracts git repository URLs from it, and runs LowEndInsight analysis on each. Default cache mode is `async`.",
         "operationId": "analyzeSbom",
-        "tags": ["Analysis"],
+        "tags": [
+          "Analysis"
+        ],
         "requestBody": {
           "required": true,
           "content": {
@@ -400,7 +410,9 @@
         "summary": "Export cache",
         "description": "Exports all cached analysis reports as JSON. Intended for creating distributable cache snapshots for air-gapped deployments. Returns the file as a download attachment.",
         "operationId": "exportCache",
-        "tags": ["Cache"],
+        "tags": [
+          "Cache"
+        ],
         "responses": {
           "200": {
             "description": "Cache export as JSON download",
@@ -445,7 +457,9 @@
         "summary": "Import cache",
         "description": "Imports pre-warmed cache entries previously exported via GET /v1/cache/export. Useful for bootstrapping air-gapped deployments with known-good analysis data.",
         "operationId": "importCache",
-        "tags": ["Cache"],
+        "tags": [
+          "Cache"
+        ],
         "requestBody": {
           "required": true,
           "content": {
@@ -512,7 +526,9 @@
         "summary": "Get cache statistics",
         "description": "Returns current cache statistics including total entry count and breakdown by ecosystem (e.g., github, gitlab, bitbucket).",
         "operationId": "cacheStats",
-        "tags": ["Cache"],
+        "tags": [
+          "Cache"
+        ],
         "responses": {
           "200": {
             "description": "Cache statistics",
@@ -542,9 +558,11 @@
     "/gh_trending": {
       "get": {
         "summary": "List configured trending languages",
-        "description": "Returns an HTML page listing all configured programming languages that can be analyzed for GitHub trending repositories. Each language links to its trending analysis report.",
+        "description": "Parked (#206): this endpoint still answers, but nothing refreshes trending reports, so any report it returns is from before 2026-09-16 or empty. Its upstream ranking (OSS Insight) has been unavailable since 2026-03-01. Returns an HTML page listing all configured programming languages that can be analyzed for GitHub trending repositories. Each language links to its trending analysis report.",
         "operationId": "listGhTrendingLanguages",
-        "tags": ["GitHub Trending"],
+        "tags": [
+          "GitHub Trending"
+        ],
         "security": [],
         "responses": {
           "200": {
@@ -557,15 +575,18 @@
               }
             }
           }
-        }
+        },
+        "deprecated": true
       }
     },
     "/gh_trending/{language}": {
       "get": {
         "summary": "Get trending report for a language",
-        "description": "Returns an HTML page displaying the LowEndInsight analysis report for trending GitHub repositories in the specified language. Results come from the most recent analysis run triggered via POST /v1/gh_trending/process. If no analysis has been run yet, an empty report is shown.",
+        "description": "Parked (#206): this endpoint still answers, but nothing refreshes trending reports, so any report it returns is from before 2026-09-16 or empty. Its upstream ranking (OSS Insight) has been unavailable since 2026-03-01. Returns an HTML page displaying the LowEndInsight analysis report for trending GitHub repositories in the specified language. Results come from the most recent analysis run triggered via POST /v1/gh_trending/process. If no analysis has been run yet, an empty report is shown.",
         "operationId": "getGhTrendingByLanguage",
-        "tags": ["GitHub Trending"],
+        "tags": [
+          "GitHub Trending"
+        ],
         "security": [],
         "parameters": [
           {
@@ -600,15 +621,18 @@
               }
             }
           }
-        }
+        },
+        "deprecated": true
       }
     },
     "/v1/gh_trending/process": {
       "post": {
         "summary": "Trigger GitHub trending analysis",
-        "description": "Kicks off a background task to analyze all configured trending languages from GitHub. For each language, fetches the daily trending repositories, optionally filters by repository size, and runs LowEndInsight analysis on the top N repos (configured via LEI_NUM_OF_REPOS, default 10). Results are cached in Redis and viewable via GET /gh_trending/:language. Returns immediately while processing continues in the background. Operator only: requires a JWT signed with the deployment's LEI_JWT_SECRET; API keys are refused with 403.",
+        "description": "Parked (#206): this endpoint still answers, but nothing refreshes trending reports, so any report it returns is from before 2026-09-16 or empty. Its upstream ranking (OSS Insight) has been unavailable since 2026-03-01. Kicks off a background task to analyze all configured trending languages from GitHub. For each language, fetches the daily trending repositories, optionally filters by repository size, and runs LowEndInsight analysis on the top N repos (configured via LEI_NUM_OF_REPOS, default 10). Results are cached in Redis and viewable via GET /gh_trending/:language. Returns immediately while processing continues in the background. Operator only: requires a JWT signed with the deployment's LEI_JWT_SECRET; API keys are refused with 403.",
         "operationId": "processGhTrending",
-        "tags": ["GitHub Trending"],
+        "tags": [
+          "GitHub Trending"
+        ],
         "responses": {
           "200": {
             "description": "Processing started",
@@ -627,7 +651,8 @@
           "403": {
             "description": "Not an operator token"
           }
-        }
+        },
+        "deprecated": true
       }
     }
   },
@@ -661,7 +686,9 @@
     "schemas": {
       "AnalyzeRequest": {
         "type": "object",
-        "required": ["urls"],
+        "required": [
+          "urls"
+        ],
         "properties": {
           "urls": {
             "type": "array",
@@ -670,11 +697,17 @@
               "format": "uri"
             },
             "description": "List of git repository URLs to analyze",
-            "example": ["https://github.com/kitplummer/clikan"]
+            "example": [
+              "https://github.com/kitplummer/clikan"
+            ]
           },
           "cache_mode": {
             "type": "string",
-            "enum": ["blocking", "async", "stale"],
+            "enum": [
+              "blocking",
+              "async",
+              "stale"
+            ],
             "default": "blocking",
             "description": "`blocking` waits for results (up to cache_timeout). `async` returns immediately with a UUID to poll. `stale` returns stale cache if available and refreshes in background."
           },
@@ -687,7 +720,9 @@
       },
       "SbomRequest": {
         "type": "object",
-        "required": ["sbom"],
+        "required": [
+          "sbom"
+        ],
         "properties": {
           "sbom": {
             "type": "object",
@@ -695,7 +730,11 @@
           },
           "cache_mode": {
             "type": "string",
-            "enum": ["blocking", "async", "stale"],
+            "enum": [
+              "blocking",
+              "async",
+              "stale"
+            ],
             "default": "async",
             "description": "Cache mode (defaults to async for SBOMs due to potentially large number of repos)"
           },
@@ -711,7 +750,10 @@
         "properties": {
           "state": {
             "type": "string",
-            "enum": ["complete", "incomplete"],
+            "enum": [
+              "complete",
+              "incomplete"
+            ],
             "description": "Whether all repos have been analyzed"
           },
           "uuid": {
@@ -763,7 +805,12 @@
           },
           "risk": {
             "type": "string",
-            "enum": ["critical", "high", "medium", "low"],
+            "enum": [
+              "critical",
+              "high",
+              "medium",
+              "low"
+            ],
             "description": "Overall risk level for this repo"
           },
           "results": {
@@ -789,7 +836,12 @@
         "properties": {
           "commit_currency_risk": {
             "type": "string",
-            "enum": ["critical", "high", "medium", "low"],
+            "enum": [
+              "critical",
+              "high",
+              "medium",
+              "low"
+            ],
             "description": "Risk based on how recently the repo was committed to"
           },
           "commit_currency_weeks": {
@@ -802,7 +854,12 @@
           },
           "contributor_risk": {
             "type": "string",
-            "enum": ["critical", "high", "medium", "low"],
+            "enum": [
+              "critical",
+              "high",
+              "medium",
+              "low"
+            ],
             "description": "Risk based on contributor count"
           },
           "functional_contributor_names": {
@@ -818,12 +875,22 @@
           },
           "functional_contributors_risk": {
             "type": "string",
-            "enum": ["critical", "high", "medium", "low"],
+            "enum": [
+              "critical",
+              "high",
+              "medium",
+              "low"
+            ],
             "description": "Risk based on concentration of contributions"
           },
           "large_recent_commit_risk": {
             "type": "string",
-            "enum": ["critical", "high", "medium", "low"],
+            "enum": [
+              "critical",
+              "high",
+              "medium",
+              "low"
+            ],
             "description": "Risk based on size of recent commits relative to codebase"
           },
           "recent_commit_size_in_percent_of_codebase": {
@@ -833,7 +900,11 @@
           },
           "agentic_classification": {
             "type": "string",
-            "enum": ["human", "mixed", "agent"],
+            "enum": [
+              "human",
+              "mixed",
+              "agent"
+            ],
             "description": "Repository-level agentic classification based on the ratio of bot/AI commits. 'human' = ratio < 0.3, 'mixed' = ratio >= 0.3 and <= 0.7, 'agent' = ratio > 0.7"
           },
           "agentic_contribution_ratio": {
@@ -976,7 +1047,11 @@
                 "type": "array",
                 "items": {
                   "type": "string",
-                  "enum": ["hit", "miss", "stale"]
+                  "enum": [
+                    "hit",
+                    "miss",
+                    "stale"
+                  ]
                 }
               }
             }
@@ -988,7 +1063,9 @@
         "properties": {
           "state": {
             "type": "string",
-            "enum": ["incomplete"]
+            "enum": [
+              "incomplete"
+            ]
           },
           "uuid": {
             "type": "string",
@@ -1046,7 +1123,9 @@
       },
       "CacheImportRequest": {
         "type": "object",
-        "required": ["entries"],
+        "required": [
+          "entries"
+        ],
         "properties": {
           "entries": {
             "type": "array",

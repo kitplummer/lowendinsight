@@ -16,7 +16,6 @@ defmodule LeiService.CanarySecretScanWiringTest do
           {"home page", "HOME_BODY"},
           {"llms.txt", "LLMS_BODY"},
           {"Try It report", "REPORT"},
-          {"trending (elixir)", "TRENDING"},
           {"readyz", "READYZ"}
         ] do
       assert @canary =~ ~r/scan_body "#{Regex.escape(label)}" "\$\{?#{var}/,

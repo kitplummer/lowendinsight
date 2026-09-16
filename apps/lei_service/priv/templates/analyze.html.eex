@@ -325,7 +325,6 @@ const key = res.headers.get('lei-api-key')   // keep it: it holds your balance</
                   <li><a href="/llms.txt">Guide for agents (llms.txt)</a></li>
                   <li><a href="/doc">Interactive API Docs (Swagger)</a></li>
                   <li><a href="/openapi.json">OpenAPI Spec (JSON)</a></li>
-                  <li><a href="/gh_trending">GitHub Trending Analysis</a></li>
                   <li><a href="https://github.com/kitplummer/lowendinsight">Source Code</a></li>
                 </ul>
               </div>

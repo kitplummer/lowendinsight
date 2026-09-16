@@ -31,13 +31,23 @@ defmodule LeiService.QuantumRemovedTest do
     end
   end
 
-  test "production schedules trending and cache cleaning through Oban cron" do
+  test "production schedules cache cleaning through Oban cron" do
     crontab = production_config()[Oban][:cron][:crontab]
-    assert crontab, "no Oban cron configured: nothing schedules trending or cleaning"
+    assert crontab, "no Oban cron configured: nothing schedules cleaning"
 
     entries = Enum.map(crontab, fn {schedule, worker} -> {schedule, worker} end)
-    assert {"0 * * * *", LeiService.TrendingScheduleWorker} in entries
     assert {"*/5 * * * *", LeiService.CacheCleanerWorker} in entries
+  end
+
+  test "trending is not scheduled: it is parked (#206)" do
+    # The code and its routes remain; nothing refreshes them. Re-adding the
+    # cron entry turns the most expensive thing we ran back on, so it should
+    # be a decision someone makes deliberately, with this test updated.
+    crontab = production_config()[Oban][:cron][:crontab] || []
+    workers = Enum.map(crontab, fn {_schedule, worker} -> worker end)
+
+    refute LeiService.TrendingScheduleWorker in workers,
+           "trending is scheduled again; if that is intended, update this test and #206"
   end
 
   test "trending has its own queue, at one at a time, from both config sources" do

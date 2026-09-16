@@ -202,9 +202,11 @@ config :lei_service, :queue_health, stuck_after_minutes: 90, backlog_after_minut
 config :lei_service, Oban,
   cron: [
     crontab: [
-      # Queues one job per language that is due; each language is its own job
-      # on the trending queue, one at a time (#158).
-      {"0 * * * *", LeiService.TrendingScheduleWorker},
+      # Trending is parked (#206): the code and its routes remain, nothing
+      # schedules it. Its source -- OSS Insight's event-derived ranking -- has
+      # been unavailable since 2026-03-01, what remained was a GitHub Search
+      # proxy, and it was the most expensive thing we ran. Re-add this entry
+      # to turn it back on.
       {"*/5 * * * *", LeiService.CacheCleanerWorker}
     ]
   ],
