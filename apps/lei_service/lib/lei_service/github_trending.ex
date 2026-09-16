@@ -58,6 +58,19 @@ defmodule LeiService.GithubTrending do
     end)
   end
 
+  @doc """
+  The languages that are due a refresh, in configuration order.
+
+  `force: true` returns every language, which is what the operator trigger
+  asks for. Exposed so the scheduling job can queue one job per language
+  (ADR-004 step 6).
+  """
+  def due_languages(opts \\ []) do
+    opts
+    |> Keyword.get_lazy(:languages, fn -> Application.get_env(:lei_service, :languages) end)
+    |> Enum.filter(&(Keyword.get(opts, :force, false) or due?(&1, Keyword.get(opts, :now))))
+  end
+
   @doc "Refreshes every language regardless of age. The manual trigger."
   def process_languages() do
     refresh_due(force: true)
@@ -215,11 +228,19 @@ defmodule LeiService.GithubTrending do
   # Monitoring needs to tell "disabled on purpose" from "enabled and failing":
   # a freshness alert that fires every 15 minutes for a job that is switched off
   # is a permanently red monitor, and a red monitor hides the next real failure.
+  # Monitoring needs to tell "switched off" from "enabled and failing". The
+  # schedule lives in Oban's cron now, so being scheduled is what makes it
+  # active (ADR-004 step 6).
   defp job_active? do
-    case LeiService.Scheduler.find_job(:github_trending) do
-      %{state: :active} -> true
+    :lei_service
+    |> Application.get_env(Oban, [])
+    |> get_in([:cron, :crontab])
+    |> Kernel.||([])
+    |> Enum.any?(fn
+      {_schedule, LeiService.TrendingScheduleWorker} -> true
+      {_schedule, LeiService.TrendingScheduleWorker, _opts} -> true
       _ -> false
-    end
+    end)
   rescue
     _ -> false
   catch

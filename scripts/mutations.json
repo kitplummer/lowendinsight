@@ -930,11 +930,11 @@
     },
     {
       "id": "trending-job-overlaps",
-      "bug": "The hourly trending job may start while the previous run is still cloning. (#158)",
-      "file": "config/config.exs",
-      "find": "          overlap: false",
-      "replace": "          overlap: true",
-      "guarded_by": "test/lei_service/trending_refresh_test.exs",
+      "bug": "A second trending refresh running while the previous one is still cloning is what exhausted production's memory (#158); the trending queue's concurrency of 1 is what prevents it now.",
+      "file": "config/runtime.exs",
+      "find": "      trending: 1,",
+      "replace": "      trending: 2,",
+      "guarded_by": "test/lei_service/quantum_removed_test.exs",
       "app": "apps/lei_service"
     },
     {
@@ -1006,15 +1006,6 @@
       "file": "apps/lei_service/lib/lei_service/github_trending.ex",
       "find": "      {:ok, %{\"data_quality\" => %{\"status\" => \"unavailable\"} = quality}} ->",
       "replace": "      {:ok, %{\"data_quality\" => %{\"status\" => \"never-matches\"} = quality}} ->",
-      "guarded_by": "test/lei_service/trending_refresh_test.exs",
-      "app": "apps/lei_service"
-    },
-    {
-      "id": "trending-job-left-disabled",
-      "bug": "The trending job stays switched off: the pages go stale and monitoring only warns (#158).",
-      "file": "config/config.exs",
-      "find": "          overlap: false\n        ]",
-      "replace": "          overlap: false,\n          state: :inactive\n        ]",
       "guarded_by": "test/lei_service/trending_refresh_test.exs",
       "app": "apps/lei_service"
     },
@@ -1562,8 +1553,8 @@
       "id": "trending-trigger-any-key",
       "bug": "POST /v1/gh_trending/process forced a refresh of every language -- the job that exhausted production's memory -- for any API key (security, 2026-09-15).",
       "file": "apps/lei_service/lib/lei_service/endpoint.ex",
-      "find": "    if conn.assigns[:auth_method] == :jwt do\n      Task.start_link(fn -> LeiService.GithubTrending.process_languages() end)",
-      "replace": "    if conn.assigns[:auth_method] in [:jwt, :api_key] do\n      Task.start_link(fn -> LeiService.GithubTrending.process_languages() end)",
+      "find": "    if conn.assigns[:auth_method] == :jwt do\n      # Queued, not spawned",
+      "replace": "    if conn.assigns[:auth_method] in [:jwt, :api_key] do\n      # Queued, not spawned",
       "guarded_by": "test/lei_service/trending_trigger_auth_test.exs",
       "app": "apps/lei_service"
     },
@@ -1862,6 +1853,69 @@
       "find": "    result =\n      Repo.transaction(fn ->\n        org = lock_org!(org_id)",
       "replace": "    result =\n      (fn ->\n        org = lock_org!(org_id)",
       "guarded_by": "test/lei_service/durable_work_test.exs",
+      "app": "apps/lei_service"
+    },
+    {
+      "id": "trending-not-scheduled",
+      "bug": "With no cron entry the trending refresh never runs: the pages go stale and only a monitor warning shows it (#158, ADR-004 step 6).",
+      "file": "config/config.exs",
+      "find": "      {\"0 * * * *\", LeiService.TrendingScheduleWorker},\n",
+      "replace": "",
+      "guarded_by": "test/lei_service/quantum_removed_test.exs",
+      "app": "apps/lei_service"
+    },
+    {
+      "id": "cache-cleaning-not-scheduled",
+      "bug": "With no cron entry cached reports are never expired and Redis grows until it evicts what is still wanted.",
+      "file": "config/config.exs",
+      "find": "      {\"*/5 * * * *\", LeiService.CacheCleanerWorker}\n",
+      "replace": "",
+      "guarded_by": "test/lei_service/quantum_removed_test.exs",
+      "app": "apps/lei_service"
+    },
+    {
+      "id": "trending-shares-the-analysis-queue",
+      "bug": "Trending on the analysis queue lets a large clone take the slots paying requests need, and more than one trending analysis at a time is what exhausted the machine's memory (#158).",
+      "file": "apps/lei_service/lib/lei_service/trending_refresh_worker.ex",
+      "find": "    queue: :trending,",
+      "replace": "    queue: :analysis,",
+      "guarded_by": "test/lei_service/trending_jobs_test.exs",
+      "app": "apps/lei_service"
+    },
+    {
+      "id": "trending-queue-runs-many",
+      "bug": "A trending queue wider than one runs several languages' clones at once, the state that OOM-killed production (#158).",
+      "file": "config/prod.exs",
+      "find": "    trending: 1,",
+      "replace": "    trending: 4,",
+      "guarded_by": "test/lei_service/quantum_removed_test.exs",
+      "app": "apps/lei_service"
+    },
+    {
+      "id": "trending-schedules-one-job-for-everything",
+      "bug": "One job for the whole run takes 95 minutes, outliving Lifeline's rescue window, so it is rescued and re-run while still running.",
+      "file": "apps/lei_service/lib/lei_service/trending_refresh_worker.ex",
+      "find": "  def timeout(_job), do: :timer.minutes(40)",
+      "replace": "  def timeout(_job), do: :timer.minutes(95)",
+      "guarded_by": "test/lei_service/trending_jobs_test.exs",
+      "app": "apps/lei_service"
+    },
+    {
+      "id": "cache-cleaner-ignores-switch",
+      "bug": "The cleaner running while cache cleaning is switched off deletes reports an operator deliberately kept.",
+      "file": "apps/lei_service/lib/lei_service/cache_cleaner_worker.ex",
+      "find": "    if Application.get_env(:lei_service, :cache_clean_enable) do",
+      "replace": "    if true do",
+      "guarded_by": "test/lei_service/trending_jobs_test.exs",
+      "app": "apps/lei_service"
+    },
+    {
+      "id": "trending-trigger-spawned",
+      "bug": "The operator trigger spawning a task loses the run on a restart and looks identical to one that ran (ADR-004).",
+      "file": "apps/lei_service/lib/lei_service/endpoint.ex",
+      "find": "      {:ok, _job} =\n        %{\"force\" => true} |> LeiService.TrendingScheduleWorker.new() |> Oban.insert()",
+      "replace": "      Task.start_link(fn -> LeiService.GithubTrending.process_languages() end)",
+      "guarded_by": "test/lei_service/quantum_removed_test.exs",
       "app": "apps/lei_service"
     }
   ]

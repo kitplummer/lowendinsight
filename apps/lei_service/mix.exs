@@ -39,7 +39,6 @@ defmodule LeiService.MixProject do
       {:plug_cowboy, "~> 2.7"},
       {:credo, "~> 1.7", only: [:dev, :test], runtime: false},
       {:redix, ">= 0.0.0"},
-      {:quantum, "~> 3.5"},
       {:oban, "~> 2.24"},
       {:ecto_sql, "~> 3.11"},
       {:jason, "~> 1.4"},

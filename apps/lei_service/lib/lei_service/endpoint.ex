@@ -595,7 +595,10 @@ defmodule LeiService.Endpoint do
   # 2026-09-14). An operator token is signed with the deployment's own secret.
   post "/v1/gh_trending/process" do
     if conn.assigns[:auth_method] == :jwt do
-      Task.start_link(fn -> LeiService.GithubTrending.process_languages() end)
+      # Queued, not spawned: a trigger lost to a restart looks identical to one
+      # that ran (ADR-004). The job queues one refresh per language.
+      {:ok, _job} =
+        %{"force" => true} |> LeiService.TrendingScheduleWorker.new() |> Oban.insert()
 
       conn
       |> put_resp_content_type(@content_type)

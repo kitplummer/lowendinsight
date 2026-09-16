@@ -409,20 +409,20 @@ defmodule LeiService.TrendingRefreshTest do
   end
 
   describe "the schedule" do
-    test "runs hourly and never overlaps itself" do
-      job = LeiService.Scheduler.find_job(:github_trending)
+    test "runs hourly, and one language at a time" do
+      # Quantum's overlap: false is now the trending queue's concurrency of 1:
+      # a language's refresh is its own job, and only one runs (ADR-004).
+      crontab = Application.get_env(:lei_service, Oban)[:cron][:crontab]
 
-      assert job, "the trending job is not scheduled"
-      assert job.task == {GithubTrending, :refresh_due, []}
-      assert job.overlap == false
-      assert Crontab.CronExpression.Composer.compose(job.schedule) =~ ~r/^0 \* \* \* \*/
+      assert {"0 * * * *", LeiService.TrendingScheduleWorker} in crontab,
+             "the trending job is not scheduled"
     end
 
     test "is enabled (#158)" do
       # It was disabled after its first production run OOM-killed the service,
-      # and re-enabled once #162 and #163 bounded that. A job left switched off
-      # shows only as a monitor warning, so its state is asserted here.
-      assert LeiService.Scheduler.find_job(:github_trending).state == :active
+      # and re-enabled once #162 and #163 bounded that. A schedule left out
+      # shows only as a monitor warning, so it is asserted here.
+      assert GithubTrending.metrics() |> Enum.join("\n") =~ "lei_trending_job_active 1"
     end
   end
 
@@ -443,12 +443,14 @@ defmodule LeiService.TrendingRefreshTest do
 
       lines = GithubTrending.metrics(later) |> Enum.join("\n")
 
-      # Follows the scheduler, both ways.
+      # Follows the schedule, both ways.
       assert lines =~ "lei_trending_job_active 1"
-      LeiService.Scheduler.deactivate_job(:github_trending)
-      on_exit(fn -> LeiService.Scheduler.activate_job(:github_trending) end)
+
+      oban = Application.get_env(:lei_service, Oban)
+      Application.put_env(:lei_service, Oban, Keyword.put(oban, :cron, crontab: []))
+      on_exit(fn -> Application.put_env(:lei_service, Oban, oban) end)
       assert GithubTrending.metrics(later) |> Enum.join("\n") =~ "lei_trending_job_active 0"
-      LeiService.Scheduler.activate_job(:github_trending)
+      Application.put_env(:lei_service, Oban, oban)
 
       assert lines =~ ~s(lei_trending_report_completed{language="zz-trend-a"} 1)
       assert lines =~ ~s(lei_trending_report_completed{language="zz-trend-b"} 0)

@@ -119,27 +119,8 @@ config :xema, loader: SchemaLoader
 config :redix,
   redis_url: System.get_env("REDIS_URL") || "redis://localhost:6379"
 
-# --- Scheduler ---
-
-config :lei_service, LeiService.Scheduler,
-  jobs: [
-    {"*/5 * * * *", {LeiService.CacheCleaner, :clean, []}},
-    {
-        # Hourly, never overlapping: each run refreshes only languages not
-        # refreshed in the last day, one at a time, so a restart costs one
-        # language rather than the night (#158).
-        :github_trending,
-        [
-          schedule: "0 * * * *",
-          task: {LeiService.GithubTrending, :refresh_due, []},
-          # Re-enabled after #158: disabled 2026-09-14 when its first run
-          # OOM-killed production. Bounded since by #162 (analysis memory no
-          # longer scales with history) and #163 (rising repositories, 250 MB
-          # cap, 90-minute lock).
-          overlap: false
-        ]
-      }
-  ]
+# Scheduled work runs as Oban jobs (ADR-004): a run that does not happen is
+# visible in oban_jobs, and survives the restart that lost a Quantum tick.
 
 # Optional dependency health checks surfaced by Lei.Health on /readyz.
 # Registered here rather than in the library so :lowendinsight keeps no Redis
@@ -203,6 +184,14 @@ config :lei_service,
 config :lei_service, :queue_health, stuck_after_minutes: 90, backlog_after_minutes: 15
 
 config :lei_service, Oban,
+  cron: [
+    crontab: [
+      # Queues one job per language that is due; each language is its own job
+      # on the trending queue, one at a time (#158).
+      {"0 * * * *", LeiService.TrendingScheduleWorker},
+      {"*/5 * * * *", LeiService.CacheCleanerWorker}
+    ]
+  ],
   # A deploy stops the node: wait for a running analysis instead of killing
   # it. fly.toml's kill_timeout must stay above this, or Fly kills the
   # machine mid-wait (ADR-004).
