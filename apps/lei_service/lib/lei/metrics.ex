@@ -70,6 +70,21 @@ defmodule Lei.Metrics do
       #
       # Aggregates only: no org identities, no balances. This endpoint is
       # public.
+      # Money that went back to customers, from the ledger itself, so it
+      # survives a restart. Every rail and kind is listed at zero, so "none
+      # yet" reads differently from "not collected".
+      "# HELP lei_credit_reversals Credits taken back by refunds and disputes, and given back by won disputes",
+      "# TYPE lei_credit_reversals gauge",
+      reversal_metrics(),
+      "",
+      # A refund or dispute Stripe made that matched no credit purchase. Either
+      # it was never a credit purchase (a Pro invoice) or the ledger lookup
+      # missed one; the second is money Stripe returned that the ledger still
+      # counts as spendable.
+      "# HELP lei_stripe_reversal_events_total Refund and dispute events by outcome since boot",
+      "# TYPE lei_stripe_reversal_events_total counter",
+      reversal_event_metrics(),
+      "",
       "# HELP lei_credit_reconciliation Ledger agreement with recorded usage",
       "# TYPE lei_credit_reconciliation gauge",
       reconciliation_metrics(),
@@ -101,6 +116,57 @@ defmodule Lei.Metrics do
       require Logger
       Logger.error("Reconciliation metrics failed: #{inspect(error)}")
       ["lei_credit_reconciliation{measure=\"error\"} 1"]
+  end
+
+  defp reversal_metrics do
+    import Ecto.Query
+
+    totals =
+      from(e in Lei.CreditEntry,
+        where: like(e.reason, "reversal:%") or like(e.reason, "reinstatement:%"),
+        group_by: [e.reason, fragment("?->>'kind'", e.metadata)],
+        select: {e.reason, fragment("?->>'kind'", e.metadata), count(e.id), sum(e.delta)}
+      )
+      |> Lei.Repo.all()
+      |> Map.new(fn {reason, kind, entries, delta} ->
+        [_, rail] = String.split(reason, ":", parts: 2)
+        {{rail, kind || "manual"}, {entries, abs(to_int(delta))}}
+      end)
+
+    defaults =
+      for rail <- Lei.Payments.known_rails(),
+          kind <- ~w(refund dispute reinstatement),
+          into: %{},
+          do: {{rail, kind}, {0, 0}}
+
+    defaults
+    |> Map.merge(totals)
+    |> Enum.sort()
+    |> Enum.flat_map(fn {{rail, kind}, {entries, credits}} ->
+      labels = ~s(rail="#{rail}",kind="#{kind}")
+
+      [
+        ~s(lei_credit_reversals{#{labels},measure="entries"} #{entries}),
+        ~s(lei_credit_reversals{#{labels},measure="credits"} #{credits})
+      ]
+    end)
+  rescue
+    error ->
+      require Logger
+      Logger.error("Reversal metrics failed: #{inspect(error)}")
+      [~s(lei_credit_reversals{measure="error"} 1)]
+  end
+
+  defp to_int(%Decimal{} = d), do: Decimal.to_integer(d)
+  defp to_int(n) when is_integer(n), do: n
+  defp to_int(nil), do: 0
+
+  defp reversal_event_metrics do
+    stats = Lei.ReversalStats.all()
+
+    Enum.map(Lei.ReversalStats.outcomes(), fn outcome ->
+      ~s(lei_stripe_reversal_events_total{result="#{outcome}"} #{Map.get(stats, outcome, 0)})
+    end)
   end
 
   defp webhook_metrics do

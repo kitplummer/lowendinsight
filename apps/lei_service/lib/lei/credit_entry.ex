@@ -24,6 +24,10 @@ defmodule Lei.CreditEntry do
     reversal:mpp
     reversal:x402
     reversal:tempo
+    reinstatement:stripe
+    reinstatement:mpp
+    reinstatement:x402
+    reinstatement:tempo
     adjustment:manual
     expiry
   )

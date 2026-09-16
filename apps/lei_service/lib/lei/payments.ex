@@ -181,6 +181,10 @@ defmodule Lei.Payments do
       metadata:
         settlement_metadata(reversal)
         |> Map.put("reverses", Map.get(reversal, :reverses, ref))
+        # refund or dispute, when the reversal came from a Stripe event
+        # (Lei.Payments.Reversals). /metrics counts by it.
+        |> maybe_put("kind", Map.get(reversal, :kind))
+        |> Map.merge(Map.get(reversal, :extra, %{}))
     )
   end
 

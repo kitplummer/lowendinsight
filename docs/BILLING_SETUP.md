@@ -163,13 +163,31 @@ charged for an account that stays `pending`. Nothing in Stripe will flag this.
 ## 3. Webhook endpoint
 
 Register **`https://lowendinsight.dev/webhooks/stripe`** subscribed to exactly
-these three events, which are the ones `Lei.StripeWebhookHandler` implements:
+these events, which are the ones `Lei.StripeWebhookHandler` implements:
 
 | Event | Effect |
 |---|---|
 | `checkout.session.completed` | Sets org `status: "active"`, stores `stripe_customer_id`, `stripe_subscription_id` and `stripe_metered_subscription_item_id` |
+| `checkout.session.async_payment_succeeded` | The same, for a payment method that settles after the session completes |
 | `customer.subscription.deleted` | Deactivates the org |
 | `invoice.payment_failed` | Marks the org past due |
+| `charge.refunded` | Takes back the refunded share of a credit purchase (#208) |
+| `charge.dispute.funds_withdrawn` | Takes back the disputed share of a credit purchase when Stripe withdraws the funds |
+| `charge.dispute.funds_reinstated` | Gives those credits back when the dispute is won |
+
+**An event the endpoint is not subscribed to is never delivered, and nothing
+reports its absence.** On 2026-09-16 the sandbox endpoint was subscribed to the
+first, third and fourth events only, so refunds made while #208 was being built
+never reached production. After changing the subscription, check it:
+
+```bash
+stripe get /v1/webhook_endpoints | jq -r '.data[] | "\(.url) \(.enabled_events | join(","))"'
+```
+
+A refund or dispute that matches no credit purchase -- a Pro invoice, or a
+purchase the lookup missed -- changes nothing and is counted as
+`lei_stripe_reversal_events_total{result="unmatched"}`. What was reversed is on
+`lei_credit_reversals`, read from the ledger.
 
 `STRIPE_WEBHOOK_SECRET` must be **that endpoint's** signing secret. Each endpoint
 has its own; a secret from a different endpoint fails every signature check.
