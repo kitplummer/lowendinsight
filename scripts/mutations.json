@@ -1742,7 +1742,7 @@
       "id": "queue-health-unregistered",
       "bug": "The queue check exists but nothing calls it, so stuck work still reports healthy.",
       "file": "config/config.exs",
-      "find": "    queue: {LeiService.QueueHealth, :status, []}\\n",
+      "find": "    queue: {LeiService.QueueHealth, :status, []}\n",
       "replace": "",
       "guarded_by": "test/lei_service/queue_health_wiring_test.exs",
       "app": "apps/lei_service"
