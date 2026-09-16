@@ -401,7 +401,7 @@
       "id": "stripe-object-check-not-in-readiness",
       "bug": "The object check runs but is not registered with readiness, so a mismatch is logged and never reaches /readyz or monitoring (#137).",
       "file": "config/config.exs",
-      "find": "    stripe: {Lei.Stripe.ObjectCheck, :status, []}\n",
+      "find": "    stripe: {Lei.Stripe.ObjectCheck, :status, []},\n",
       "replace": "",
       "guarded_by": "test/lei/stripe/object_check_test.exs",
       "app": "apps/lei_service"
@@ -941,8 +941,8 @@
       "id": "trending-metrics-not-exposed",
       "bug": "Trending report completion and age are not on /metrics, so monitoring cannot see the job failing. (#158)",
       "file": "config/config.exs",
-      "find": "  metrics_collectors: [{LeiService.GithubTrending, :metrics, []}]",
-      "replace": "  metrics_collectors: []",
+      "find": "    {LeiService.GithubTrending, :metrics, []},\n",
+      "replace": "",
       "guarded_by": "test/lei_service/trending_refresh_test.exs",
       "app": "apps/lei_service"
     },
