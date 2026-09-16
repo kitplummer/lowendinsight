@@ -2,7 +2,9 @@
 
 app = "lowendinsight"
 kill_signal = "SIGINT"
-kill_timeout = 5
+# Above Oban's shutdown_grace_period (60s), so a deploy drains running
+# analyses instead of killing them. 79 jobs were left executing at 5s.
+kill_timeout = 90
 processes = []
 
 [build]

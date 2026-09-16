@@ -1755,6 +1755,42 @@
       "replace": "config :lei_service, :queue_health, stuck_after_minutes: 30",
       "guarded_by": "test/lei_service/queue_health_wiring_test.exs",
       "app": "apps/lei_service"
+    },
+    {
+      "id": "job-timeout-unbounded",
+      "bug": "A job with no timeout runs forever; Lifeline rescues it after an hour and the retry hangs the same way, which is how analyses were lost rather than failed (ADR-004).",
+      "file": "apps/lei_service/lib/lei_service/analysis_worker.ex",
+      "find": "    :timer.minutes(minutes)",
+      "replace": "    :infinity",
+      "guarded_by": "test/lei_service/job_timeout_test.exs",
+      "app": "apps/lei_service"
+    },
+    {
+      "id": "job-timeout-outlives-rescue",
+      "bug": "A job timeout above Lifeline's rescue_after lets Lifeline re-run work that is still running, duplicating an analysis.",
+      "file": "apps/lei_service/lib/lei_service/analysis_worker.ex",
+      "find": "  @max_minutes 45",
+      "replace": "  @max_minutes 90",
+      "guarded_by": "test/lei_service/job_timeout_test.exs",
+      "app": "apps/lei_service"
+    },
+    {
+      "id": "deploy-kills-running-jobs",
+      "bug": "Fly killed the machine 5 seconds into shutdown, before Oban could finish a running analysis: every deploy stranded in-flight jobs.",
+      "file": "fly.toml",
+      "find": "kill_timeout = 90",
+      "replace": "kill_timeout = 5",
+      "guarded_by": "test/lei_service/job_timeout_test.exs",
+      "app": "apps/lei_service"
+    },
+    {
+      "id": "no-shutdown-grace-period",
+      "bug": "Without a shutdown grace period Oban stops its queues after 15s by default, killing analyses a deploy could have let finish.",
+      "file": "config/config.exs",
+      "find": "  shutdown_grace_period: 60_000,\n",
+      "replace": "",
+      "guarded_by": "test/lei_service/job_timeout_test.exs",
+      "app": "apps/lei_service"
     }
   ]
 }
