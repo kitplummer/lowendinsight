@@ -208,7 +208,10 @@ defmodule Lei.Cache.OCI do
   defp lowendinsight_version do
     case :application.get_key(:lowendinsight, :vsn) do
       {:ok, vsn} -> List.to_string(vsn)
-      _ -> "0.9.0"
+      # Not a version number: a literal here goes stale silently, and an
+      # export stamped with the wrong version is worse than one that says
+      # it does not know.
+      _ -> "unknown"
     end
   end
 end

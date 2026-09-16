@@ -9,7 +9,7 @@ defmodule GithubModule.MixProject do
     [
       app: :lowendinsight,
       description: description(),
-      version: "0.9.1",
+      version: "0.10.0",
       elixir: "~> 1.17",
       start_permanent: Mix.env() == :prod,
       build_path: "../../_build",
@@ -21,7 +21,7 @@ defmodule GithubModule.MixProject do
       name: "LowEndInsight",
       source_url: "https://github.com/kitplummer/lowendinsight",
       docs: [
-        extras: ["../../README.md"]
+        extras: ["../../README.md", "CHANGELOG.md"]
       ],
       test_coverage: [tool: ExCoveralls],
       releases: [
