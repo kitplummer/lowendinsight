@@ -1,9 +1,20 @@
 name: umbrella_ci
 
+# One run per commit. `push` on every branch plus `pull_request` ran the whole
+# suite twice for each PR, on the same commit. A PR branch is verified by
+# `pull_request`, which tests the merge with its base and covers forks.
+# `push` covers what lands on main after a merge, and maintenance releases.
+# A branch with no PR open gets no CI: run scripts/preflight.sh.
 on:
   push:
+    branches: [main, 'release/**']
   pull_request:
-    types: [opened]
+
+# A newer commit on a PR supersedes the run for the older one. Pushes to main
+# and release branches are never cancelled: each of those commits is verified.
+concurrency:
+  group: umbrella_ci-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
   # format and warnings-as-errors, the two preflight stages no other job covers.
