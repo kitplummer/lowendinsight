@@ -287,9 +287,11 @@ Import pre-warmed cache (typically from export).
 
 ---
 
-### GitHub Trending
+### GitHub Trending (parked)
 
-LowEndInsight can analyze trending repositories from GitHub, providing risk analysis for popular projects across programming languages. Trending data is fetched from GitHub's daily trending lists and analyzed in bulk.
+**Parked as of 2026-09-16 (#206).** These endpoints still answer, but **nothing refreshes them**: any report they return predates that date, or is empty once its cache entry expires.
+
+The ranking they were built on -- OSS Insight's event-derived trending -- has been unavailable since 2026-03-01, and no third-party source ranks recent momentum in a way we can consume. The routes and their code remain so a revival is a decision rather than a rebuild; see #206 for what would have to change.
 
 #### `GET /gh_trending`
 

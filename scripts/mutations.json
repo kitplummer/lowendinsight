@@ -929,15 +929,6 @@
       "app": "apps/lei_service"
     },
     {
-      "id": "trending-job-overlaps",
-      "bug": "A second trending refresh running while the previous one is still cloning is what exhausted production's memory (#158); the trending queue's concurrency of 1 is what prevents it now.",
-      "file": "config/runtime.exs",
-      "find": "      trending: 1,",
-      "replace": "      trending: 2,",
-      "guarded_by": "test/lei_service/quantum_removed_test.exs",
-      "app": "apps/lei_service"
-    },
-    {
       "id": "trending-metrics-not-exposed",
       "bug": "Trending report completion and age are not on /metrics, so monitoring cannot see the job failing. (#158)",
       "file": "config/config.exs",
@@ -1856,11 +1847,11 @@
       "app": "apps/lei_service"
     },
     {
-      "id": "trending-not-scheduled",
-      "bug": "With no cron entry the trending refresh never runs: the pages go stale and only a monitor warning shows it (#158, ADR-004 step 6).",
+      "id": "trending-rescheduled-silently",
+      "bug": "Trending is parked (#206): its source has been unavailable since 2026-03-01 and it was the most expensive thing we ran. Scheduling it again without a decision brings back hourly clones of fourteen languages' repositories.",
       "file": "config/config.exs",
-      "find": "      {\"0 * * * *\", LeiService.TrendingScheduleWorker},\n",
-      "replace": "",
+      "find": "      {\"*/5 * * * *\", LeiService.CacheCleanerWorker}\n",
+      "replace": "      {\"*/5 * * * *\", LeiService.CacheCleanerWorker},\n      {\"0 * * * *\", LeiService.TrendingScheduleWorker}\n",
       "guarded_by": "test/lei_service/quantum_removed_test.exs",
       "app": "apps/lei_service"
     },

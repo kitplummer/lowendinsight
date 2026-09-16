@@ -26,6 +26,13 @@ about what "passing" means, the weaker one wins by default and nobody notices.
 on a `--quick` run: those two stages cover the ordering and migration-drift
 bugs that have actually reached production here.
 
+**Do not edit or commit in a tree while preflight is running there.** The
+guards stage applies each mutation to a tracked file and restores it after; a
+commit made during that window captures deliberately broken code, and preflight
+passes because it reads the working tree it restored, not what you committed.
+This shipped `priv_ignored:` into a commit on 2026-09-16 -- the exact key whose
+guard was running at the time. Use a second worktree, or wait.
+
 ## The rules that cannot be mechanised
 
 These are the ones no script enforces, which is why they are written down.

@@ -69,9 +69,6 @@
             <button class="button is-warning">
               <a class="is-family-code" href="/doc"><i class="fas fa-book-open"></i>Manual</a>
             </button>
-            <button class="button is-success">
-              <a class="is-family-code" href="/gh_trending"><i class="fab fa-github"></i>Trending</a>
-            </button>
           </div>
         </div>
       </div>

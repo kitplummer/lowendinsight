@@ -139,12 +139,23 @@ check_seed_sweep() {
   for _ in $(seq 1 "$SEEDS"); do
     local seed=$((RANDOM * RANDOM % 999983 + 1))
     dim "   seed $seed"
-    (cd apps/lowendinsight && MIX_ENV=test mix test --seed "$seed" --exclude network --exclude long >/dev/null 2>&1) \
+    # Kept, not discarded: a sweep that names a seed and nothing else leaves
+    # you re-running it to find out what broke -- and a failure that does not
+    # reproduce (load, timing) takes its evidence with it.
+    local log="/tmp/preflight-seed-$seed.out"
+    (cd apps/lowendinsight && MIX_ENV=test mix test --seed "$seed" --exclude network --exclude long >"$log" 2>&1) \
       || failed="$failed $seed"
   done
 
   if [ -n "$failed" ]; then
     red "   order-dependent failure on seed(s):$failed"
+
+    for seed in $failed; do
+      red "   --- seed $seed (/tmp/preflight-seed-$seed.out)"
+      grep -E "^\s+[0-9]+\) test|Assertion|left:|right:|timed out|\*\* \(" "/tmp/preflight-seed-$seed.out" \
+        | head -12 | sed 's/^/   /'
+    done
+
     red "   reproduce: cd apps/lowendinsight && mix test --seed <seed>"
     return 1
   fi
