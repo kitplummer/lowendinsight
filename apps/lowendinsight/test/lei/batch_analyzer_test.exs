@@ -6,13 +6,25 @@ defmodule Lei.BatchAnalyzerTest do
     :ok
   end
 
+  # The library has no queue, so a caller that wants misses analysed supplies
+  # one (ADR-004). These tests use a scheduler that only hands out ids; what
+  # happens without one is in Lei.BatchSchedulingTest.
+  defp schedule do
+    counter = :counters.new(1, [])
+
+    fn _dep ->
+      :counters.add(counter, 1, 1)
+      {:ok, "job-#{:counters.get(counter, 1)}"}
+    end
+  end
+
   test "analyze returns summary with empty cache (all misses)" do
     deps = [
       %{"ecosystem" => "npm", "package" => "express", "version" => "4.18.2"},
       %{"ecosystem" => "npm", "package" => "lodash", "version" => "4.17.21"}
     ]
 
-    result = Lei.BatchAnalyzer.analyze(deps)
+    result = Lei.BatchAnalyzer.analyze(deps, schedule: schedule())
 
     assert result.summary.total == 2
     assert result.summary.cached == 0
@@ -39,7 +51,7 @@ defmodule Lei.BatchAnalyzerTest do
       %{"ecosystem" => "npm", "package" => "lodash", "version" => "4.17.21"}
     ]
 
-    result = Lei.BatchAnalyzer.analyze(deps)
+    result = Lei.BatchAnalyzer.analyze(deps, schedule: schedule())
 
     assert result.summary.total == 2
     assert result.summary.cached == 2
@@ -57,7 +69,7 @@ defmodule Lei.BatchAnalyzerTest do
       %{"ecosystem" => "npm", "package" => "lodash", "version" => "4.17.21"}
     ]
 
-    result = Lei.BatchAnalyzer.analyze(deps)
+    result = Lei.BatchAnalyzer.analyze(deps, schedule: schedule())
 
     assert result.summary.total == 2
     assert result.summary.cached == 1
@@ -76,7 +88,7 @@ defmodule Lei.BatchAnalyzerTest do
       end
 
     start = System.monotonic_time(:millisecond)
-    result = Lei.BatchAnalyzer.analyze(deps)
+    result = Lei.BatchAnalyzer.analyze(deps, schedule: schedule())
     elapsed = System.monotonic_time(:millisecond) - start
 
     assert result.summary.cached == 50
@@ -89,7 +101,7 @@ defmodule Lei.BatchAnalyzerTest do
       %{"ecosystem" => "crates", "package" => "tokio", "version" => "1.32.0"}
     ]
 
-    result = Lei.BatchAnalyzer.analyze(deps)
+    result = Lei.BatchAnalyzer.analyze(deps, schedule: schedule())
 
     assert result.summary.total == 2
     assert result.summary.cached == 0
@@ -107,7 +119,7 @@ defmodule Lei.BatchAnalyzerTest do
       %{"ecosystem" => "crates", "package" => "serde", "version" => "1.0.188"}
     ]
 
-    result = Lei.BatchAnalyzer.analyze(deps)
+    result = Lei.BatchAnalyzer.analyze(deps, schedule: schedule())
 
     assert result.summary.total == 1
     assert result.summary.cached == 1
@@ -125,7 +137,7 @@ defmodule Lei.BatchAnalyzerTest do
       %{"ecosystem" => "crates", "package" => "tokio", "version" => "1.32.0"}
     ]
 
-    result = Lei.BatchAnalyzer.analyze(deps)
+    result = Lei.BatchAnalyzer.analyze(deps, schedule: schedule())
 
     assert result.summary.total == 3
     assert result.summary.cached == 2
@@ -147,7 +159,7 @@ defmodule Lei.BatchAnalyzerTest do
     Lei.BatchCache.put("npm", "pkg-atom-risk", "1.0.0", %{risk: "high"})
 
     deps = [%{"ecosystem" => "npm", "package" => "pkg-atom-risk", "version" => "1.0.0"}]
-    result = Lei.BatchAnalyzer.analyze(deps)
+    result = Lei.BatchAnalyzer.analyze(deps, schedule: schedule())
 
     cached_result = Enum.find(result.results, &(&1.status == "cached"))
     assert cached_result.risk == "high"
@@ -157,7 +169,7 @@ defmodule Lei.BatchAnalyzerTest do
     Lei.BatchCache.put("npm", "pkg-str-risk", "1.0.0", %{"risk" => "medium"})
 
     deps = [%{"ecosystem" => "npm", "package" => "pkg-str-risk", "version" => "1.0.0"}]
-    result = Lei.BatchAnalyzer.analyze(deps)
+    result = Lei.BatchAnalyzer.analyze(deps, schedule: schedule())
 
     cached_result = Enum.find(result.results, &(&1.status == "cached"))
     assert cached_result.risk == "medium"
@@ -167,7 +179,7 @@ defmodule Lei.BatchAnalyzerTest do
     Lei.BatchCache.put("npm", "pkg-nested", "1.0.0", %{data: %{risk: "critical"}})
 
     deps = [%{"ecosystem" => "npm", "package" => "pkg-nested", "version" => "1.0.0"}]
-    result = Lei.BatchAnalyzer.analyze(deps)
+    result = Lei.BatchAnalyzer.analyze(deps, schedule: schedule())
 
     cached_result = Enum.find(result.results, &(&1.status == "cached"))
     assert cached_result.risk == "critical"
@@ -177,7 +189,7 @@ defmodule Lei.BatchAnalyzerTest do
     Lei.BatchCache.put("npm", "pkg-nested-str", "1.0.0", %{"data" => %{"risk" => "low"}})
 
     deps = [%{"ecosystem" => "npm", "package" => "pkg-nested-str", "version" => "1.0.0"}]
-    result = Lei.BatchAnalyzer.analyze(deps)
+    result = Lei.BatchAnalyzer.analyze(deps, schedule: schedule())
 
     cached_result = Enum.find(result.results, &(&1.status == "cached"))
     assert cached_result.risk == "low"
@@ -187,7 +199,7 @@ defmodule Lei.BatchAnalyzerTest do
     Lei.BatchCache.put("npm", "pkg-no-risk", "1.0.0", %{something_else: "value"})
 
     deps = [%{"ecosystem" => "npm", "package" => "pkg-no-risk", "version" => "1.0.0"}]
-    result = Lei.BatchAnalyzer.analyze(deps)
+    result = Lei.BatchAnalyzer.analyze(deps, schedule: schedule())
 
     cached_result = Enum.find(result.results, &(&1.status == "cached"))
     assert cached_result.risk == "unknown"
@@ -198,7 +210,7 @@ defmodule Lei.BatchAnalyzerTest do
     Lei.BatchCache.put("npm", "pkg-non-map", "1.0.0", "just a string")
 
     deps = [%{"ecosystem" => "npm", "package" => "pkg-non-map", "version" => "1.0.0"}]
-    result = Lei.BatchAnalyzer.analyze(deps)
+    result = Lei.BatchAnalyzer.analyze(deps, schedule: schedule())
 
     cached_result = Enum.find(result.results, &(&1.status == "cached"))
     assert cached_result.risk == "unknown"
@@ -217,7 +229,7 @@ defmodule Lei.BatchAnalyzerTest do
       %{"ecosystem" => "npm", "package" => "critical1", "version" => "1.0.0"}
     ]
 
-    result = Lei.BatchAnalyzer.analyze(deps)
+    result = Lei.BatchAnalyzer.analyze(deps, schedule: schedule())
 
     assert result.summary.risk_breakdown["low"] == 2
     assert result.summary.risk_breakdown["high"] == 1
@@ -229,19 +241,18 @@ defmodule Lei.BatchAnalyzerTest do
     Lei.BatchCache.put("npm", "exotic-risk", "1.0.0", %{risk: "exotic"})
 
     deps = [%{"ecosystem" => "npm", "package" => "exotic-risk", "version" => "1.0.0"}]
-    result = Lei.BatchAnalyzer.analyze(deps)
+    result = Lei.BatchAnalyzer.analyze(deps, schedule: schedule())
 
     assert result.summary.risk_breakdown["exotic"] == 1
     assert result.summary.risk_breakdown["low"] == 0
   end
 
-  test "pending results include job_id" do
+  test "pending results carry the id the scheduler returned" do
     deps = [%{"ecosystem" => "npm", "package" => "new-pkg", "version" => "1.0.0"}]
-    result = Lei.BatchAnalyzer.analyze(deps)
+    result = Lei.BatchAnalyzer.analyze(deps, schedule: fn _dep -> {:ok, "oban-7"} end)
 
     pending = Enum.find(result.results, &(&1.status == "pending"))
     assert pending != nil
-    assert pending.job_id != nil
-    assert String.starts_with?(pending.job_id, "job-")
+    assert pending.job_id == "oban-7"
   end
 end

@@ -1791,6 +1791,42 @@
       "replace": "",
       "guarded_by": "test/lei_service/job_timeout_test.exs",
       "app": "apps/lei_service"
+    },
+    {
+      "id": "batch-misses-not-queued",
+      "bug": "The batch endpoint charged for cache misses and queued nothing: the caller got a job id naming no work, and the analysis never ran (ADR-004 step 4).",
+      "file": "apps/lei_service/lib/lei/web/router.ex",
+      "find": "[schedule: &enqueue_dependency/1] ++ opts",
+      "replace": "opts",
+      "guarded_by": "test/lei_service/batch_enqueue_test.exs",
+      "app": "apps/lei_service"
+    },
+    {
+      "id": "batch-pending-without-a-queue",
+      "bug": "Reporting a miss as pending with an invented job id, when nothing was queued, is what hid the missing work for months.",
+      "file": "apps/lowendinsight/lib/lei/batch_analyzer.ex",
+      "find": "  defp process_misses(misses, nil), do: {[], misses, []}",
+      "replace": "  defp process_misses(misses, nil), do: {Enum.map(misses, &{&1, \"job-pending\"}), [], []}",
+      "guarded_by": "test/lei/batch_scheduling_test.exs",
+      "app": "apps/lowendinsight"
+    },
+    {
+      "id": "batch-fresh-serves-cache",
+      "bug": "cache_mode 'fresh' answered from cache anyway, so a caller asking for a re-analysis got the old report and was priced as a cache hit.",
+      "file": "apps/lowendinsight/lib/lei/batch_analyzer.ex",
+      "find": "  defp partition_by_cache(dependencies, \"fresh\"), do: {[], dependencies}",
+      "replace": "  defp partition_by_cache(dependencies, \"fresh\"), do: partition_by_cache(dependencies, \"stale\")",
+      "guarded_by": "test/lei/batch_scheduling_test.exs",
+      "app": "apps/lowendinsight"
+    },
+    {
+      "id": "batch-dependency-retries-unfixable",
+      "bug": "A package with no repository retried until max_attempts, holding a worker and delaying real work, instead of being cancelled.",
+      "file": "apps/lei_service/lib/lei_service/batch_dependency_worker.ex",
+      "find": "      {:error, reason} when reason in [:no_repository, :not_found] ->\n        {:cancel,",
+      "replace": "      {:error, reason} when reason in [:no_repository, :not_found] ->\n        {:error,",
+      "guarded_by": "test/lei_service/batch_dependency_worker_test.exs",
+      "app": "apps/lei_service"
     }
   ]
 }

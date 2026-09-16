@@ -343,7 +343,7 @@ defmodule Lei.Web.Router do
         # are sent by the gate, with payment challenges where one applies. It
         # was called with no price, so a batch of any size was admitted to an
         # org that could afford one analysis.
-        {hits, misses} = Lei.BatchAnalyzer.cache_split(dependencies)
+        {hits, misses} = Lei.BatchAnalyzer.cache_split(dependencies, opts)
 
         admission = [
           required_credits: Lei.Credits.cost_in_credits(hits, misses),
@@ -357,7 +357,10 @@ defmodule Lei.Web.Router do
           # Charged at admission for the split priced above, which is what the
           # billing block reports.
           {:ok, conn, {_org_id, _api_key_id, tier}} ->
-            result = Lei.BatchAnalyzer.analyze(dependencies, opts)
+            # The library has no queue: it schedules through this (ADR-004).
+            result =
+              Lei.BatchAnalyzer.analyze(dependencies, [schedule: &enqueue_dependency/1] ++ opts)
+
             cost = Lei.UsageTracker.calculate_cost(hits, misses)
 
             enriched =
@@ -790,6 +793,30 @@ defmodule Lei.Web.Router do
         ]
 
         {:ok, dependencies, opts}
+    end
+  end
+
+  # One job per uncached dependency, returning the job's own id so a caller
+  # can poll work that exists. Oban's uniqueness means a dependency already
+  # queued in the last 15 minutes returns that job rather than a second one.
+  defp enqueue_dependency(dep) do
+    %{
+      "ecosystem" => dep["ecosystem"],
+      "package" => dep["package"],
+      "version" => dep["version"]
+    }
+    |> LeiService.BatchDependencyWorker.new()
+    |> Oban.insert()
+    |> case do
+      {:ok, job} ->
+        {:ok, to_string(job.id)}
+
+      {:error, reason} ->
+        Logger.error(
+          "batch: could not queue #{dep["ecosystem"]}/#{dep["package"]}: #{inspect(reason)}"
+        )
+
+        {:error, :not_queued}
     end
   end
 
