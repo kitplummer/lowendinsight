@@ -1827,6 +1827,42 @@
       "replace": "      {:error, reason} when reason in [:no_repository, :not_found] ->\n        {:error,",
       "guarded_by": "test/lei_service/batch_dependency_worker_test.exs",
       "app": "apps/lei_service"
+    },
+    {
+      "id": "usage-recorded-fire-and-forget",
+      "bug": "Usage recorded in an unsupervised task is lost when the node stops: an analysis delivered and never billed, with nothing to notice (ADR-004 step 5).",
+      "file": "apps/lei_service/lib/lei/usage_tracker.ex",
+      "find": "  def record_usage(org_id, api_key_id, cache_hits, cache_misses) do",
+      "replace": "  def record_usage_async(org_id, api_key_id, cache_hits, cache_misses) do\n    Task.start(fn -> record_usage(org_id, api_key_id, cache_hits, cache_misses) end)\n  end\n\n  def record_usage(org_id, api_key_id, cache_hits, cache_misses) do",
+      "guarded_by": "test/lei_service/durable_work_test.exs",
+      "app": "apps/lei_service"
+    },
+    {
+      "id": "refresh-spawned-not-queued",
+      "bug": "A cached report's background refresh spawned in a task is lost on restart, so the cache keeps serving a stale report and nothing reports it.",
+      "file": "apps/lei_service/lib/lei_service/analysis.ex",
+      "find": "      LeiService.AnalysisSupervisor.enqueue(uuid, urls, start_time)",
+      "replace": "      Task.start(fn -> LeiService.AnalysisSupervisor.enqueue(uuid, urls, start_time) end)",
+      "guarded_by": "test/lei_service/durable_work_test.exs",
+      "app": "apps/lei_service"
+    },
+    {
+      "id": "refresh-waits-for-analysis",
+      "bug": "Refreshing through perform_analysis/3 runs the analysis inline wherever workers are disabled, blocking a response that was already answered from cache.",
+      "file": "apps/lei_service/lib/lei_service/analysis.ex",
+      "find": "      LeiService.AnalysisSupervisor.enqueue(uuid, urls, start_time)\n",
+      "replace": "      LeiService.AnalysisSupervisor.perform_analysis(uuid, urls, start_time)\n",
+      "guarded_by": "test/lei_service/durable_work_test.exs",
+      "app": "apps/lei_service"
+    },
+    {
+      "id": "admission-usage-outside-transaction",
+      "bug": "Writing the usage row outside the admitting transaction lets a request be admitted and the usage never recorded, which is the gap reconciliation exists to catch rather than to create.",
+      "file": "apps/lei_service/lib/lei/usage_tracker.ex",
+      "find": "    result =\n      Repo.transaction(fn ->\n        org = lock_org!(org_id)",
+      "replace": "    result =\n      (fn ->\n        org = lock_org!(org_id)",
+      "guarded_by": "test/lei_service/durable_work_test.exs",
+      "app": "apps/lei_service"
     }
   ]
 }

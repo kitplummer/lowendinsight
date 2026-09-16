@@ -328,10 +328,10 @@ defmodule LeiService.Analysis do
 
       LeiService.Datastore.write_job(uuid, report)
 
-      # Trigger background refresh
-      Task.start(fn ->
-        LeiService.AnalysisSupervisor.perform_analysis(uuid, urls, start_time)
-      end)
+      # Queue the refresh rather than spawning it, so a restart between this
+      # response and the refresh does not lose it (ADR-004). enqueue/3 never
+      # waits for the analysis.
+      LeiService.AnalysisSupervisor.enqueue(uuid, urls, start_time)
 
       {:ok, Poison.encode!(report)}
     else

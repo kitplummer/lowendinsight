@@ -32,6 +32,54 @@ defmodule Lowendinsight.DeclaredDependenciesTest do
              end)
   end
 
+  test "the compiled application list matches mix.exs, so a stale build fails here" do
+    # Application.spec/2 reads the compiled .app. If mix.exs changed and the
+    # app was not rebuilt -- which happens when an earlier step of a run
+    # failed -- the test above compares against the old dependency list and
+    # passes while the bug it guards is present. Comparing the two sources
+    # makes that state a failure.
+    declared =
+      Mix.Project.config()[:deps]
+      |> Enum.map(fn
+        {name, req} when is_binary(req) -> {name, []}
+        {name, opts} when is_list(opts) -> {name, opts}
+        {name, _req, opts} -> {name, opts}
+      end)
+      # A dep with `only:` is started in the environments it names, and this
+      # runs in :test, so it counts there.
+      |> Enum.reject(fn {_name, opts} ->
+        only = opts |> Keyword.get(:only, Mix.env()) |> List.wrap()
+        Keyword.get(opts, :runtime) == false or Mix.env() not in only
+      end)
+      |> Enum.map(&elem(&1, 0))
+      |> MapSet.new()
+
+    started = MapSet.new(Application.spec(:lowendinsight, :applications))
+
+    assert MapSet.size(declared) > 0, "no runtime dependencies read from mix.exs"
+
+    stale = MapSet.difference(MapSet.intersection(started, known_dep_names()), declared)
+
+    assert MapSet.equal?(stale, MapSet.new()),
+           "the compiled application list has #{inspect(MapSet.to_list(stale))}, " <>
+             "which mix.exs no longer declares: the build is stale, so the checks " <>
+             "above are comparing against an old dependency list"
+
+    missing = MapSet.difference(declared, started)
+
+    assert MapSet.equal?(missing, MapSet.new()),
+           "mix.exs declares #{inspect(MapSet.to_list(missing))} but the compiled " <>
+             "application does not start them"
+  end
+
+  # Every dependency name Mix knows about, so the comparison above ignores OTP
+  # and Elixir applications listed through extra_applications.
+  defp known_dep_names do
+    Mix.Dep.cached()
+    |> Enum.map(& &1.app)
+    |> MapSet.new()
+  end
+
   test "the library does not start any service application" do
     applications = Application.spec(:lowendinsight, :applications)
     assert applications != []

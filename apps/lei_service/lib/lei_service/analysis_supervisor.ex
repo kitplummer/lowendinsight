@@ -53,4 +53,27 @@ defmodule LeiService.AnalysisSupervisor do
 
     {:ok, "collected analysis for cached repos, queued work for new repos - on job: #{uuid}"}
   end
+
+  @doc """
+  Queue an analysis without waiting for it.
+
+  `perform_analysis/3` runs the work inline when workers are disabled, which
+  is right for a request that must answer with a result. A background refresh
+  of an already-answered request must not block it, and must survive a
+  restart, so it is always a job (ADR-004).
+  """
+  def enqueue(uuid, urls, start_time) do
+    %{uuid: uuid, urls: urls, start_time: DateTime.to_iso8601(start_time)}
+    |> LeiService.AnalysisWorker.new()
+    |> Oban.insert()
+    |> case do
+      {:ok, job} ->
+        Logger.debug("queued refresh for #{uuid} as job #{job.id}")
+        {:ok, job}
+
+      {:error, reason} ->
+        Logger.error("could not queue refresh for #{uuid}: #{inspect(reason)}")
+        {:error, reason}
+    end
+  end
 end
