@@ -2016,6 +2016,42 @@
       "replace": "      false ->",
       "guarded_by": "test/mix_sbom_task_test.exs",
       "app": "apps/lowendinsight"
+    },
+    {
+      "id": "recovery-code-read-then-write",
+      "bug": "Recovery checked used == false with a read and marked it used with a later write, so two requests presenting the same code both minted an admin key and both rotated the code (security review, 2026-09-14).",
+      "file": "apps/lei_service/lib/lei/api_keys.ex",
+      "find": "    if count == 1, do: :ok, else: :error",
+      "replace": "    if count >= 0, do: :ok, else: :error",
+      "guarded_by": "test/lei/low_severity_hardening_test.exs",
+      "app": "apps/lei_service"
+    },
+    {
+      "id": "recovery-not-atomic",
+      "bug": "Spending the code outside the transaction that issues the key lets a failure consume a recovery code without issuing its replacement, locking the org out.",
+      "file": "apps/lei_service/lib/lei/api_keys.ex",
+      "find": "        Repo.transaction(fn ->\n          case consume_recovery_code(org.id, code_hash) do",
+      "replace": "        (fn ->\n          case consume_recovery_code(org.id, code_hash) do",
+      "guarded_by": "test/lei/low_severity_hardening_test.exs",
+      "app": "apps/lei_service"
+    },
+    {
+      "id": "rate-limit-key-unnamespaced",
+      "bug": "Every bucket shares one table; an unnamespaced key can collide with another bucket's and silently consume someone else's allowance (security review, 2026-09-14).",
+      "file": "apps/lei_service/lib/lei/rate_limiter.ex",
+      "find": "    unless Regex.match?(~r/^[a-z_]+:/, key) do",
+      "replace": "    unless true do",
+      "guarded_by": "test/lei/low_severity_hardening_test.exs",
+      "app": "apps/lei_service"
+    },
+    {
+      "id": "api-key-bucket-unnamespaced",
+      "bug": "The API key bucket used the bare key prefix, the one caller in the service that was not namespaced.",
+      "file": "apps/lei_service/lib/lei/auth.ex",
+      "find": "Lei.RateLimiter.check(\"api:#{api_key.key_prefix}\", tier)",
+      "replace": "Lei.RateLimiter.check(api_key.key_prefix, tier)",
+      "guarded_by": "test/lei/low_severity_hardening_test.exs",
+      "app": "apps/lei_service"
     }
   ]
 }

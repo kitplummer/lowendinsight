@@ -129,7 +129,7 @@ defmodule Lei.Auth do
       api_key = conn.assigns[:current_api_key]
       tier = api_key.org.tier
 
-      case Lei.RateLimiter.check(api_key.key_prefix, tier) do
+      case Lei.RateLimiter.check("api:#{api_key.key_prefix}", tier) do
         {:ok, remaining} ->
           conn
           |> put_resp_header("x-ratelimit-remaining", to_string(remaining))

@@ -155,26 +155,45 @@ defmodule Lei.ApiKeys do
   def recover_with_code(slug, raw_code) do
     code_hash = hash_key(raw_code)
 
-    with %Org{} = org <- Repo.get_by(Org, slug: slug),
-         %RecoveryCode{} = rc <-
-           Repo.one(
-             from(r in RecoveryCode,
-               where: r.code_hash == ^code_hash and r.org_id == ^org.id and r.used == false
-             )
-           ) do
-      # Mark old code as used
-      rc |> Ecto.Changeset.change(%{used: true}) |> Repo.update!()
+    case Repo.get_by(Org, slug: slug) do
+      nil ->
+        {:error, :invalid_recovery}
 
-      # Create new admin key
-      {:ok, raw_key, _api_key} = create_api_key(org, "recovered-admin", ["admin", "analyze"])
+      %Org{} = org ->
+        # The code is spent by the update itself, not by a read followed by a
+        # write: two requests presenting the same code both passed the
+        # `used == false` read and both minted an admin key and rotated the
+        # code (security review, 2026-09-14). Only the request whose UPDATE
+        # matched a row goes on, and the key and the rotation commit with it,
+        # so a failure cannot spend a code without issuing its replacement.
+        Repo.transaction(fn ->
+          case consume_recovery_code(org.id, code_hash) do
+            :ok ->
+              {:ok, raw_key, _api_key} =
+                create_api_key(org, "recovered-admin", ["admin", "analyze"])
 
-      # Generate new recovery code (rotation)
-      {:ok, new_recovery_code} = generate_recovery_code(org)
+              {:ok, new_recovery_code} = generate_recovery_code(org)
+              {raw_key, new_recovery_code}
 
-      {:ok, raw_key, new_recovery_code}
-    else
-      nil -> {:error, :invalid_recovery}
+            :error ->
+              Repo.rollback(:invalid_recovery)
+          end
+        end)
+        |> case do
+          {:ok, {raw_key, new_recovery_code}} -> {:ok, raw_key, new_recovery_code}
+          {:error, reason} -> {:error, reason}
+        end
     end
+  end
+
+  defp consume_recovery_code(org_id, code_hash) do
+    {count, _} =
+      from(r in RecoveryCode,
+        where: r.org_id == ^org_id and r.code_hash == ^code_hash and r.used == false
+      )
+      |> Repo.update_all(set: [used: true])
+
+    if count == 1, do: :ok, else: :error
   end
 
   def hash_key(raw_key) do

@@ -9,11 +9,30 @@ defmodule Lei.RateLimiter do
   @default_limits %{free: 60, pro: 600}
   @cleanup_interval_ms 120_000
 
+  # Every bucket lives in one table: acp:, payments:, auth:, try_it: and api:.
+  # An unnamespaced key can collide with another bucket's, and a collision is
+  # invisible -- it silently consumes someone else's allowance (security
+  # review, 2026-09-14). A key without a namespace is a mistake, so it raises
+  # rather than counting against something unrelated.
+  defp validate_namespace!(key) when is_binary(key) do
+    unless Regex.match?(~r/^[a-z_]+:/, key) do
+      raise ArgumentError,
+            "rate limit key #{inspect(key)} has no namespace; use \"<bucket>:<identifier>\""
+    end
+
+    :ok
+  end
+
+  defp validate_namespace!(key) do
+    raise ArgumentError, "rate limit key must be a string, got: #{inspect(key)}"
+  end
+
   def start_link(opts \\ []) do
     GenServer.start_link(__MODULE__, opts, name: __MODULE__)
   end
 
   def check(key, tier \\ "free") do
+    validate_namespace!(key)
     now = System.monotonic_time(:millisecond)
     window = window_for(tier)
     limit = limit_for(tier)

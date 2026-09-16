@@ -81,6 +81,13 @@ defmodule Lei.Payments.ChallengeStore do
   Returns the parsed challenge, the org it was issued to and the rail that
   issued it. A challenge we cannot find is refused rather than trusted: the
   alternative is accepting a credential's own account of what it is answering.
+
+  A settled challenge is **still returned**. An agent whose response was lost
+  retries with the same credential, and that retry must succeed: the ledger's
+  unique `external_ref` makes the second credit impossible, so the retry is
+  answered with a receipt rather than an error (Lei.Payments.Http, and the
+  tests that pin it). Refusing it here would turn a dropped response into a
+  failed payment the agent cannot recover from.
   """
   def fetch(challenge_id) when is_binary(challenge_id) do
     case Repo.one(from(r in Record, where: r.challenge_id == ^challenge_id)) do
