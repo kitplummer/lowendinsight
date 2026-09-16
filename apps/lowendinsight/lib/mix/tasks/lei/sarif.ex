@@ -32,16 +32,41 @@ defmodule Mix.Tasks.Lei.Sarif do
   def run(args) do
     Mix.Task.run("app.start")
 
-    {opts, positional, _} = OptionParser.parse(args, switches: @switches, aliases: @aliases)
+    with {:ok, %{path: path, output: output}} <- parse_args(args) do
+      scan_and_write(path, output)
+    else
+      {:error, msg} -> Mix.shell().error(msg)
+    end
+  end
 
-    path =
-      case positional do
-        [] -> "."
-        [p | _] -> p
-      end
+  @doc """
+  Reads the arguments, refusing an unknown switch rather than crashing on it.
 
-    output = Keyword.get(opts, :output)
+  `mix lei.sarif . --bogus` raised, printing a stack trace where a usage line
+  belongs (checked 2026-09-16).
+  """
+  @spec parse_args([String.t()]) :: {:ok, map()} | {:error, String.t()}
+  def parse_args(args) do
+    {opts, positional, invalid} = OptionParser.parse(args, strict: @switches, aliases: @aliases)
 
+    case invalid do
+      [] ->
+        path =
+          case positional do
+            [] -> "."
+            [p | _] -> p
+          end
+
+        {:ok, %{path: path, output: Keyword.get(opts, :output)}}
+
+      invalid ->
+        names = Enum.map_join(invalid, ", ", fn {name, _value} -> name end)
+
+        {:error, "Unknown option(s): #{names}. Usage: mix lei.sarif [path] [--output <file>]"}
+    end
+  end
+
+  defp scan_and_write(path, output) do
     case File.exists?(path) do
       false ->
         Mix.shell().error("Invalid path: #{path}")

@@ -68,10 +68,14 @@ defmodule Mix.Tasks.Lei.Sbom do
   """
   @spec parse_args([String.t()]) :: {:ok, map()} | {:error, String.t()}
   def parse_args(args) do
-    {opts, positional, _} = OptionParser.parse(args, switches: @switches, aliases: @aliases)
+    {opts, positional, invalid} = OptionParser.parse(args, strict: @switches, aliases: @aliases)
     format = Keyword.get(opts, :format, "cyclonedx")
 
     cond do
+      invalid != [] ->
+        names = Enum.map_join(invalid, ", ", fn {name, _value} -> name end)
+        {:error, "Unknown option(s): #{names}. Use --format or --output."}
+
       positional == [] ->
         {:error, "Usage: mix lei.sbom <repo_url> [--format cyclonedx|spdx] [--output <file>]"}
 

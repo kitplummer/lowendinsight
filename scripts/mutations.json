@@ -2052,6 +2052,51 @@
       "replace": "Lei.RateLimiter.check(api_key.key_prefix, tier)",
       "guarded_by": "test/lei/low_severity_hardening_test.exs",
       "app": "apps/lei_service"
+    },
+    {
+      "id": "analyze-empty-report-for-no-url",
+      "bug": "mix lei.analyze with no arguments printed a 'complete' report of zero repositories: a success-shaped answer to a mistake (checked 2026-09-16).",
+      "file": "apps/lowendinsight/lib/mix/tasks/lei/analyze.ex",
+      "find": "      [] when args == [] ->",
+      "replace": "      [] when args == [:never] ->",
+      "guarded_by": "test/mix_task_args_test.exs",
+      "app": "apps/lowendinsight"
+    },
+    {
+      "id": "analyze-treats-flags-as-repos",
+      "bug": "mix lei.analyze --format bogus analysed '--format' and 'bogus' as repository URLs and reported them as undetermined risk.",
+      "file": "apps/lowendinsight/lib/mix/tasks/lei/analyze.ex",
+      "find": "    case Enum.filter(args, &String.starts_with?(&1, \"-\")) do",
+      "replace": "    case Enum.filter(args, fn _ -> false end) do",
+      "guarded_by": "test/mix_task_args_test.exs",
+      "app": "apps/lowendinsight"
+    },
+    {
+      "id": "sarif-crashes-on-unknown-switch",
+      "bug": "mix lei.sarif . --bogus raised, printing a stack trace where a usage line belongs.",
+      "file": "apps/lowendinsight/lib/mix/tasks/lei/sarif.ex",
+      "find": "    {opts, positional, invalid} = OptionParser.parse(args, strict: @switches, aliases: @aliases)",
+      "replace": "    {opts, positional, invalid} = OptionParser.parse(args, switches: @switches, aliases: @aliases)",
+      "guarded_by": "test/mix_task_args_test.exs",
+      "app": "apps/lowendinsight"
+    },
+    {
+      "id": "sbom-accepts-unknown-switch",
+      "bug": "An unknown switch was accepted silently, so a typo changed nothing and the caller got a default they did not ask for.",
+      "file": "apps/lowendinsight/lib/mix/tasks/lei/sbom.ex",
+      "find": "      invalid != [] ->",
+      "replace": "      false ->",
+      "guarded_by": "test/mix_task_args_test.exs",
+      "app": "apps/lowendinsight"
+    },
+    {
+      "id": "package-without-readme-and-licence",
+      "bug": "The published Hex package shipped without its README or LICENCE: both live at the repository root, and hex refuses a path outside the app, so the library keeps copies that can go missing.",
+      "file": "apps/lowendinsight/README.md",
+      "find": "# LowEndInsight",
+      "replace": "",
+      "guarded_by": "test/package_files_test.exs",
+      "app": "apps/lowendinsight"
     }
   ]
 }
