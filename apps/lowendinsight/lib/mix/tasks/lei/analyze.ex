@@ -46,12 +46,43 @@ defmodule Mix.Tasks.Lei.Analyze do
   use Mix.Task
 
   @impl Mix.Task
-  def run(url) do
+  def run(args) do
     Mix.Task.run("app.start")
 
-    {:ok, report} = AnalyzerModule.analyze(url, "mix task", DateTime.utc_now(), %{types: true})
+    case parse_args(args) do
+      {:error, msg} ->
+        Mix.shell().error(msg)
 
-    Poison.encode!(report)
-    |> Mix.shell().info()
+      {:ok, urls} ->
+        {:ok, report} =
+          AnalyzerModule.analyze(urls, "mix task", DateTime.utc_now(), %{types: true})
+
+        Poison.encode!(report)
+        |> Mix.shell().info()
+    end
+  end
+
+  @doc """
+  Reads the arguments.
+
+  With none, this used to print a "complete" report of zero repositories: a
+  success-shaped answer to a mistake. A switch was analysed as though it were
+  a repository, so `--format bogus` came back as two undetermined-risk repos
+  named `--format` and `bogus`.
+  """
+  @spec parse_args([String.t()]) :: {:ok, [String.t()]} | {:error, String.t()}
+  def parse_args(args) do
+    case Enum.filter(args, &String.starts_with?(&1, "-")) do
+      [] when args == [] ->
+        {:error, "Usage: mix lei.analyze <repo_url> [<repo_url>...]"}
+
+      [] ->
+        {:ok, args}
+
+      switches ->
+        {:error,
+         "Unknown option(s): #{Enum.join(switches, ", ")}. " <>
+           "Usage: mix lei.analyze <repo_url> [<repo_url>...]"}
+    end
   end
 end
