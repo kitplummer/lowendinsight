@@ -9,6 +9,11 @@ on:
   push:
     branches: [main, 'release/**']
   pull_request:
+  # Nightly, everything: the full guard verification (PRs and pushes run only
+  # the mutations their changes can affect) and the suites against a quiet main.
+  schedule:
+    - cron: '41 5 * * *'
+  workflow_dispatch:
 
 # A newer commit on a PR supersedes the run for the older one. Pushes to main
 # and release branches are never cancelled: each of those commits is verified.
@@ -251,9 +256,12 @@ jobs:
       run: cd apps/lei_service && MIX_ENV=test mix test
 
   # Verify that guard tests actually catch the bugs they were written for.
-  # A green run here means every mutation was caught. The failures are consumed
-  # inside the job, so this does not leave a red run in the branch list for
-  # someone to explain.
+  # A green run here means every mutation it ran was caught. The failures are
+  # consumed inside the job, so this does not leave a red run in the branch list
+  # for someone to explain.
+  #
+  # PRs and pushes run only the mutations their changes can affect (see
+  # scripts/verify-guards.sh --changed-since); the nightly schedule runs all.
   guard-verification:
     name: Guard verification
     runs-on: ubuntu-latest
@@ -286,6 +294,9 @@ jobs:
 
     steps:
     - uses: actions/checkout@v4
+      with:
+        # The selection diffs against the base, which a shallow clone lacks.
+        fetch-depth: 0
     - uses: erlef/setup-beam@v1
       with:
         elixir-version: 1.20.4
@@ -300,7 +311,24 @@ jobs:
         MIX_ENV=test mix ecto.create
         MIX_ENV=test mix ecto.migrate
     - name: Verify guards
-      run: ./scripts/verify-guards.sh
+      env:
+        EVENT: ${{ github.event_name }}
+        BASE_REF: ${{ github.base_ref }}
+        BEFORE: ${{ github.event.before }}
+      run: |
+        case "$EVENT" in
+          pull_request)
+            ./scripts/verify-guards.sh --changed-since "origin/$BASE_REF" ;;
+          push)
+            # A new branch has no previous commit; verify everything.
+            if [ -n "$BEFORE" ] && [ "$BEFORE" != "0000000000000000000000000000000000000000" ]; then
+              ./scripts/verify-guards.sh --changed-since "$BEFORE"
+            else
+              ./scripts/verify-guards.sh
+            fi ;;
+          *)
+            ./scripts/verify-guards.sh ;;
+        esac
     - name: Confirm the working tree was restored
       run: |
         # The script restores on every exit path via a trap. If it ever fails
@@ -312,26 +340,3 @@ jobs:
           exit 1
         fi
         echo "Working tree clean."
-
-  # Dependency audit. mix_audit (deps.audit) reported nothing while the lock
-  # held HIGH advisories in plug, cowboy, cowlib, postgrex and hackney; its
-  # advisory data did not have them. scripts/dependency-audit.sh runs
-  # `mix hex.audit` against Hex's advisory data and fails on anything not
-  # acknowledged in scripts/acknowledged-advisories.txt.
-  audit:
-    runs-on: ubuntu-latest
-    env:
-      MIX_ENV: test
-    steps:
-    - uses: actions/checkout@v4
-    - uses: erlef/setup-beam@v1
-      with:
-        elixir-version: 1.20.4
-        otp-version: 28.5.0.6
-    - name: Install Dependencies
-      run: |
-        mix local.rebar --force
-        mix local.hex --force
-        mix deps.get
-    - name: Hex and mix_audit advisories
-      run: scripts/dependency-audit.sh

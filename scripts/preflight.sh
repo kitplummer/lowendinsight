@@ -15,7 +15,10 @@
 #   compile          does it build without new warnings
 #   suite            does the code do what the tests say
 #   seed sweep       does it still, in a different order
-#   guards           would the tests catch the bug coming back
+#   guards           would the tests catch the bug coming back -- for the
+#                    mutations this branch can affect, as CI runs it on a PR.
+#                    PREFLIGHT_GUARDS_BASE=<ref> changes the base (default
+#                    origin/main); PREFLIGHT_ALL_GUARDS=1 runs all of them.
 #   backup grants    can the backup role still dump what migrations create
 #   library isolation does the library work for a project that has only it
 #   dependency audit does any locked dependency have an unacknowledged advisory
@@ -162,7 +165,9 @@ check_seed_sweep() {
 }
 
 check_guards() {
-  ./scripts/verify-guards.sh >/tmp/preflight-guards.out 2>&1 || {
+  local args=(--changed-since "${PREFLIGHT_GUARDS_BASE:-origin/main}")
+  [ "${PREFLIGHT_ALL_GUARDS:-0}" = "1" ] && args=()
+  ./scripts/verify-guards.sh "${args[@]}" >/tmp/preflight-guards.out 2>&1 || {
     tail -25 /tmp/preflight-guards.out
     return 1
   }

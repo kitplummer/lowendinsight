@@ -1,0 +1,52 @@
+name: audit
+
+# Dependency advisories, split out of umbrella_ci.
+#
+# The audit compares the lock file with advisory databases that change on
+# their own schedule. Run on every PR, a database update failed unrelated PRs
+# and main with no code change -- on 2026-09-16 because an advisory was revised
+# to "fixed in the version we lock". So:
+#
+#   - daily, --strict: a new advisory against a locked dependency fails, and so
+#     does an acknowledgement that no longer matches. A failed scheduled run is
+#     the alert, as for monitor.yml.
+#   - on a PR that changes dependencies or the audit itself: an unacknowledged
+#     advisory fails the PR; a stale acknowledgement is only a warning.
+#
+# scripts/preflight.sh still runs the non-strict audit locally.
+
+on:
+  schedule:
+    - cron: '17 6 * * *'
+  pull_request:
+    paths:
+      - 'mix.lock'
+      - '**/mix.exs'
+      - 'scripts/acknowledged-advisories.txt'
+      - 'scripts/dependency-audit.sh'
+      - '.github/workflows/audit.yml'
+  workflow_dispatch:
+
+jobs:
+  audit:
+    runs-on: ubuntu-latest
+    env:
+      MIX_ENV: test
+    steps:
+    - uses: actions/checkout@v4
+    - uses: erlef/setup-beam@v1
+      with:
+        elixir-version: 1.20.4
+        otp-version: 28.5.0.6
+    - name: Install Dependencies
+      run: |
+        mix local.rebar --force
+        mix local.hex --force
+        mix deps.get
+    - name: Hex and mix_audit advisories
+      run: |
+        if [ "${{ github.event_name }}" = "pull_request" ]; then
+          scripts/dependency-audit.sh
+        else
+          scripts/dependency-audit.sh --strict
+        fi

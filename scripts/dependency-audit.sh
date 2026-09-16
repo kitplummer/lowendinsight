@@ -3,18 +3,30 @@
 # Fails on any known advisory in a locked dependency that has not been
 # acknowledged, with a reason, in scripts/acknowledged-advisories.txt.
 #
-#   scripts/dependency-audit.sh
+#   scripts/dependency-audit.sh            # PRs and preflight
+#   scripts/dependency-audit.sh --strict   # the daily run (.github/workflows/audit.yml)
 #
 # `mix deps.audit` (mix_audit) reported "No vulnerabilities found" while the
 # lock held HIGH advisories in plug, cowboy, cowlib, postgrex and hackney: its
 # advisory database did not have them. `mix hex.audit` reads Hex's own advisory
 # data. This script also fails when:
-#   - an acknowledged advisory no longer matches (the ignore list must shrink)
+#   - an acknowledged advisory no longer matches (the ignore list must shrink),
+#     with --strict only. Without it that is a warning: the advisory database
+#     revising an advisory to "fixed in the version we lock" is good news, and
+#     it failed main on 2026-09-16 with no code change. The daily --strict run
+#     still makes the list shrink.
 #   - Hex is too old to check advisories, or the audit printed nothing
 #     recognisable, so the check examined nothing
 
 set -uo pipefail
 cd "$(dirname "$0")/.."
+
+STRICT=0
+case "${1:-}" in
+  "") ;;
+  --strict) STRICT=1 ;;
+  *) echo "usage: $0 [--strict]"; exit 2 ;;
+esac
 
 ACK="scripts/acknowledged-advisories.txt"
 [ -f "$ACK" ] || { echo "FAIL: $ACK is missing"; exit 1; }
@@ -35,8 +47,13 @@ printf '%s\n' "$OUT"
 echo
 
 if printf '%s\n' "$OUT" | grep -q "does not match any advisory"; then
-  echo "FAIL: an acknowledged advisory no longer applies; remove it from scripts/acknowledged-advisories.txt"
-  exit 1
+  if [ "$STRICT" -eq 1 ]; then
+    echo "FAIL: an acknowledged advisory no longer applies; remove it from scripts/acknowledged-advisories.txt"
+    exit 1
+  fi
+  # A GitHub Actions annotation, so it shows on the PR without failing it.
+  echo "::warning::An acknowledged advisory no longer applies; remove it from scripts/acknowledged-advisories.txt (the daily --strict audit fails until it is)"
+  STALE_ACK=1
 fi
 
 if [ "$STATUS" -ne 0 ]; then
@@ -66,4 +83,8 @@ printf '%s\n' "$MIX_AUDIT" | grep -q "No vulnerabilities found" || {
   exit 1
 }
 
-echo "Dependency audit passed: no unacknowledged advisories."
+if [ "${STALE_ACK:-0}" -eq 1 ]; then
+  echo "Dependency audit passed: no unacknowledged advisories (with a stale acknowledgement, above)."
+else
+  echo "Dependency audit passed: no unacknowledged advisories."
+fi

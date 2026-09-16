@@ -15,11 +15,32 @@
 #
 #   ./scripts/verify-guards.sh              # all mutations
 #   ./scripts/verify-guards.sh acp-mount-prefix   # one, by id
+#   ./scripts/verify-guards.sh --changed-since origin/main
+#
+# --changed-since runs only the mutations a change can affect: those whose
+# mutated file or guarding test differs from the merge base with <ref>
+# (committed, uncommitted or untracked), and those whose manifest entry is new
+# or edited. Every mutation ran on every PR, about ten minutes whatever the PR
+# touched. umbrella_ci runs all of them nightly, which is what catches a change
+# in one file that stops a guard for another file from working.
+#
+# It never silently checks less: if this script changed, or <ref> cannot be
+# resolved, it runs everything and says why. When nothing is affected it says
+# so and passes -- the one case where "0 verified" is not a failure, and only
+# in this mode.
 
 set -uo pipefail
 
 MANIFEST="$(dirname "$0")/../scripts/mutations.json"
-ONLY="${1:-}"
+ONLY=""
+SINCE=""
+case "${1:-}" in
+  --changed-since)
+    SINCE="${2:-}"
+    [ -n "$SINCE" ] || { echo "usage: $0 --changed-since <ref>"; exit 2; }
+    ;;
+  *) ONLY="${1:-}" ;;
+esac
 
 green() { printf "\033[32m%s\033[0m\n" "$1"; }
 red()   { printf "\033[31m%s\033[0m\n" "$1"; }
@@ -155,6 +176,67 @@ if [ -z "$IDS" ]; then
   exit 1
 fi
 
+TOTAL=$(wc -l <<<"$IDS" | tr -d ' ')
+SELECTED_NOTE=""
+
+if [ -n "$SINCE" ]; then
+  SELECTION=$(python3 - "$MANIFEST" "$SINCE" <<'SELECT'
+import json, subprocess, sys
+
+manifest_path, since = sys.argv[1], sys.argv[2]
+mutations = json.load(open(manifest_path))["mutations"]
+
+def git(*args):
+    return subprocess.run(["git", *args], capture_output=True, text=True)
+
+base = git("merge-base", since, "HEAD")
+if base.returncode != 0:
+    print(f"ALL cannot find a merge base with '{since}'")
+    sys.exit(0)
+base = base.stdout.strip()
+
+# Working tree against the base: committed and uncommitted changes, so
+# preflight on unstaged edits selects the same mutations CI will.
+changed = set(git("diff", "--name-only", base).stdout.split())
+changed |= set(git("ls-files", "--others", "--exclude-standard").stdout.split())
+
+if "scripts/verify-guards.sh" in changed:
+    print("ALL scripts/verify-guards.sh changed")
+    sys.exit(0)
+
+before = {}
+if "scripts/mutations.json" in changed:
+    shown = git("show", f"{base}:scripts/mutations.json")
+    if shown.returncode == 0:
+        before = {m["id"]: m for m in json.loads(shown.stdout)["mutations"]}
+
+for m in mutations:
+    test = f'{m["app"]}/{m["guarded_by"]}'
+    if m["file"] in changed or test in changed or ("scripts/mutations.json" in changed and before.get(m["id"]) != m):
+        print(m["id"])
+SELECT
+)
+  case "$SELECTION" in
+    ALL\ *)
+      echo "Running every mutation: ${SELECTION#ALL }."
+      echo ""
+      ;;
+    *)
+      IDS="$SELECTION"
+      COUNT=$(grep -c . <<<"$IDS" || true)
+      SELECTED_NOTE=" ($COUNT of $TOTAL affected by changes since $SINCE)"
+      if [ "$COUNT" -eq 0 ]; then
+        bold "=== 0 of $TOTAL mutations affected by changes since $SINCE ==="
+        green "Nothing here can stop a guard catching its bug. The nightly run verifies all $TOTAL."
+        exit 0
+      fi
+      echo "Verifying $COUNT of $TOTAL mutations, affected by changes since $SINCE:"
+      sed 's/^/  /' <<<"$IDS"
+      echo ""
+      ;;
+  esac
+fi
+
 if [ -n "$ONLY" ] && ! grep -qx "$ONLY" <<<"$IDS"; then
   # Previously a typo here skipped every mutation and exited 0.
   red "No mutation with id '$ONLY'. Known ids:"
@@ -219,7 +301,7 @@ done
 
 restore
 
-bold "=== $PASS verified, $FAIL unguarded, $STALE stale ==="
+bold "=== $PASS verified, $FAIL unguarded, $STALE stale${SELECTED_NOTE} ==="
 
 if [ "$FAIL" -gt 0 ] || [ "$STALE" -gt 0 ]; then
   exit 1

@@ -91,11 +91,11 @@ is "passes", it is not a check.
 | | |
 |---|---|
 | `umbrella_ci` | does the code work |
-| `guard-verification` | would the tests catch the bug coming back |
+| `guard-verification` | would the tests catch the bug coming back (a PR runs the mutations its changes can affect; nightly runs all) |
 | `backup-grants` | can the backup role dump what migrations create |
 | `library-isolation` | does the library work for a project that has only it |
-| `audit` | does a locked dependency have an advisory nobody acknowledged |
-| `deploy` | does it work in production |
+| `audit` | does a locked dependency have an advisory nobody acknowledged (daily, and on PRs that change dependencies) |
+| `deploy` | does it work in production (runs only after `umbrella_ci` passes on the tip of main) |
 | `monitor` | is it still working, every 15 minutes |
 
 Each exists because the one above it was green while something was broken.
