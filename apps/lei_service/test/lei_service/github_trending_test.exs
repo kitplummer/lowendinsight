@@ -7,8 +7,7 @@ defmodule LeiService.GithubTrendingTest do
   use Plug.Test
 
   @opts LeiService.Endpoint.init([])
-  @token "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJhdWQiOiJKb2tlbiIsImV4cCI6MTY3MDQzNTQ1MSwiaWF0IjoxNjcwNDI4MjUxLCJpc3MiOiJKb2tlbiIsImp0aSI6IjJzbjhyOThiczNiZzNwZWwwZzAwMDA3MiIsIm5iZiI6MTY3MDQyODI1MX0.kQgqr-7lmQtlVeq96hmIIYHEniJq638NQ10VW26kT9k"
-  @headers [{"authorization", "Bearer #{@token}"}]
+  defp headers, do: [{"authorization", "Bearer #{operator_token()}"}]
 
   setup do
     on_exit(fn ->
@@ -155,7 +154,7 @@ defmodule LeiService.GithubTrendingTest do
     @tag timeout: 60_000
     test "triggers processing and returns 200" do
       conn = conn(:post, "/v1/gh_trending/process")
-      conn = Plug.Conn.merge_req_headers(conn, @headers)
+      conn = Plug.Conn.merge_req_headers(conn, headers())
       conn = LeiService.Endpoint.call(conn, @opts)
 
       assert conn.status == 200
@@ -208,5 +207,19 @@ defmodule LeiService.GithubTrendingTest do
   test "gets wait time" do
     wait_time = Application.fetch_env!(:lei_service, :wait_time)
     assert wait_time == LeiService.GithubTrending.get_wait_time()
+  end
+
+  # Minted per run: this was a literal whose exp was 2022-12-07, accepted
+  # because nothing checked expiry (Lei.OperatorToken).
+  defp operator_token do
+    signer =
+      Joken.Signer.create(
+        "HS256",
+        Application.get_env(:lei_service, :jwt_secret, "lei_dev_secret")
+      )
+
+    claims = %{"exp" => DateTime.utc_now() |> DateTime.add(3600) |> DateTime.to_unix()}
+    {:ok, jwt, _} = Joken.generate_and_sign(%{}, claims, signer)
+    jwt
   end
 end

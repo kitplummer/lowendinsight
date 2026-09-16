@@ -1917,6 +1917,87 @@
       "replace": "      Task.start_link(fn -> LeiService.GithubTrending.process_languages() end)",
       "guarded_by": "test/lei_service/quantum_removed_test.exs",
       "app": "apps/lei_service"
+    },
+    {
+      "id": "operator-token-expiry-unchecked",
+      "bug": "Joken.verify/2 checks the signature only: an operator token whose exp had passed was accepted, and the credential reaches every unbilled and operator-only route (security review, 2026-09-14).",
+      "file": "apps/lei_service/lib/lei/operator_token.ex",
+      "find": "      exp <= now -> {:error, :expired}",
+      "replace": "      false -> {:error, :expired}",
+      "guarded_by": "test/lei/operator_token_expiry_test.exs",
+      "app": "apps/lei_service"
+    },
+    {
+      "id": "operator-token-without-expiry",
+      "bug": "A token minted without exp never expires, so a leaked one is valid until the signing secret changes.",
+      "file": "apps/lei_service/lib/lei/operator_token.ex",
+      "find": "      %{\"exp\" => exp} when is_integer(exp) -> {:ok, exp}",
+      "replace": "      %{\"exp\" => exp} when is_integer(exp) -> {:ok, exp}\n      _ -> {:ok, DateTime.utc_now() |> DateTime.add(60) |> DateTime.to_unix()}",
+      "guarded_by": "test/lei/operator_token_expiry_test.exs",
+      "app": "apps/lei_service"
+    },
+    {
+      "id": "operator-token-unbounded-lifetime",
+      "bug": "Without a ceiling on exp, a token minted with a distant expiry is the same forever-credential the missing check allowed.",
+      "file": "apps/lei_service/lib/lei/operator_token.ex",
+      "find": "      exp - now > max_lifetime_seconds() -> {:error, :lifetime_too_long}",
+      "replace": "      false -> {:error, :lifetime_too_long}",
+      "guarded_by": "test/lei/operator_token_expiry_test.exs",
+      "app": "apps/lei_service"
+    },
+    {
+      "id": "web-router-verifies-signature-only",
+      "bug": "The dashboard router verifying only the signature accepts an expired operator token even though Lei.OperatorToken exists.",
+      "file": "apps/lei_service/lib/lei/auth.ex",
+      "find": "    case Lei.OperatorToken.verify(jwt) do",
+      "replace": "    case Joken.verify(jwt, Joken.Signer.create(\"HS256\", Application.get_env(:lei_service, :jwt_secret, \"lei_dev_secret\"))) do",
+      "guarded_by": "test/lei/operator_token_expiry_test.exs",
+      "app": "apps/lei_service"
+    },
+    {
+      "id": "api-verifies-signature-only",
+      "bug": "The API endpoint verifying only the signature accepts an expired operator token even though Lei.OperatorToken exists.",
+      "file": "apps/lei_service/lib/lei_service/auth.ex",
+      "find": "    case Lei.OperatorToken.verify(jwt) do",
+      "replace": "    case Joken.verify(jwt, signer()) do",
+      "guarded_by": "test/lei/operator_token_expiry_test.exs",
+      "app": "apps/lei_service"
+    },
+    {
+      "id": "recovery-guesses-unlimited",
+      "bug": "Recovery takes a slug and a recovery code and answers with a new admin API key; unlimited guesses are an organisation takeover attempt (security review, 2026-09-14).",
+      "file": "apps/lei_service/lib/lei/web/router.ex",
+      "find": "      [\"recover\"] -> Lei.Web.AuthRateLimit.check(conn, :recover)",
+      "replace": "      [\"recover\"] -> conn",
+      "guarded_by": "test/lei/auth_rate_limit_test.exs",
+      "app": "apps/lei_service"
+    },
+    {
+      "id": "login-guesses-unlimited",
+      "bug": "Unlimited API key guesses at /login is credential stuffing with no cost to the attacker.",
+      "file": "apps/lei_service/lib/lei/web/router.ex",
+      "find": "      [\"login\"] -> Lei.Web.AuthRateLimit.check(conn, :login)",
+      "replace": "      [\"login\"] -> conn",
+      "guarded_by": "test/lei/auth_rate_limit_test.exs",
+      "app": "apps/lei_service"
+    },
+    {
+      "id": "signup-unlimited",
+      "bug": "Unlimited signups let an unauthenticated caller create organisations and API keys at will.",
+      "file": "apps/lei_service/lib/lei/web/router.ex",
+      "find": "      [\"signup\"] -> Lei.Web.AuthRateLimit.check(conn, :signup)",
+      "replace": "      [\"signup\"] -> conn",
+      "guarded_by": "test/lei/auth_rate_limit_test.exs",
+      "app": "apps/lei_service"
+    },
+    {
+      "id": "recovery-limit-too-loose",
+      "bug": "A recovery bucket wide enough for many guesses per window is barely a limit on a code that mints an admin key.",
+      "file": "config/config.exs",
+      "find": "    recover: 5,",
+      "replace": "    recover: 100,",
+      "guarded_by": "test/lei/auth_rate_limit_test.exs",
+      "app": "apps/lei_service"
     }
   ]
 }

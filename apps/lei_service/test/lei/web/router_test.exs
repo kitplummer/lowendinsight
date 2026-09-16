@@ -11,7 +11,7 @@ defmodule Lei.Web.RouterTest do
 
     secret = Application.get_env(:lei_service, :jwt_secret, "lei_dev_secret")
     signer = Joken.Signer.create("HS256", secret)
-    {:ok, jwt, _} = Joken.generate_and_sign(%{}, %{}, signer)
+    {:ok, jwt, _} = Joken.generate_and_sign(%{}, operator_claims(), signer)
     %{token: jwt}
   end
 
@@ -123,5 +123,11 @@ defmodule Lei.Web.RouterTest do
       |> Lei.Web.Router.call(@opts)
 
     assert conn.status == 404
+  end
+
+  # An operator token needs an expiry now: one without it is refused, and one
+  # too far out is too (Lei.OperatorToken).
+  defp operator_claims do
+    %{"exp" => DateTime.utc_now() |> DateTime.add(3600) |> DateTime.to_unix()}
   end
 end

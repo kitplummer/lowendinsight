@@ -336,7 +336,7 @@ For each language, this endpoint:
 3. Runs LowEndInsight analysis on the top N repos (configured via `LEI_NUM_OF_REPOS`, default 10)
 4. Stores results in Redis, viewable via `GET /gh_trending/:language`
 
-**Authentication:** operator token (a JWT signed with the deployment's `LEI_JWT_SECRET`). API keys are refused with `403`, whatever their scopes: a forced refresh clones and analyses every trending repository.
+**Authentication:** operator token (a JWT signed with the deployment's `LEI_JWT_SECRET`, carrying an `exp` no more than 24 hours ahead; expired or expiry-less tokens are refused with `401`). API keys are refused with `403`, whatever their scopes: a forced refresh clones and analyses every trending repository.
 
 **Response (200 OK):**
 ```
@@ -449,7 +449,25 @@ All errors return JSON with an `error` field:
 
 ## Rate Limiting
 
-No built-in rate limiting. Implement at the load balancer level for production.
+Built in, per bucket, answered with `429` and a `retry-after` header. Analysis
+is limited per API key; the unauthenticated routes are limited per client IP
+(Fly's `fly-client-ip`, else the first `x-forwarded-for` hop, else the socket).
+
+| bucket | limit | window | keyed on |
+|---|---|---|---|
+| `free` / `pro` | 60 / 600 | minute | API key |
+| `acp` / `acp_complete` | 20 / 5 | minute | IP |
+| `payment_challenge` / `payment_settle` | 30 / 10 | minute | IP |
+| `try_it` | 10 | hour | IP |
+| `signup` | 5 | hour | IP |
+| `login` | 10 | hour | IP |
+| `recover` | 5 | hour | IP |
+
+`signup`, `login` and `recover` are unauthenticated by necessity, so the limit
+is the only lever (security review, 2026-09-14). `recover` is tightest: it
+takes a slug and a recovery code and answers with a **new admin API key**, so
+unlimited guessing was an organisation takeover. An attempt is counted before
+it is checked, so a correct guess costs the same as a wrong one.
 
 ## Cache Key Format
 

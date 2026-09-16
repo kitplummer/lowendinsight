@@ -7,8 +7,23 @@ defmodule LeiService.EndpointTest do
   use Plug.Test
 
   @opts LeiService.Endpoint.init([])
-  @token "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJhdWQiOiJKb2tlbiIsImV4cCI6MTY3MDQzNTQ1MSwiaWF0IjoxNjcwNDI4MjUxLCJpc3MiOiJKb2tlbiIsImp0aSI6IjJzbjhyOThiczNiZzNwZWwwZzAwMDA3MiIsIm5iZiI6MTY3MDQyODI1MX0.kQgqr-7lmQtlVeq96hmIIYHEniJq638NQ10VW26kT9k"
-  @headers [{"authorization", "Bearer #{@token}"}]
+
+  # Minted per run. This was a literal whose exp was 2022-12-07: every request
+  # in this file carried an expired operator token, and passed, because
+  # nothing checked expiry (Lei.OperatorToken).
+  defp token do
+    signer =
+      Joken.Signer.create(
+        "HS256",
+        Application.get_env(:lei_service, :jwt_secret, "lei_dev_secret")
+      )
+
+    claims = %{"exp" => DateTime.utc_now() |> DateTime.add(3600) |> DateTime.to_unix()}
+    {:ok, jwt, _} = Joken.generate_and_sign(%{}, claims, signer)
+    jwt
+  end
+
+  defp headers, do: [{"authorization", "Bearer #{token()}"}]
 
   setup_all do
     Redix.command(:redix, ["FLUSHDB"])
@@ -82,7 +97,7 @@ defmodule LeiService.EndpointTest do
 
     # Create a test connection
     conn = conn(:post, "/v1/analyze", %{urls: ["https://github.com/gbtestee/gbtestee"]})
-    conn = Plug.Conn.merge_req_headers(conn, @headers)
+    conn = Plug.Conn.merge_req_headers(conn, headers())
     # Invoke the plug
     conn = LeiService.Endpoint.call(conn, @opts)
 
@@ -91,7 +106,7 @@ defmodule LeiService.EndpointTest do
     :timer.sleep(2000)
     json = Poison.decode!(conn.resp_body)
     conn = conn(:get, "/v1/analyze/#{json["uuid"]}")
-    conn = Plug.Conn.merge_req_headers(conn, @headers)
+    conn = Plug.Conn.merge_req_headers(conn, headers())
     conn = LeiService.Endpoint.call(conn, @opts)
     assert conn.status == 200
     json = Poison.decode!(conn.resp_body)
@@ -107,7 +122,7 @@ defmodule LeiService.EndpointTest do
     # Create a test connection
     conn = conn(:post, "/v1/analyze", %{urls: ["https://github.com/kitplummer/git-author"]})
 
-    conn = Plug.Conn.merge_req_headers(conn, @headers)
+    conn = Plug.Conn.merge_req_headers(conn, headers())
     # Invoke the plug
     conn = LeiService.Endpoint.call(conn, @opts)
 
@@ -116,7 +131,7 @@ defmodule LeiService.EndpointTest do
     :timer.sleep(2000)
     json = Poison.decode!(conn.resp_body)
     conn = conn(:get, "/v1/analyze/#{json["uuid"]}")
-    conn = Plug.Conn.merge_req_headers(conn, @headers)
+    conn = Plug.Conn.merge_req_headers(conn, headers())
     conn = LeiService.Endpoint.call(conn, @opts)
     assert conn.status == 200
     json = Poison.decode!(conn.resp_body)
@@ -125,7 +140,7 @@ defmodule LeiService.EndpointTest do
     # Create a test connection
     conn = conn(:post, "/v1/analyze", %{urls: ["https://github.com/kitplummer/git-author"]})
 
-    conn = Plug.Conn.merge_req_headers(conn, @headers)
+    conn = Plug.Conn.merge_req_headers(conn, headers())
     # Invoke the plug
     conn = LeiService.Endpoint.call(conn, @opts)
 
@@ -134,7 +149,7 @@ defmodule LeiService.EndpointTest do
     :timer.sleep(1000)
     json = Poison.decode!(conn.resp_body)
     conn = conn(:get, "/v1/analyze/#{json["uuid"]}")
-    conn = Plug.Conn.merge_req_headers(conn, @headers)
+    conn = Plug.Conn.merge_req_headers(conn, headers())
     conn = LeiService.Endpoint.call(conn, @opts)
     assert conn.status == 200
     json = Poison.decode!(conn.resp_body)
@@ -146,7 +161,7 @@ defmodule LeiService.EndpointTest do
     conn = conn(:post, "/v1/analyze", %{})
 
     # Invoke the plug
-    conn = Plug.Conn.merge_req_headers(conn, @headers)
+    conn = Plug.Conn.merge_req_headers(conn, headers())
     conn = LeiService.Endpoint.call(conn, @opts)
 
     # Assert the response
@@ -158,7 +173,7 @@ defmodule LeiService.EndpointTest do
     conn = conn(:post, "/v1/analyze", %{urls: ["htps://github.com/kitplummer/xmpp4rails"]})
 
     # Invoke the plug
-    conn = Plug.Conn.merge_req_headers(conn, @headers)
+    conn = Plug.Conn.merge_req_headers(conn, headers())
     conn = LeiService.Endpoint.call(conn, @opts)
 
     # Assert the response
@@ -171,7 +186,7 @@ defmodule LeiService.EndpointTest do
     conn = conn(:get, "/fail")
 
     # Invoke the plug
-    conn = Plug.Conn.merge_req_headers(conn, @headers)
+    conn = Plug.Conn.merge_req_headers(conn, headers())
     conn = LeiService.Endpoint.call(conn, @opts)
 
     # Assert the response
@@ -257,7 +272,7 @@ defmodule LeiService.EndpointTest do
     conn = conn(:post, "/v1/gh_trending/process")
 
     # Invoke the plug
-    conn = Plug.Conn.merge_req_headers(conn, @headers)
+    conn = Plug.Conn.merge_req_headers(conn, headers())
     conn = LeiService.Endpoint.call(conn, @opts)
 
     # Assert the response and status
@@ -291,7 +306,7 @@ defmodule LeiService.EndpointTest do
         "cache_mode" => "async"
       })
 
-    conn = Plug.Conn.merge_req_headers(conn, @headers)
+    conn = Plug.Conn.merge_req_headers(conn, headers())
     conn = LeiService.Endpoint.call(conn, @opts)
 
     assert conn.status == 200
@@ -317,7 +332,7 @@ defmodule LeiService.EndpointTest do
         "cache_timeout" => 1
       })
 
-    conn = Plug.Conn.merge_req_headers(conn, @headers)
+    conn = Plug.Conn.merge_req_headers(conn, headers())
     conn = LeiService.Endpoint.call(conn, @opts)
 
     # Accept either 200 (completed) or 202 (timeout) since 1ms is extreme
@@ -343,7 +358,7 @@ defmodule LeiService.EndpointTest do
         "cache_mode" => "stale"
       })
 
-    conn = Plug.Conn.merge_req_headers(conn, @headers)
+    conn = Plug.Conn.merge_req_headers(conn, headers())
     conn = LeiService.Endpoint.call(conn, @opts)
 
     assert conn.status == 200
@@ -360,7 +375,7 @@ defmodule LeiService.EndpointTest do
         "cache_mode" => "invalid_mode"
       })
 
-    conn = Plug.Conn.merge_req_headers(conn, @headers)
+    conn = Plug.Conn.merge_req_headers(conn, headers())
     conn = LeiService.Endpoint.call(conn, @opts)
 
     assert conn.status == 422
@@ -377,7 +392,7 @@ defmodule LeiService.EndpointTest do
         "cache_mode" => "async"
       })
 
-    conn = Plug.Conn.merge_req_headers(conn, @headers)
+    conn = Plug.Conn.merge_req_headers(conn, headers())
     conn = LeiService.Endpoint.call(conn, @opts)
     json = Poison.decode!(conn.resp_body)
     uuid = json["uuid"]
@@ -386,12 +401,12 @@ defmodule LeiService.EndpointTest do
 
     # Fetch via /v1/analyze/:uuid
     conn_analyze = conn(:get, "/v1/analyze/#{uuid}")
-    conn_analyze = Plug.Conn.merge_req_headers(conn_analyze, @headers)
+    conn_analyze = Plug.Conn.merge_req_headers(conn_analyze, headers())
     conn_analyze = LeiService.Endpoint.call(conn_analyze, @opts)
 
     # Fetch via /v1/job/:id
     conn_job = conn(:get, "/v1/job/#{uuid}")
-    conn_job = Plug.Conn.merge_req_headers(conn_job, @headers)
+    conn_job = Plug.Conn.merge_req_headers(conn_job, headers())
     conn_job = LeiService.Endpoint.call(conn_job, @opts)
 
     assert conn_analyze.status == conn_job.status
@@ -416,7 +431,7 @@ defmodule LeiService.EndpointTest do
     }
 
     conn = conn(:post, "/v1/analyze/sbom", %{"sbom" => sbom, "cache_mode" => "async"})
-    conn = Plug.Conn.merge_req_headers(conn, @headers)
+    conn = Plug.Conn.merge_req_headers(conn, headers())
     conn = LeiService.Endpoint.call(conn, @opts)
 
     assert conn.status == 200
@@ -438,7 +453,7 @@ defmodule LeiService.EndpointTest do
     }
 
     conn = conn(:post, "/v1/analyze/sbom", %{"sbom" => sbom, "cache_mode" => "async"})
-    conn = Plug.Conn.merge_req_headers(conn, @headers)
+    conn = Plug.Conn.merge_req_headers(conn, headers())
     conn = LeiService.Endpoint.call(conn, @opts)
 
     assert conn.status == 200
@@ -454,7 +469,7 @@ defmodule LeiService.EndpointTest do
     }
 
     conn = conn(:post, "/v1/analyze/sbom", %{"sbom" => sbom})
-    conn = Plug.Conn.merge_req_headers(conn, @headers)
+    conn = Plug.Conn.merge_req_headers(conn, headers())
     conn = LeiService.Endpoint.call(conn, @opts)
 
     assert conn.status == 422
@@ -466,7 +481,7 @@ defmodule LeiService.EndpointTest do
     sbom = %{"invalid" => "format"}
 
     conn = conn(:post, "/v1/analyze/sbom", %{"sbom" => sbom})
-    conn = Plug.Conn.merge_req_headers(conn, @headers)
+    conn = Plug.Conn.merge_req_headers(conn, headers())
     conn = LeiService.Endpoint.call(conn, @opts)
 
     assert conn.status == 422
@@ -476,7 +491,7 @@ defmodule LeiService.EndpointTest do
 
   test "POST /v1/analyze/sbom without sbom field returns 422" do
     conn = conn(:post, "/v1/analyze/sbom", %{})
-    conn = Plug.Conn.merge_req_headers(conn, @headers)
+    conn = Plug.Conn.merge_req_headers(conn, headers())
     conn = LeiService.Endpoint.call(conn, @opts)
 
     assert conn.status == 422
@@ -493,7 +508,7 @@ defmodule LeiService.EndpointTest do
     }
 
     conn = conn(:post, "/v1/analyze/sbom", %{"sbom" => sbom, "cache_mode" => "invalid"})
-    conn = Plug.Conn.merge_req_headers(conn, @headers)
+    conn = Plug.Conn.merge_req_headers(conn, headers())
     conn = LeiService.Endpoint.call(conn, @opts)
 
     assert conn.status == 422

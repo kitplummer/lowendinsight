@@ -336,6 +336,32 @@ A valid JWT is signed with the deployment's own `jwt_secret` and is treated as
 operator-level, so it satisfies any scope. API keys are issued to customers and
 must carry the scope.
 
+**An operator token must carry `exp`, and it is checked** (`Lei.OperatorToken`,
+security review 2026-09-14). Until then both paths called `Joken.verify/2`,
+which checks the signature alone: an expired token was accepted, and one minted
+without `exp` never expired. Three rules now hold:
+
+- `exp` must be present -- a token without one is refused;
+- `exp` must be in the future;
+- `exp` must be no more than `:operator_token_max_lifetime_seconds` ahead
+  (24 hours by default), so a token cannot be minted today that still works
+  next year.
+
+Mint one on the machine, valid for an hour:
+
+```bash
+flyctl ssh console -C "/opt/app/bin/lei_service rpc '
+  secret = Application.get_env(:lei_service, :jwt_secret)
+  signer = Joken.Signer.create(\"HS256\", secret)
+  exp = DateTime.utc_now() |> DateTime.add(3600) |> DateTime.to_unix()
+  {:ok, jwt, _} = Joken.generate_and_sign(%{}, %{\"exp\" => exp}, signer)
+  IO.puts(jwt)'"
+```
+
+A token printed this way is a credential: it is operator-level for as long as
+it is valid, so treat it like the signing secret and do not paste it anywhere
+it will be kept.
+
 Before this existed, no `/v1/cache` route checked scope in either place: any key
 that could call the API could export every cached report, or import over them
 and change the answers everyone else received.

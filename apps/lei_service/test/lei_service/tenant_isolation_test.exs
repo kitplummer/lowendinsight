@@ -50,7 +50,7 @@ defmodule LeiService.TenantIsolationTest do
 
   defp operator_jwt do
     signer = Joken.Signer.create("HS256", Application.get_env(:lei_service, :jwt_secret))
-    {:ok, token, _} = Joken.generate_and_sign(%{}, %{}, signer)
+    {:ok, token, _} = Joken.generate_and_sign(%{}, operator_claims(), signer)
     token
   end
 
@@ -157,5 +157,11 @@ defmodule LeiService.TenantIsolationTest do
                name: "ops-created #{System.unique_integer([:positive])}"
              }).status == 201
     end
+  end
+
+  # An operator token needs an expiry now: one without it is refused, and one
+  # too far out is too (Lei.OperatorToken).
+  defp operator_claims do
+    %{"exp" => DateTime.utc_now() |> DateTime.add(3600) |> DateTime.to_unix()}
   end
 end
