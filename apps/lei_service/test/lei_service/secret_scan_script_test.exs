@@ -9,7 +9,11 @@ defmodule LeiService.SecretScanScriptTest do
   for months while every check was green (security, 2026-09-14). Nothing
   looked at what the deployment actually served.
   """
-  use ExUnit.Case, async: true
+  # Not async: one of these analyses a repository, and the analyzer changes
+  # the node's working directory, which is global to it. Run alongside other
+  # tests this produced sandbox ownership failures in another test entirely
+  # (CI, 2026-09-16: Lei.ApiKeyTest could not check out a connection).
+  use ExUnit.Case, async: false
 
   import Plug.Test
 

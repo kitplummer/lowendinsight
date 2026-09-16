@@ -1998,6 +1998,24 @@
       "replace": "    recover: 100,",
       "guarded_by": "test/lei/auth_rate_limit_test.exs",
       "app": "apps/lei_service"
+    },
+    {
+      "id": "sbom-clones-before-checking-format",
+      "bug": "mix lei.sbom analysed the repository before validating --format, so a typo cost a full clone before the error -- and made the test that checks the error a 60s network test that timed out under load (CI, 2026-09-16).",
+      "file": "apps/lowendinsight/lib/mix/tasks/lei/sbom.ex",
+      "find": "      format not in @formats ->\n        {:error, \"Unknown format '#{format}'. Use 'cyclonedx' or 'spdx'.\"}",
+      "replace": "      false ->\n        {:error, \"Unknown format '#{format}'. Use 'cyclonedx' or 'spdx'.\"}",
+      "guarded_by": "test/mix_sbom_task_test.exs",
+      "app": "apps/lowendinsight"
+    },
+    {
+      "id": "sbom-accepts-no-url",
+      "bug": "Without a URL the task would analyse nothing and report a confusing error instead of its usage line.",
+      "file": "apps/lowendinsight/lib/mix/tasks/lei/sbom.ex",
+      "find": "      positional == [] ->",
+      "replace": "      false ->",
+      "guarded_by": "test/mix_sbom_task_test.exs",
+      "app": "apps/lowendinsight"
     }
   ]
 }

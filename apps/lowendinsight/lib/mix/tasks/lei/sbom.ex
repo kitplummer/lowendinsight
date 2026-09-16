@@ -29,48 +29,57 @@ defmodule Mix.Tasks.Lei.Sbom do
   @switches [format: :string, output: :string]
   @aliases [f: :format, o: :output]
 
+  @formats ~w(cyclonedx spdx)
+
   @impl Mix.Task
   def run(args) do
     Mix.Task.run("app.start")
 
-    {opts, positional, _} = OptionParser.parse(args, switches: @switches, aliases: @aliases)
+    case parse_args(args) do
+      {:error, msg} ->
+        Mix.shell().error(msg)
 
-    case positional do
-      [] ->
-        Mix.shell().error(
-          "Usage: mix lei.sbom <repo_url> [--format cyclonedx|spdx] [--output <file>]"
-        )
-
-      [url | _] ->
-        format = Keyword.get(opts, :format, "cyclonedx")
-        output = Keyword.get(opts, :output)
-
+      {:ok, %{url: url, format: format, output: output}} ->
         {:ok, report} = AnalyzerModule.analyze(url, "mix lei.sbom", %{types: true})
 
         result =
           case format do
-            "spdx" ->
-              Lei.Sbom.SPDX.generate(report)
-
-            "cyclonedx" ->
-              Lei.Sbom.CycloneDX.generate(report)
-
-            _ ->
-              {:error, "Unknown format '#{format}'. Use 'cyclonedx' or 'spdx'."}
+            "spdx" -> Lei.Sbom.SPDX.generate(report)
+            "cyclonedx" -> Lei.Sbom.CycloneDX.generate(report)
           end
 
-        case result do
-          {:ok, json} ->
-            if output do
-              File.write!(output, json)
-              Mix.shell().info("SBOM written to #{output}")
-            else
-              Mix.shell().info(json)
-            end
+        # Both generators return {:ok, json}; a bad format is refused above.
+        {:ok, json} = result
 
-          {:error, msg} ->
-            Mix.shell().error("Error: #{msg}")
+        if output do
+          File.write!(output, json)
+          Mix.shell().info("SBOM written to #{output}")
+        else
+          Mix.shell().info(json)
         end
+    end
+  end
+
+  @doc """
+  Reads the arguments, refusing a bad one before any work is done.
+
+  The format used to be checked after the repository had been analysed, so a
+  typo cost a full clone before saying so.
+  """
+  @spec parse_args([String.t()]) :: {:ok, map()} | {:error, String.t()}
+  def parse_args(args) do
+    {opts, positional, _} = OptionParser.parse(args, switches: @switches, aliases: @aliases)
+    format = Keyword.get(opts, :format, "cyclonedx")
+
+    cond do
+      positional == [] ->
+        {:error, "Usage: mix lei.sbom <repo_url> [--format cyclonedx|spdx] [--output <file>]"}
+
+      format not in @formats ->
+        {:error, "Unknown format '#{format}'. Use 'cyclonedx' or 'spdx'."}
+
+      true ->
+        {:ok, %{url: hd(positional), format: format, output: Keyword.get(opts, :output)}}
     end
   end
 end
