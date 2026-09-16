@@ -6,11 +6,6 @@ defmodule LeiService.Auth do
     opts
   end
 
-  defp signer do
-    secret = Application.get_env(:lei_service, :jwt_secret, "my super secret")
-    Joken.Signer.create("HS256", secret)
-  end
-
   defp authenticate({conn, "Bearer lei_" <> _rest = token}) do
     # Delegate lei_ API keys to Lei.Auth's key authentication
     raw_key = String.replace_prefix(token, "Bearer ", "")

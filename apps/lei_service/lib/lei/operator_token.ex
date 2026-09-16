@@ -17,8 +17,6 @@ defmodule Lei.OperatorToken do
       today that still works next year.
   """
 
-  require Logger
-
   @default_max_lifetime_seconds 86_400
 
   @type reason :: :missing_exp | :expired | :lifetime_too_long | term()
