@@ -148,13 +148,19 @@ config :lei_service, LeiService.Scheduler,
 # Metrics from the web app, collected by Lei.Metrics without the library
 # depending on it (#158).
 config :lei_service,
-  metrics_collectors: [{LeiService.GithubTrending, :metrics, []}]
+  metrics_collectors: [
+    {LeiService.GithubTrending, :metrics, []},
+    {LeiService.QueueHealth, :metrics, []}
+  ]
 
 config :lei_service,
   optional_health_checks: [
     redis: {LeiService.Health, :check_redis, []},
     # Whether the configured price IDs exist in the Stripe key's mode.
-    stripe: {Lei.Stripe.ObjectCheck, :status, []}
+    stripe: {Lei.Stripe.ObjectCheck, :status, []},
+    # Whether background work is moving: nothing stuck executing, nothing
+    # waiting too long to start (ADR-004).
+    queue: {LeiService.QueueHealth, :status, []}
   ]
 
 # Rate limit buckets, per minute. free/pro key on the API key; the acp buckets
@@ -192,6 +198,10 @@ config :lei_service,
 # analysis never finishes; without Pruner finished jobs accumulate. Lifeline
 # rescues by time alone, so rescue_after must exceed the longest real analysis.
 # Environment files add repo and queues; test.exs sets plugins: false.
+# stuck_after_minutes must exceed Lifeline's rescue_after below: a job Lifeline
+# would still rescue is slow, not stuck.
+config :lei_service, :queue_health, stuck_after_minutes: 90, backlog_after_minutes: 15
+
 config :lei_service, Oban,
   lifeline: [rescue_after: {60, :minutes}],
   pruner: [max_age: {7, :days}]

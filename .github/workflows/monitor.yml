@@ -54,6 +54,24 @@ jobs:
               ;;
           esac
 
+      # Readiness already fails on a stuck or backed-up queue (it is an
+      # optional check, so it reads as "degraded"). This prints the numbers
+      # behind that verdict, and fails if the queue could not be read at all.
+      - name: Report queue depth
+        run: |
+          METRICS=$(curl -s --max-time 15 https://lowendinsight.dev/metrics | grep '^lei_queue' || true)
+          echo "${METRICS:-no lei_queue metrics}"
+
+          if [ -z "$METRICS" ]; then
+            echo "::error::/metrics reported no queue gauges: the queue collector is not running."
+            exit 1
+          fi
+
+          if echo "$METRICS" | grep -q '^lei_queue_error 1'; then
+            echo "::error::The queue could not be read. Background work cannot be confirmed to be running."
+            exit 1
+          fi
+
       # A wrong STRIPE_WEBHOOK_SECRET fails exactly like an unset one: every
       # delivery 400s, subscriptions quietly stop activating, and nothing else
       # changes. That state already went unnoticed once in this project.
