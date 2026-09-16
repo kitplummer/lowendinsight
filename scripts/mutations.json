@@ -930,11 +930,11 @@
     },
     {
       "id": "trending-job-overlaps",
-      "bug": "The hourly trending job may start while the previous run is still cloning. (#158)",
-      "file": "config/config.exs",
-      "find": "          overlap: false",
-      "replace": "          overlap: true",
-      "guarded_by": "test/lei_service/trending_refresh_test.exs",
+      "bug": "A second trending refresh running while the previous one is still cloning is what exhausted production's memory (#158); the trending queue's concurrency of 1 is what prevents it now.",
+      "file": "config/runtime.exs",
+      "find": "      trending: 1,",
+      "replace": "      trending: 2,",
+      "guarded_by": "test/lei_service/quantum_removed_test.exs",
       "app": "apps/lei_service"
     },
     {
@@ -1006,15 +1006,6 @@
       "file": "apps/lei_service/lib/lei_service/github_trending.ex",
       "find": "      {:ok, %{\"data_quality\" => %{\"status\" => \"unavailable\"} = quality}} ->",
       "replace": "      {:ok, %{\"data_quality\" => %{\"status\" => \"never-matches\"} = quality}} ->",
-      "guarded_by": "test/lei_service/trending_refresh_test.exs",
-      "app": "apps/lei_service"
-    },
-    {
-      "id": "trending-job-left-disabled",
-      "bug": "The trending job stays switched off: the pages go stale and monitoring only warns (#158).",
-      "file": "config/config.exs",
-      "find": "          overlap: false\n        ]",
-      "replace": "          overlap: false,\n          state: :inactive\n        ]",
       "guarded_by": "test/lei_service/trending_refresh_test.exs",
       "app": "apps/lei_service"
     },
@@ -1562,8 +1553,8 @@
       "id": "trending-trigger-any-key",
       "bug": "POST /v1/gh_trending/process forced a refresh of every language -- the job that exhausted production's memory -- for any API key (security, 2026-09-15).",
       "file": "apps/lei_service/lib/lei_service/endpoint.ex",
-      "find": "    if conn.assigns[:auth_method] == :jwt do\n      Task.start_link(fn -> LeiService.GithubTrending.process_languages() end)",
-      "replace": "    if conn.assigns[:auth_method] in [:jwt, :api_key] do\n      Task.start_link(fn -> LeiService.GithubTrending.process_languages() end)",
+      "find": "    if conn.assigns[:auth_method] == :jwt do\n      # Queued, not spawned",
+      "replace": "    if conn.assigns[:auth_method] in [:jwt, :api_key] do\n      # Queued, not spawned",
       "guarded_by": "test/lei_service/trending_trigger_auth_test.exs",
       "app": "apps/lei_service"
     },
