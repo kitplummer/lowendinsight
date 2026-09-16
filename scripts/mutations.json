@@ -401,7 +401,7 @@
       "id": "stripe-object-check-not-in-readiness",
       "bug": "The object check runs but is not registered with readiness, so a mismatch is logged and never reaches /readyz or monitoring (#137).",
       "file": "config/config.exs",
-      "find": "    stripe: {Lei.Stripe.ObjectCheck, :status, []}\n",
+      "find": "    stripe: {Lei.Stripe.ObjectCheck, :status, []},\n",
       "replace": "",
       "guarded_by": "test/lei/stripe/object_check_test.exs",
       "app": "apps/lei_service"
@@ -941,8 +941,8 @@
       "id": "trending-metrics-not-exposed",
       "bug": "Trending report completion and age are not on /metrics, so monitoring cannot see the job failing. (#158)",
       "file": "config/config.exs",
-      "find": "  metrics_collectors: [{LeiService.GithubTrending, :metrics, []}]",
-      "replace": "  metrics_collectors: []",
+      "find": "    {LeiService.GithubTrending, :metrics, []},\n",
+      "replace": "",
       "guarded_by": "test/lei_service/trending_refresh_test.exs",
       "app": "apps/lei_service"
     },
@@ -1709,6 +1709,51 @@
       "find": "def up, do: Oban.Migration.up(version: 14)",
       "replace": "def up, do: Oban.Migration.up(version: 13)",
       "guarded_by": "test/lei_service/oban_schema_version_test.exs",
+      "app": "apps/lei_service"
+    },
+    {
+      "id": "queue-health-ignores-stuck",
+      "bug": "Readiness reporting ok while jobs sit executing for days is how 79 analyses were lost without a single failing check (ADR-004).",
+      "file": "apps/lei_service/lib/lei_service/queue_health.ex",
+      "find": "          snapshot.stuck > 0 ->",
+      "replace": "          snapshot.stuck > 1_000_000 ->",
+      "guarded_by": "test/lei_service/queue_health_test.exs",
+      "app": "apps/lei_service"
+    },
+    {
+      "id": "queue-health-ignores-backlog",
+      "bug": "A queue that accepts work but never starts it reports ok if only executing jobs are checked.",
+      "file": "apps/lei_service/lib/lei_service/queue_health.ex",
+      "find": "          snapshot.oldest_available_seconds > backlog_minutes * 60 ->",
+      "replace": "          snapshot.oldest_available_seconds > 100_000_000 ->",
+      "guarded_by": "test/lei_service/queue_health_test.exs",
+      "app": "apps/lei_service"
+    },
+    {
+      "id": "queue-health-counts-future-jobs",
+      "bug": "Counting jobs scheduled for later as a backlog makes the check cry wolf on every cron job.",
+      "file": "apps/lei_service/lib/lei_service/queue_health.ex",
+      "find": "count(*) FILTER (WHERE state = 'available' AND scheduled_at <= (now() AT TIME ZONE 'UTC')),",
+      "replace": "count(*) FILTER (WHERE state = 'available'),",
+      "guarded_by": "test/lei_service/queue_health_test.exs",
+      "app": "apps/lei_service"
+    },
+    {
+      "id": "queue-health-unregistered",
+      "bug": "The queue check exists but nothing calls it, so stuck work still reports healthy.",
+      "file": "config/config.exs",
+      "find": "    queue: {LeiService.QueueHealth, :status, []}\n",
+      "replace": "",
+      "guarded_by": "test/lei_service/queue_health_wiring_test.exs",
+      "app": "apps/lei_service"
+    },
+    {
+      "id": "queue-health-stuck-below-rescue",
+      "bug": "A stuck threshold below Lifeline's rescue_after reports jobs Lifeline is about to rescue, so the alert fires on healthy work.",
+      "file": "config/config.exs",
+      "find": "config :lei_service, :queue_health, stuck_after_minutes: 90",
+      "replace": "config :lei_service, :queue_health, stuck_after_minutes: 30",
+      "guarded_by": "test/lei_service/queue_health_wiring_test.exs",
       "app": "apps/lei_service"
     }
   ]
