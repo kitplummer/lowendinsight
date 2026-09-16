@@ -1,6 +1,6 @@
 # ADR-004: Background work runs as Oban jobs
 
-**Status:** Proposed (2026-09-15)
+**Status:** Accepted (2026-09-15)
 
 ## Context
 
