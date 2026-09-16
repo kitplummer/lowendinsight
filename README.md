@@ -2,7 +2,7 @@
 
 ![build status](https://github.com/kitplummer/lowendinsight/workflows/default_elixir_ci/badge.svg?branch=develop) ![Hex.pm](https://img.shields.io/hexpm/v/lowendinsight) [![Coverage Status](https://coveralls.io/repos/github/kitplummer/lowendinsight/badge.svg?branch=develop&v=2)](https://coveralls.io/github/kitplummer/lowendinsight?branch=develop)
 
-## Current Version: 0.9.1
+## Current Version: 0.10.0
 
 <img src="lei_bus_128.png" style="float: left;margin-right: 10px;margin-top: 10px;">
 
@@ -11,6 +11,19 @@ LowEndInsight is a simple "bus-factor" risk analysis library for Open Source Sof
 ---
 
 ## What's New
+
+**Version 0.10.0**
+- **Requires Elixir 1.17+** and moves to httpoison 3 / hackney 4, which clears
+  four hackney advisories.
+- **npm lookups fixed**: `replicate.npmjs.com` answers 404 for every package,
+  so npm scans had been analysing bare package names.
+- **yarn.lock**: scoped packages keep their names, versions compare as
+  versions, and yarn 2+ (berry) lockfiles parse.
+- **`Lei.BatchAnalyzer.analyze/2`** takes a `:schedule` function; a miss with
+  no scheduler is reported `"uncached"` rather than a job id that names no
+  work. `cache_mode: "fresh"` now bypasses the cache.
+- See [CHANGELOG.md](apps/lowendinsight/CHANGELOG.md) for the full list, including the hosted
+  service's security and background-work changes.
 
 **Version 0.9.1**
 - Maintenance and documentation cleanup.
