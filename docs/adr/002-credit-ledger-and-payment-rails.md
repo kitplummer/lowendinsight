@@ -558,6 +558,42 @@ unrecoverable.** Mainnet funds sent to a sandbox address are gone. So a challeng
 names an address only after Stripe has listed it under the configured key
 (`Lei.Stripe.ObjectCheck`).
 
+### Addendum (2026-09-16): refunds and disputes follow the money
+
+Found and built in #208: nothing called `reverse_settlement/2`, so a refund left
+the credits it paid for spendable. Decided while building it:
+
+**The ledger moves when Stripe's balance does.** Credits are granted against
+settled money, so they are withdrawn against withdrawn money:
+`charge.refunded`, `charge.dispute.funds_withdrawn`, and
+`charge.dispute.funds_reinstated` for a dispute won. Opening a dispute moves no
+money and changes nothing; neither does losing one, because the funds already
+left when it opened.
+
+**Partial refunds reverse proportionally**, rounded down, against the
+purchase's `usd_value_cents`. `charge.refunded` carries the cumulative amount,
+so what to reverse is that share less what the ledger already holds. The parts
+sum to the purchase, and events arriving out of order change nothing twice.
+
+**A purchase is never reversed for more than it granted**, across any mix of
+refunds and disputes. Events for one org are serialised on the org's row.
+
+**A reversal may take a balance negative.** Spent credits that were refunded
+are a debt; the balance records it, and admission refuses a negative balance
+like any other shortfall. No separate freeze.
+
+**A won dispute gives back exactly what its withdrawal took**, as a
+`reinstatement:<rail>` entry, a new reason. It is not a purchase: no new money
+arrived, the old money came back.
+
+**Pro subscriptions are out of scope.** A refunded Pro invoice matches no credit
+purchase and changes nothing, counted as `unmatched`. Cancelling the
+subscription is still what ends Pro.
+
+**Stablecoin has no disputes**, and refunds go back on-chain to the paying
+wallet (#136). Whether a stablecoin refund raises `charge.refunded` like a card
+is **not verified**; the handler treats it the same way.
+
 ## Rationale
 
 **Why a ledger rather than fixing the ACP path.** Patching

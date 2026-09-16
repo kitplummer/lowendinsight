@@ -2088,6 +2088,69 @@
       "replace": "",
       "guarded_by": "test/package_files_test.exs",
       "app": "apps/lowendinsight"
+    },
+    {
+      "id": "refund-not-reversed",
+      "bug": "A refund made in Stripe left the credits it paid for spendable: the webhook handler ignored charge.refunded and reverse_settlement/2 had no caller (#208).",
+      "file": "apps/lei_service/lib/lei/stripe_webhook_handler.ex",
+      "find": "def handle_event(%{\"type\" => \"charge.refunded\"} = event),",
+      "replace": "def handle_event(%{\"type\" => \"charge.refunded:ignored\"} = event),",
+      "guarded_by": "test/lei/payments/reversals_test.exs",
+      "app": "apps/lei_service"
+    },
+    {
+      "id": "dispute-withdrawal-not-reversed",
+      "bug": "Stripe withdrew a disputed payment from the balance and the ledger kept the credits (#208).",
+      "file": "apps/lei_service/lib/lei/stripe_webhook_handler.ex",
+      "find": "def handle_event(%{\"type\" => \"charge.dispute.funds_withdrawn\"} = event),",
+      "replace": "def handle_event(%{\"type\" => \"charge.dispute.funds_withdrawn:ignored\"} = event),",
+      "guarded_by": "test/lei/payments/reversals_test.exs",
+      "app": "apps/lei_service"
+    },
+    {
+      "id": "dispute-won-not-reinstated",
+      "bug": "A dispute won returned the money to Stripe's balance while the customer's credits stayed reversed (#208).",
+      "file": "apps/lei_service/lib/lei/stripe_webhook_handler.ex",
+      "find": "def handle_event(%{\"type\" => \"charge.dispute.funds_reinstated\"} = event),",
+      "replace": "def handle_event(%{\"type\" => \"charge.dispute.funds_reinstated:ignored\"} = event),",
+      "guarded_by": "test/lei/payments/reversals_test.exs",
+      "app": "apps/lei_service"
+    },
+    {
+      "id": "refund-exceeds-purchase",
+      "bug": "A refund after a dispute on one purchase could take back more credits than it granted (#208).",
+      "file": "apps/lei_service/lib/lei/payments/reversals.ex",
+      "find": "credits = min(owed - already, remaining(purchase))",
+      "replace": "credits = owed - already",
+      "guarded_by": "test/lei/payments/reversals_test.exs",
+      "app": "apps/lei_service"
+    },
+    {
+      "id": "reversal-without-org-lock",
+      "bug": "Overlapping charge.refunded events each read nothing reversed yet and each wrote, reversing a purchase more than once (#208).",
+      "file": "apps/lei_service/lib/lei/payments/reversals.ex",
+      "find": "        Repo.one!(from(o in Org, where: o.id == ^entry.org_id, lock: \"FOR UPDATE\"))",
+      "replace": "        _ = Org",
+      "guarded_by": "test/lei/payments/reversals_concurrency_test.exs",
+      "app": "apps/lei_service"
+    },
+    {
+      "id": "stats-tables-owned-by-request",
+      "bug": "Webhook outcome counters were created by the first request to count and deleted when it ended, so lei_stripe_webhook_total read 0 in production for every result, including invalid (#111, found in #208).",
+      "file": "apps/lei_service/lib/lei_service/application.ex",
+      "find": "    Lei.WebhookStats.init_table()\n    Lei.ReversalStats.init_table()\n",
+      "replace": "",
+      "guarded_by": "test/lei/stats_table_owner_test.exs",
+      "app": "apps/lei_service"
+    },
+    {
+      "id": "dispute-exceeds-purchase",
+      "bug": "A dispute after a partial refund on one purchase could take back more credits than it granted (#208).",
+      "file": "apps/lei_service/lib/lei/payments/reversals.ex",
+      "find": "credits = min(proportion(purchase, amount), remaining(purchase))",
+      "replace": "credits = proportion(purchase, amount)",
+      "guarded_by": "test/lei/payments/reversals_test.exs",
+      "app": "apps/lei_service"
     }
   ]
 }

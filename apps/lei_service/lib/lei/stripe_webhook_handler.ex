@@ -27,9 +27,25 @@ defmodule Lei.StripeWebhookHandler do
         {1, _} ->
           result = handle_event(event)
           Logger.info("Stripe webhook #{type} #{id}: #{inspect(outcome(result))}")
-          :processed
+          result
       end
     end)
+    |> case do
+      {:ok, :duplicate} ->
+        {:ok, :duplicate}
+
+      # Counted only once the transaction has committed, so a delivery that
+      # raised and will be retried is not counted twice.
+      {:ok, {:reversal, result}} ->
+        Lei.ReversalStats.record(result)
+        {:ok, :processed}
+
+      {:ok, _} ->
+        {:ok, :processed}
+
+      other ->
+        other
+    end
   end
 
   def process(_event), do: {:error, :missing_event_id}
@@ -92,9 +108,32 @@ defmodule Lei.StripeWebhookHandler do
     end
   end
 
+  # Money going back to a customer. See Lei.Payments.Reversals for why these
+  # three and not refund.created or charge.dispute.created.
+  def handle_event(%{"type" => "charge.refunded"} = event),
+    do: reversal(event, &Lei.Payments.Reversals.refund/1)
+
+  def handle_event(%{"type" => "charge.dispute.funds_withdrawn"} = event),
+    do: reversal(event, &Lei.Payments.Reversals.dispute_withdrawn/1)
+
+  def handle_event(%{"type" => "charge.dispute.funds_reinstated"} = event),
+    do: reversal(event, &Lei.Payments.Reversals.dispute_reinstated/1)
+
   def handle_event(%{"type" => type}) do
     Logger.debug("Stripe webhook: ignoring event type #{type}")
     :ok
+  end
+
+  defp reversal(%{"type" => type, "data" => %{"object" => object}}, apply) do
+    result = apply.(object)
+
+    if result == :unmatched do
+      Logger.warning(
+        "Stripe webhook #{type}: no credit purchase for PaymentIntent #{inspect(object["payment_intent"])}; ledger unchanged"
+      )
+    end
+
+    {:reversal, result}
   end
 
   defp activate_paid(nil, session) do

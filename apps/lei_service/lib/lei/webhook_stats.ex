@@ -37,9 +37,10 @@ defmodule Lei.WebhookStats do
   @doc """
   Creates the counter table if it does not exist.
 
-  Called from record/1 rather than only at boot: a Plug's init/1 runs at compile
-  time in a release, so anything set up there is absent at runtime. That mistake
-  took down POST /v1/analyze for every authenticated caller once (#91).
+  **Must be called at application start** (`LeiService.Application`). An ETS
+  table is deleted when the process that created it exits; created from a
+  request, it lasts as long as the request. The calls from record/1 and
+  count/1 only keep a missing table from crashing the caller.
   """
   def init_table do
     case :ets.whereis(@table) do
