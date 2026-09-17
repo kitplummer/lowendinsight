@@ -787,6 +787,13 @@ LOG_LEVEL=debug ./bin/lei_service foreground
 
 ## Payment kill switch
 
+> **These are executable runbooks.** The steps below are run through
+> `scripts/payments.sh` (JSON out, verified, safe to retry), by an operator or
+> by an agent using the skills in `.claude/skills/` -- start with
+> `payments-operations`. What an agent may do without asking is enforced in
+> `.claude/settings.json`: reading and switching a path **off**; everything that
+> moves money prompts the operator.
+
 Every way money comes in can be switched off in seconds, without a deploy
 (#139). Use it when a payment path is misbehaving: charging wrongly, crediting
 wrongly, or under attack. Switching off is safe to do first and ask about
@@ -816,10 +823,11 @@ printf 'Authorization: Bearer %s\n' "$LEI_ADMIN_TOKEN" |
 ```
 
 A reason is required: whoever switches it back needs to know why it went off.
-Without HTTP, the same from a release shell:
+Without the admin token locally, the same through the release, verified
+against `/metrics`:
 
 ```bash
-flyctl ssh console -a lowendinsight -C "/opt/app/bin/lei_service rpc 'Lei.Payments.Switches.set(\"tempo\", false, \"reason\", \"your name\")'"
+scripts/payments.sh switch-off tempo --reason "what is wrong, and where it is tracked" --actor "your name"
 ```
 
 ### Confirm it took
@@ -848,7 +856,7 @@ credential are **held**: kept from the purge, counted on
 List them:
 
 ```bash
-flyctl ssh console -a lowendinsight -C "/opt/app/bin/lei_service rpc 'Lei.Payments.Held.list() |> IO.inspect()'"
+scripts/payments.sh held
 ```
 
 **To credit one** (the payment was good): release it. This verifies the transfer
@@ -856,7 +864,7 @@ on chain and with Stripe exactly as a normal payment would, credits the payer
 once, and works with the rail still off and after the challenge has expired.
 
 ```bash
-flyctl ssh console -a lowendinsight -C "/opt/app/bin/lei_service rpc 'Lei.Payments.Held.release(\"<challenge_id>\") |> IO.inspect()'"
+scripts/payments.sh release <challenge_id> --actor "your name"
 ```
 
 **To refund one**: release it first, then refund the resulting PaymentIntent
@@ -897,8 +905,11 @@ curl -s https://lowendinsight.dev/metrics | grep '^lei_stripe_reconciliation'
 The discrepancies themselves are on the latest run:
 
 ```bash
-flyctl ssh console -a lowendinsight -C "/opt/app/bin/lei_service rpc 'Lei.StripeReconciliation.latest() |> IO.inspect(limit: :infinity)'"
+scripts/payments.sh reconciliation
 ```
+
+What to do about each kind is also the `stripe-reconciliation-discrepancy`
+skill.
 
 | kind | what happened | what to do |
 |---|---|---|

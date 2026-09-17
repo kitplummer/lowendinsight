@@ -36,7 +36,12 @@ dump.rdb
 
 # Gastown / GLITCHLAB runtime
 .runtime/
-.claude/
+.claude/*
+# Shared with every agent session in this repo: the payment runbooks and the
+# permission rules that bound what an agent may do without asking (#139).
+# Personal settings (settings.local.json) stay ignored.
+!.claude/skills/
+!.claude/settings.json
 .logs/
 
 # Zarf package artifacts
