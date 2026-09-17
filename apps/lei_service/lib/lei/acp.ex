@@ -105,7 +105,15 @@ defmodule Lei.Acp do
     case stripe.create_payment_intent(%{
            amount: session.amount_cents,
            currency: session.currency,
-           payment_method: payment_method
+           payment_method: payment_method,
+           # How Stripe's side knows this is a credit purchase, so reconciliation
+           # can find one Stripe received and the ledger never credited
+           # (Lei.StripeReconciliation). The MPP rails set challenge_id.
+           metadata: %{
+             "lei_rail" => "acp",
+             "acp_session_id" => session.id,
+             "credits" => to_string(AcpCheckoutSession.credits_for_amount(session.amount_cents))
+           }
          }) do
       {:ok, %{"id" => pi_id, "status" => "succeeded"}} ->
         finalize_paid_session(session, pi_id)

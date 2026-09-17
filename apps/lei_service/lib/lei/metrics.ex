@@ -103,6 +103,14 @@ defmodule Lei.Metrics do
       "# TYPE lei_payment_held gauge",
       held_metrics(),
       "",
+      # The ledger's purchases against the payments Stripe received, from the
+      # latest hourly run (#139). A failed run reports failed and no
+      # discrepancy count, so it cannot read as a clean one; age_seconds shows
+      # a run that has stopped happening.
+      "# HELP lei_stripe_reconciliation Ledger purchases against Stripe payments, latest run",
+      "# TYPE lei_stripe_reconciliation gauge",
+      stripe_reconciliation_metrics(),
+      "",
       "# HELP lei_credit_reconciliation Ledger agreement with recorded usage",
       "# TYPE lei_credit_reconciliation gauge",
       reconciliation_metrics(),
@@ -204,6 +212,39 @@ defmodule Lei.Metrics do
       require Logger
       Logger.error("Held payment metrics failed: #{inspect(error)}")
       [~s(lei_payment_held{measure="error"} 1)]
+  end
+
+  defp stripe_reconciliation_metrics do
+    case Lei.StripeReconciliation.latest() do
+      nil ->
+        [~s(lei_stripe_reconciliation{measure="runs"} 0)]
+
+      run ->
+        age =
+          NaiveDateTime.diff(NaiveDateTime.utc_now(), run.inserted_at, :second)
+
+        base = [
+          ~s(lei_stripe_reconciliation{measure="runs"} #{Lei.StripeReconciliation.count()}),
+          ~s(lei_stripe_reconciliation{measure="age_seconds"} #{max(age, 0)}),
+          ~s(lei_stripe_reconciliation{measure="failed"} #{if run.status == "failed", do: 1, else: 0})
+        ]
+
+        if run.status == "failed" do
+          base
+        else
+          base ++
+            [
+              ~s(lei_stripe_reconciliation{measure="discrepancies"} #{run.discrepancy_count}),
+              ~s(lei_stripe_reconciliation{measure="ledger_purchases"} #{run.ledger_purchases}),
+              ~s(lei_stripe_reconciliation{measure="stripe_purchases"} #{run.stripe_purchases})
+            ]
+        end
+    end
+  rescue
+    error ->
+      require Logger
+      Logger.error("Stripe reconciliation metrics failed: #{inspect(error)}")
+      [~s(lei_stripe_reconciliation{measure="error"} 1)]
   end
 
   defp payment_outcome_metrics do

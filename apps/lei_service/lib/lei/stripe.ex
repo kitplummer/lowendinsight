@@ -16,6 +16,8 @@ defmodule Lei.StripeBehaviour do
   # the pinned version rejects them as unknown parameters (observed, #144).
   @callback create_crypto_verification_intent(map()) ::
               {:ok, map()} | {:error, {pos_integer(), map()}} | {:error, term()}
+  @callback list_payment_intents(created_gte :: integer(), starting_after :: String.t() | nil) ::
+              {:ok, map()} | {:error, term()}
   @callback retrieve_payment_intent(String.t()) ::
               {:ok, map()} | {:error, {pos_integer(), map()}} | {:error, term()}
   @callback list_deposit_addresses(String.t()) ::
@@ -148,20 +150,7 @@ defmodule Lei.Stripe do
 
   @impl true
   def create_payment_intent(params) do
-    body =
-      URI.encode_query(%{
-        "amount" => to_string(params.amount),
-        "currency" => params.currency,
-        "payment_method" => params.payment_method,
-        "confirm" => "true",
-        # Production always configures :lei_base_url in runtime.exs; this
-        # fallback is for dev and test. Kept identical to the one in
-        # Lei.Web.Router so the two cannot disagree about where a customer
-        # is sent after paying.
-        "return_url" =>
-          params[:return_url] ||
-            Application.get_env(:lei_service, :lei_base_url, "http://localhost:4000")
-      })
+    {body, _} = payment_intent_request(params)
 
     case HTTPoison.post(
            "https://api.stripe.com/v1/payment_intents",
@@ -339,6 +328,55 @@ defmodule Lei.Stripe do
       |> URI.encode_query()
 
     {body, [{"Idempotency-Key", params.idempotency_key}]}
+  end
+
+  @doc false
+  # The request create_payment_intent/1 sends, separated so its bytes can be
+  # asserted without a network (as shared_payment_token_request/1).
+  def payment_intent_request(params) do
+    metadata =
+      for {k, v} <- Map.get(params, :metadata, %{}), into: %{} do
+        {"metadata[#{k}]", to_string(v)}
+      end
+
+    body =
+      URI.encode_query(
+        Map.merge(metadata, %{
+          "amount" => to_string(params.amount),
+          "currency" => params.currency,
+          "payment_method" => params.payment_method,
+          "confirm" => "true",
+          # Production always configures :lei_base_url in runtime.exs; this
+          # fallback is for dev and test. Kept identical to the one in
+          # Lei.Web.Router so the two cannot disagree about where a customer
+          # is sent after paying.
+          "return_url" =>
+            params[:return_url] ||
+              Application.get_env(:lei_service, :lei_base_url, "http://localhost:4000")
+        })
+      )
+
+    {body, []}
+  end
+
+  @impl true
+  def list_payment_intents(created_gte, starting_after) do
+    get_json(
+      list_payment_intents_path(created_gte, starting_after),
+      headers(@stripe_preview_version)
+    )
+  end
+
+  @doc false
+  def list_payment_intents_path(created_gte, starting_after) do
+    query =
+      [
+        {"limit", "100"},
+        {"created[gte]", to_string(created_gte)},
+        {"expand[]", "data.latest_charge"}
+      ] ++ if(starting_after, do: [{"starting_after", starting_after}], else: [])
+
+    "/v1/payment_intents?" <> URI.encode_query(query)
   end
 
   @impl true
