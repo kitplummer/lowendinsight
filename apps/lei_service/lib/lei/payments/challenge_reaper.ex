@@ -55,6 +55,10 @@ defmodule Lei.Payments.ChallengeReaper do
   Purges now. Exposed for tests and for an operator who wants it done.
   """
   def purge do
+    # Outcome counts are kept 30 days. Hourly is more often than that needs,
+    # but it is one indexed delete and saves a second timer.
+    Lei.Payments.Outcomes.prune()
+
     count = ChallengeStore.purge_expired()
 
     if count > 0 do
