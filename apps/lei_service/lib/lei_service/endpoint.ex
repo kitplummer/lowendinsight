@@ -563,6 +563,83 @@ defmodule LeiService.Endpoint do
     end
   end
 
+  # The payment kill switches (Lei.Payments.Switches, #139). Reading takes the
+  # admin token like /admin does; changing one accepts it only in the
+  # Authorization header -- a query-string token lands in access logs, which is
+  # tolerable for a dashboard and not for switching payments off.
+  get "/admin/payments/switches" do
+    conn = fetch_query_params(conn)
+
+    if admin_authorized?(conn) do
+      body =
+        Map.new(Lei.Payments.Switches.state(), fn {path, s} ->
+          {path, Map.update!(s, :changed_at, &(&1 && NaiveDateTime.to_iso8601(&1) <> "Z"))}
+        end)
+        |> Map.put("held", Lei.Payments.Held.counts())
+
+      conn |> put_resp_content_type(@content_type) |> send_resp(200, Poison.encode!(body))
+    else
+      json_error(conn, 401, "unauthorized")
+    end
+  end
+
+  post "/admin/payments/switches/:path" do
+    cond do
+      not admin_authorized_by_header?(conn) ->
+        json_error(conn, 401, "unauthorized")
+
+      path not in Lei.Payments.Switches.paths() ->
+        json_error(conn, 404, "unknown payment path")
+
+      true ->
+        actor = conn.body_params["actor"] || "admin-api"
+
+        case Lei.Payments.Switches.set(
+               path,
+               conn.body_params["enabled"],
+               conn.body_params["reason"],
+               actor
+             ) do
+          {:ok, change} ->
+            conn
+            |> put_resp_content_type(@content_type)
+            |> send_resp(
+              200,
+              Poison.encode!(%{
+                path: change.path,
+                enabled: change.enabled,
+                reason: change.reason,
+                actor: change.actor
+              })
+            )
+
+          {:error, :reason_required} ->
+            json_error(conn, 422, "a reason is required")
+
+          {:error, :enabled_must_be_boolean} ->
+            json_error(conn, 422, "enabled must be true or false")
+
+          {:error, _} ->
+            json_error(conn, 422, "could not change the switch")
+        end
+    end
+  end
+
+  defp admin_authorized_by_header?(conn) do
+    expected = System.get_env("LEI_ADMIN_TOKEN", "")
+
+    case get_req_header(conn, "authorization") do
+      ["Bearer " <> token] when expected != "" -> Plug.Crypto.secure_compare(token, expected)
+      _ -> false
+    end
+  end
+
+  defp json_error(conn, status, message) do
+    conn
+    |> put_resp_content_type(@content_type)
+    |> send_resp(status, Poison.encode!(%{error: message}))
+  end
+
   # Fails closed: an unset LEI_ADMIN_TOKEN denies everyone rather than opening
   # the dashboard, which is the right default. But it also made /admin silently
   # unreachable for as long as the secret went unset, so log that case

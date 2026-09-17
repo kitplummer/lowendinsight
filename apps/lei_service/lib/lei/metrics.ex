@@ -92,6 +92,17 @@ defmodule Lei.Metrics do
       "# TYPE lei_payment_outcomes gauge",
       payment_outcome_metrics(),
       "",
+      # 1 on, 0 off. A path left off after an incident is revenue stopped by
+      # choice and then forgotten.
+      "# HELP lei_payment_switch_enabled Whether each payment path's kill switch is on",
+      "# TYPE lei_payment_switch_enabled gauge",
+      switch_metrics(),
+      "",
+      # Money received while a rail was off and not yet credited or refunded.
+      "# HELP lei_payment_held Payments held while their rail was switched off, awaiting credit or refund",
+      "# TYPE lei_payment_held gauge",
+      held_metrics(),
+      "",
       "# HELP lei_credit_reconciliation Ledger agreement with recorded usage",
       "# TYPE lei_credit_reconciliation gauge",
       reconciliation_metrics(),
@@ -162,6 +173,37 @@ defmodule Lei.Metrics do
       require Logger
       Logger.error("Reversal metrics failed: #{inspect(error)}")
       [~s(lei_credit_reversals{measure="error"} 1)]
+  end
+
+  defp switch_metrics do
+    Enum.map(Lei.Payments.Switches.state() |> Enum.sort(), fn {path, s} ->
+      ~s(lei_payment_switch_enabled{path="#{path}"} #{if s.enabled, do: 1, else: 0})
+    end)
+  rescue
+    error ->
+      require Logger
+      Logger.error("Payment switch metrics failed: #{inspect(error)}")
+      [~s(lei_payment_switch_enabled{measure="error"} 1)]
+  end
+
+  defp held_metrics do
+    counts = Lei.Payments.Held.counts()
+
+    defaults =
+      for rail <- Application.get_env(:lei_service, :payment_rails, []),
+          Lei.Payments.MachineRail.funds_move_before_settlement?(rail),
+          into: %{},
+          do: {rail.name(), 0}
+
+    defaults
+    |> Map.merge(counts)
+    |> Enum.sort()
+    |> Enum.map(fn {rail, n} -> ~s(lei_payment_held{rail="#{rail}"} #{n}) end)
+  rescue
+    error ->
+      require Logger
+      Logger.error("Held payment metrics failed: #{inspect(error)}")
+      [~s(lei_payment_held{measure="error"} 1)]
   end
 
   defp payment_outcome_metrics do

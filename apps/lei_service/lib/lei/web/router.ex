@@ -687,6 +687,17 @@ defmodule Lei.Web.Router do
   end
 
   defp signup_pro(conn, name) do
+    # Before the org is created: a switched-off path starts nothing.
+    if Lei.Payments.Switches.enabled?("pro_checkout") do
+      start_pro_checkout(conn, name)
+    else
+      render_page(conn, "signup.html.eex",
+        flash_error: "Pro sign-up is temporarily unavailable. Please try again later."
+      )
+    end
+  end
+
+  defp start_pro_checkout(conn, name) do
     case Lei.ApiKeys.create_org(name, tier: "pro", status: "pending") do
       {:error, :name_taken} ->
         render_page(conn, "signup.html.eex",

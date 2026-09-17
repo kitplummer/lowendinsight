@@ -62,6 +62,13 @@ defmodule Lei.StripeWebhookHandler do
     org_id = get_in(session, ["metadata", "org_id"])
 
     cond do
+      # Paid at Stripe while Pro checkout is switched off. Not applied, and not
+      # recorded as processed: raising rolls the event back and answers 500, so
+      # Stripe retries it (for up to three days) and it applies once the
+      # switch is back on.
+      not Lei.Payments.Switches.enabled?("pro_checkout") ->
+        raise Lei.Payments.Switches.SwitchedOff, path: "pro_checkout"
+
       is_nil(org_id) ->
         Logger.warning("Stripe webhook: missing org_id in session metadata")
         {:error, :missing_org_id}

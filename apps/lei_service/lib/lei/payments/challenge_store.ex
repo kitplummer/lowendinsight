@@ -26,6 +26,8 @@ defmodule Lei.Payments.ChallengeStore do
       field(:header, :string)
       field(:expires_at, :utc_datetime_usec)
       field(:settled_at, :utc_datetime_usec)
+      field(:held_at, :utc_datetime_usec)
+      field(:held_credential, :string)
       belongs_to(:org, Lei.Org)
 
       timestamps(updated_at: false)
@@ -41,7 +43,9 @@ defmodule Lei.Payments.ChallengeStore do
         :amount_cents,
         :header,
         :expires_at,
-        :settled_at
+        :settled_at,
+        :held_at,
+        :held_credential
       ])
       # org_id is absent for a challenge issued to an agent that has no org
       # yet; settlement records the org the payment identified (#147).
@@ -119,14 +123,32 @@ defmodule Lei.Payments.ChallengeStore do
   end
 
   @doc """
+  Holds a challenge and the credential presented for it, so a payment refused
+  while its rail was switched off can be credited or refunded later
+  (`Lei.Payments.Held`). The first credential held is kept.
+  """
+  def hold(%Record{held_at: nil} = record, credential_header) do
+    record
+    |> Record.changeset(%{held_at: DateTime.utc_now(), held_credential: credential_header})
+    |> Repo.update()
+  end
+
+  def hold(%Record{} = record, _credential_header), do: {:ok, record}
+
+  @doc """
   Removes challenges that expired without being answered.
 
   They are not interesting after the fact and there is no reason to keep an
-  agent's browsing history of prices.
+  agent's browsing history of prices. A held challenge is kept: it is the
+  record of money received and not yet credited.
   """
   def purge_expired(before \\ DateTime.utc_now()) do
     {count, _} =
-      Repo.delete_all(from(r in Record, where: is_nil(r.settled_at) and r.expires_at < ^before))
+      Repo.delete_all(
+        from(r in Record,
+          where: is_nil(r.settled_at) and is_nil(r.held_at) and r.expires_at < ^before
+        )
+      )
 
     count
   end

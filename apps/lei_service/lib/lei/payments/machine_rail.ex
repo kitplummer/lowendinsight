@@ -133,7 +133,24 @@ defmodule Lei.Payments.MachineRail do
   """
   @callback payer_wallet(settlement()) :: String.t() | nil
 
-  @optional_callbacks payer_wallet: 1
+  @doc """
+  Whether the payer's money has already moved when the credential arrives.
+
+  True for a push payment: a stablecoin transfer is on chain before the agent
+  presents its hash. False where settling is what charges the payer, as with a
+  card token. A credential refused because its rail is switched off is held
+  when this is true, because refusing it does not return the money
+  (`Lei.Payments.Held`).
+  """
+  @callback funds_move_before_settlement?() :: boolean()
+
+  @optional_callbacks payer_wallet: 1, funds_move_before_settlement?: 0
+
+  @doc "Whether a rail's payer has paid before settlement; false unless it says so."
+  def funds_move_before_settlement?(rail) do
+    Code.ensure_loaded?(rail) and function_exported?(rail, :funds_move_before_settlement?, 0) and
+      rail.funds_move_before_settlement?()
+  end
 
   @doc "Whether a rail can identify its payer, and so be offered anonymously."
   def identifies_payer?(rail) do

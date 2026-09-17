@@ -27,7 +27,7 @@ defmodule Lei.Payments.Http do
   require Logger
 
   alias Lei.{ApiKeys, Org, Payments, Repo, Wallets}
-  alias Lei.Payments.{ChallengeStore, MachineRail, Outcomes}
+  alias Lei.Payments.{ChallengeStore, MachineRail, Outcomes, Switches}
   alias Lei.Payments.Mpp.{Challenge, Credential, Receipt}
 
   @doc """
@@ -54,7 +54,14 @@ defmodule Lei.Payments.Http do
       |> Keyword.get_lazy(:rails, &configured_rails/0)
       |> Enum.filter(&(org_id != nil or MachineRail.identifies_payer?(&1)))
 
-    results = Enum.map(rails, fn rail -> {rail, rail.requirements(credits, opts)} end)
+    # A switched-off rail is not asked for requirements at all: it is
+    # unavailable, for a reason the 402 and the counts can both name.
+    results =
+      Enum.map(rails, fn rail ->
+        if Switches.enabled?(rail.name()),
+          do: {rail, rail.requirements(credits, opts)},
+          else: {rail, {:error, {:unavailable, :switched_off}}}
+      end)
 
     offered = for {rail, {:ok, challenge}} <- results, do: {rail, challenge}
 
@@ -164,17 +171,27 @@ defmodule Lei.Payments.Http do
     # bucket. Checked the other way round, every paid request counted -- ten a
     # minute per IP for all analysis, keyed or not, once both analyze routes
     # passed through here (#147).
-    if payment_credential?(conn) do
-      conn = Lei.Payments.RateLimit.check(conn, :payment_settle)
+    cond do
+      not payment_credential?(conn) ->
+        :no_credential
 
-      if Lei.Payments.RateLimit.limited?(conn) do
-        Outcomes.record("unknown", "rate_limited", :payment_settle)
-        {:rate_limited, conn}
-      else
+      # An operator crediting a held payment (Lei.Payments.Held), not a caller.
+      Keyword.get(opts, :release_held, false) ->
         do_settle(conn, opts)
-      end
+
+      true ->
+        rate_limited_settle(conn, opts)
+    end
+  end
+
+  defp rate_limited_settle(conn, opts) do
+    conn = Lei.Payments.RateLimit.check(conn, :payment_settle)
+
+    if Lei.Payments.RateLimit.limited?(conn) do
+      Outcomes.record("unknown", "rate_limited", :payment_settle)
+      {:rate_limited, conn}
     else
-      :no_credential
+      do_settle(conn, opts)
     end
   end
 
@@ -197,7 +214,7 @@ defmodule Lei.Payments.Http do
       Outcomes.record(rail.name(), "presented")
 
       conn
-      |> settle_recalled(credential, issued, record, rail, opts)
+      |> settle_recalled(header, credential, issued, record, rail, opts)
       |> tap(&count_settlement(&1, rail, record))
     else
       {:error, reason} = error ->
@@ -222,7 +239,36 @@ defmodule Lei.Payments.Http do
 
   defp count_settlement(_other, _rail, _record), do: :ok
 
-  defp settle_recalled(conn, credential, issued, record, rail, opts) do
+  # Switched off: nothing is verified and nothing is credited. Where the payer
+  # has already paid, the credential is held rather than dropped.
+  defp settle_recalled(conn, header, credential, issued, record, rail, opts) do
+    releasing? = Keyword.get(opts, :release_held, false)
+
+    if not releasing? and not Switches.enabled?(rail.name()) do
+      if MachineRail.funds_move_before_settlement?(rail) do
+        case ChallengeStore.hold(record, header) do
+          {:ok, _} ->
+            Logger.warning(
+              "#{rail.name()} credential for #{record.challenge_id} held: rail switched off"
+            )
+
+          {:error, reason} ->
+            Logger.error(
+              "Could not hold #{rail.name()} credential for #{record.challenge_id}: #{inspect(reason)}"
+            )
+        end
+      end
+
+      {:error, :rail_disabled}
+    else
+      # A held payment is released after its challenge has expired, which is
+      # the operator's decision to make, not a stale credential.
+      issued = if releasing?, do: %{issued | expires: nil}, else: issued
+      verify_and_credit(conn, credential, issued, record, rail, opts)
+    end
+  end
+
+  defp verify_and_credit(conn, credential, issued, record, rail, opts) do
     with {:ok, settlement} <- rail.verify(credential, Keyword.put(opts, :challenge, issued)),
          {:ok, org_id, issued_key} <- credit_payer(record, rail, settlement) do
       ChallengeStore.mark_settled(record, org_id)

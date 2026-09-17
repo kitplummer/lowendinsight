@@ -2214,6 +2214,96 @@
       "replace": "outcome <- [],",
       "guarded_by": "test/lei/payments/outcomes_test.exs",
       "app": "apps/lei_service"
+    },
+    {
+      "id": "kill-switch-challenge-ignores-switch",
+      "bug": "A switched-off rail still offered challenges, so stopping a rail stopped nothing (#139).",
+      "file": "apps/lei_service/lib/lei/payments/http.ex",
+      "find": "        if Switches.enabled?(rail.name()),",
+      "replace": "        if true,",
+      "guarded_by": "test/lei/payments/kill_switch_test.exs",
+      "app": "apps/lei_service"
+    },
+    {
+      "id": "kill-switch-settle-ignores-switch",
+      "bug": "A credential for a challenge issued before the switch was still verified and credited while the rail was off (#139).",
+      "file": "apps/lei_service/lib/lei/payments/http.ex",
+      "find": "    if not releasing? and not Switches.enabled?(rail.name()) do",
+      "replace": "    if false do",
+      "guarded_by": "test/lei/payments/kill_switch_test.exs",
+      "app": "apps/lei_service"
+    },
+    {
+      "id": "kill-switch-stablecoin-not-held",
+      "bug": "A stablecoin credential refused while its rail was off was dropped: money received on chain with no record to credit or refund it from (#139).",
+      "file": "apps/lei_service/lib/lei/payments/http.ex",
+      "find": "      if MachineRail.funds_move_before_settlement?(rail) do",
+      "replace": "      if false do",
+      "guarded_by": "test/lei/payments/kill_switch_test.exs",
+      "app": "apps/lei_service"
+    },
+    {
+      "id": "kill-switch-held-purged",
+      "bug": "A held stablecoin payment's challenge was deleted by the hourly purge, losing the record of money received (#139).",
+      "file": "apps/lei_service/lib/lei/payments/challenge_store.ex",
+      "find": "is_nil(r.settled_at) and is_nil(r.held_at) and r.expires_at",
+      "replace": "is_nil(r.settled_at) and r.expires_at",
+      "guarded_by": "test/lei/payments/kill_switch_test.exs",
+      "app": "apps/lei_service"
+    },
+    {
+      "id": "kill-switch-held-release-expired",
+      "bug": "A held payment could not be credited once its five-minute challenge had expired, which it always has by the end of an incident (#139).",
+      "file": "apps/lei_service/lib/lei/payments/http.ex",
+      "find": "issued = if releasing?, do: %{issued | expires: nil}, else: issued",
+      "replace": "issued = issued",
+      "guarded_by": "test/lei/payments/kill_switch_test.exs",
+      "app": "apps/lei_service"
+    },
+    {
+      "id": "kill-switch-acp-complete-ignores-switch",
+      "bug": "Agent card checkout still charged the card for a session opened before its switch went off (#139).",
+      "file": "apps/lei_service/lib/lei/acp.ex",
+      "find": "if Lei.Payments.Switches.enabled?(\"acp\"), do: :ok, else: {:error, :switched_off}",
+      "replace": "_ = :ok",
+      "guarded_by": "test/lei/payments/kill_switch_test.exs",
+      "app": "apps/lei_service"
+    },
+    {
+      "id": "kill-switch-pro-signup-ignores-switch",
+      "bug": "Pro sign-up still created an org and started Stripe Checkout with pro_checkout switched off (#139).",
+      "file": "apps/lei_service/lib/lei/web/router.ex",
+      "find": "if Lei.Payments.Switches.enabled?(\"pro_checkout\") do",
+      "replace": "if true do",
+      "guarded_by": "test/lei/payments/kill_switch_test.exs",
+      "app": "apps/lei_service"
+    },
+    {
+      "id": "kill-switch-pro-webhook-applied",
+      "bug": "A Pro checkout paid while pro_checkout was off was applied, and recorded, rather than left for Stripe to retry (#139).",
+      "file": "apps/lei_service/lib/lei/stripe_webhook_handler.ex",
+      "find": "      not Lei.Payments.Switches.enabled?(\"pro_checkout\") ->",
+      "replace": "      false ->",
+      "guarded_by": "test/lei/payments/kill_switch_test.exs",
+      "app": "apps/lei_service"
+    },
+    {
+      "id": "kill-switch-api-accepts-query-token",
+      "bug": "Switching payments off accepted the admin token in the query string, where it lands in access logs (#139).",
+      "file": "apps/lei_service/lib/lei_service/endpoint.ex",
+      "find": "      not admin_authorized_by_header?(conn) ->",
+      "replace": "      not admin_authorized?(fetch_query_params(conn)) ->",
+      "guarded_by": "test/lei/payments/kill_switch_test.exs",
+      "app": "apps/lei_service"
+    },
+    {
+      "id": "kill-switch-canary-metric-renamed",
+      "bug": "The canary read a switch metric the service does not emit, so it could no longer tell a deliberate switch-off from a broken rail (#139).",
+      "file": "scripts/canary.sh",
+      "find": "s/^lei_payment_switch_enabled{path=\"tempo\"}",
+      "replace": "s/^lei_payment_switch{path=\"tempo\"}",
+      "guarded_by": "test/lei_service/canary_kill_switch_test.exs",
+      "app": "apps/lei_service"
     }
   ]
 }

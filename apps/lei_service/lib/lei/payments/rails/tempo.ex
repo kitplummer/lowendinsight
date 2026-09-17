@@ -283,6 +283,11 @@ defmodule Lei.Payments.Rails.Tempo do
 
   def payer_wallet(_settlement), do: nil
 
+  # The agent broadcasts the transfer itself ("push" mode) and presents the hash
+  # afterwards, so the money has moved before we see the credential.
+  @impl true
+  def funds_move_before_settlement?, do: true
+
   @doc "The configured deposit address, lowercased, or nil."
   def deposit_address do
     case Application.get_env(:lei_service, :tempo_deposit_address) do
