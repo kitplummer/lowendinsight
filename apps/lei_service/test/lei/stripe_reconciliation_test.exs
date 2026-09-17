@@ -101,6 +101,18 @@ defmodule Lei.StripeReconciliationTest do
 
   defp run, do: StripeReconciliation.run(now: @now)
 
+  defp stripe_missing do
+    {404,
+     %{
+       "error" => %{
+         "code" => "resource_missing",
+         "message" => "No such payment_intent: 'pi_ghost'",
+         "param" => "intent",
+         "type" => "invalid_request_error"
+       }
+     }}
+  end
+
   defp kinds({:ok, run}), do: run.discrepancies |> Enum.map(& &1["kind"]) |> Enum.sort()
 
   # -- both agree
@@ -136,8 +148,12 @@ defmodule Lei.StripeReconciliationTest do
     purchase(org, "mpp", "pi_ghost")
     stripe_lists([])
 
+    # The shape Lei.Stripe really returns for an unknown PaymentIntent,
+    # captured from production on 2026-09-17: status and body in a tuple. The
+    # test first used a bare map, which the real client never returns, so a
+    # missing PaymentIntent failed the run instead of being reported.
     expect(Lei.StripeMock, :retrieve_payment_intent, fn "pi_ghost" ->
-      {:error, %{"error" => %{"code" => "resource_missing"}}}
+      {:error, stripe_missing()}
     end)
 
     assert run() |> kinds() == ["missing_in_stripe"]
@@ -292,9 +308,7 @@ defmodule Lei.StripeReconciliationTest do
     purchase(org, "mpp", "pi_metrics_ghost")
     stripe_lists([])
 
-    expect(Lei.StripeMock, :retrieve_payment_intent, fn _ ->
-      {:error, %{"error" => %{"code" => "resource_missing"}}}
-    end)
+    expect(Lei.StripeMock, :retrieve_payment_intent, fn _ -> {:error, stripe_missing()} end)
 
     {:ok, _} = StripeReconciliation.run(now: DateTime.utc_now())
 

@@ -2412,6 +2412,15 @@
       "replace": "",
       "guarded_by": "test/lei_service/quantum_removed_test.exs",
       "app": "apps/lei_service"
+    },
+    {
+      "id": "recon-missing-matches-mock-shape",
+      "bug": "Reconciliation recognised a missing PaymentIntent only in a shape the real Stripe client never returns, so a ledger purchase Stripe had no record of failed the run instead of being reported (#216, found 2026-09-17).",
+      "file": "apps/lei_service/lib/lei/stripe_reconciliation.ex",
+      "find": "  defp missing?({:error, {404, %{\"error\" => %{\"code\" => \"resource_missing\"}}}}), do: true",
+      "replace": "  defp missing?({:error, %{\"error\" => %{\"code\" => \"resource_missing\"}}}), do: true",
+      "guarded_by": "test/lei/stripe_reconciliation_test.exs",
+      "app": "apps/lei_service"
     }
   ]
 }

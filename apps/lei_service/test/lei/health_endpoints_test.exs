@@ -27,7 +27,7 @@ defmodule Lei.HealthEndpointsTest do
 
     assert conn.status == 200
     body = Poison.decode!(conn.resp_body)
-    assert body["status"] == "ok"
+    assert body["status"] == "ok", "readyz degraded: #{inspect(body["checks"])}"
     assert body["checks"]["database"] == "ok"
   end
 
