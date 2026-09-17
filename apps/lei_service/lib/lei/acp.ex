@@ -10,20 +10,26 @@ defmodule Lei.Acp do
   def create_session(sku) do
     amount = AcpCheckoutSession.amount_for_sku(sku)
 
-    if is_nil(amount) do
-      {:error, :invalid_sku}
-    else
-      id = "acp_cs_" <> UUID.uuid4()
-      expires_at = DateTime.add(DateTime.utc_now(), @session_ttl_seconds, :second)
+    cond do
+      # Before anything is written: a switched-off path opens nothing.
+      not Lei.Payments.Switches.enabled?("acp") ->
+        {:error, :switched_off}
 
-      %AcpCheckoutSession{}
-      |> AcpCheckoutSession.changeset(%{
-        id: id,
-        sku: sku,
-        amount_cents: amount,
-        expires_at: expires_at
-      })
-      |> Repo.insert()
+      is_nil(amount) ->
+        {:error, :invalid_sku}
+
+      true ->
+        id = "acp_cs_" <> UUID.uuid4()
+        expires_at = DateTime.add(DateTime.utc_now(), @session_ttl_seconds, :second)
+
+        %AcpCheckoutSession{}
+        |> AcpCheckoutSession.changeset(%{
+          id: id,
+          sku: sku,
+          amount_cents: amount,
+          expires_at: expires_at
+        })
+        |> Repo.insert()
     end
   end
 
@@ -44,7 +50,8 @@ defmodule Lei.Acp do
   end
 
   def complete_session(id, payment_params) do
-    with {:ok, session} <- get_session(id),
+    with :ok <- check_switch(),
+         {:ok, session} <- get_session(id),
          :ok <- check_session_open(session),
          :ok <- check_not_expired(session),
          # Before the charge, not after: a name that cannot be created would
@@ -64,6 +71,12 @@ defmodule Lei.Acp do
   end
 
   # --- Private ---
+
+  # Checked before the card is charged, so a session opened before the switch
+  # completes nothing and costs the agent nothing.
+  defp check_switch do
+    if Lei.Payments.Switches.enabled?("acp"), do: :ok, else: {:error, :switched_off}
+  end
 
   defp check_session_open(%AcpCheckoutSession{status: "open"}), do: :ok
   defp check_session_open(_session), do: {:error, :session_not_open}

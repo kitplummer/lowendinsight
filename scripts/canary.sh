@@ -230,7 +230,16 @@ AGENT_STATUS=$(curl -s -o /dev/null -D "$AGENT_HEADERS" -w '%{http_code}' --max-
   && ok "an unauthenticated analysis is asked to pay" \
   || bad "an unauthenticated analysis is asked to pay" "status ${AGENT_STATUS}"
 
-if grep -qi '^www-authenticate: Payment .*method="tempo"' "$AGENT_HEADERS"; then
+# Unless an operator has switched stablecoin off (#139). A deploy during that
+# incident -- quite possibly the one shipping the fix -- would otherwise fail
+# this check and roll itself back. Skipped only when /metrics positively
+# reports the switch off; a switch state that cannot be read is not a reason.
+TEMPO_SWITCH=$(curl -s --max-time 15 "$BASE_URL/metrics" \
+  | sed -n 's/^lei_payment_switch_enabled{path="tempo"} \([01]\)$/\1/p')
+
+if [ "$TEMPO_SWITCH" = "0" ]; then
+  printf '\033[33m  SKIP\033[0m %s\n' "the 402 offers stablecoin: tempo is switched off (lei_payment_switch_enabled)"
+elif grep -qi '^www-authenticate: Payment .*method="tempo"' "$AGENT_HEADERS"; then
   ok "the 402 offers stablecoin"
 else
   bad "the 402 offers stablecoin" "no WWW-Authenticate: Payment challenge with method=\"tempo\""

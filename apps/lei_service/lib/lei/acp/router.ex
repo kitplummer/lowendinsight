@@ -41,6 +41,9 @@ defmodule Lei.Acp.Router do
           error: "invalid SKU",
           valid_skus: Lei.AcpCheckoutSession.valid_skus()
         })
+
+      {:error, :switched_off} ->
+        checkout_unavailable(conn)
     end
   end
 
@@ -102,7 +105,17 @@ defmodule Lei.Acp.Router do
       # surface as a 500 on a completed payment.
       {:error, :name_taken} ->
         json_resp(conn, 409, %{error: "organization name already taken"})
+
+      {:error, :switched_off} ->
+        checkout_unavailable(conn)
     end
+  end
+
+  # The kill switch for agent card checkout is off (Lei.Payments.Switches).
+  defp checkout_unavailable(conn) do
+    conn
+    |> put_resp_header("retry-after", "300")
+    |> json_resp(503, %{error: "checkout unavailable"})
   end
 
   # POST /acp/checkout/:id/cancel — Cancel session

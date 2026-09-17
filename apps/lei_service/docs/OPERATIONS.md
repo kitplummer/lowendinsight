@@ -785,6 +785,97 @@ Or via environment:
 LOG_LEVEL=debug ./bin/lei_service foreground
 ```
 
+## Payment kill switch
+
+Every way money comes in can be switched off in seconds, without a deploy
+(#139). Use it when a payment path is misbehaving: charging wrongly, crediting
+wrongly, or under attack. Switching off is safe to do first and ask about
+afterwards; switching back on is the step to think about.
+
+| Path | What stops | Money already moved when a payment arrives? |
+|---|---|---|
+| `mpp` | agent card payments: no challenge is offered, no credential is verified or credited | no -- the card is charged at settlement, so nothing is charged |
+| `tempo` | agent stablecoin payments: no challenge offered, no credential credited | **yes** -- the transfer is on chain before the credential. It is **held** (below) |
+| `acp` | agent card checkout: no session opened, no session completed | no -- the card is charged at completion |
+| `pro_checkout` | Pro sign-up: no Stripe Checkout started. A checkout already paid at Stripe is not applied; its webhook gets a 500 and Stripe retries it for up to three days | yes, at Stripe -- it applies when the switch is back on |
+
+Off applies to challenges and sessions opened **before** the switch too. Money
+going back -- refunds and disputes -- is never switched off.
+
+### Switch a path off
+
+The admin token goes in the `Authorization` header only; a `?token=` query
+parameter is refused for changes, because query strings land in access logs.
+Feed it over stdin rather than as an argument:
+
+```bash
+printf 'Authorization: Bearer %s\n' "$LEI_ADMIN_TOKEN" |
+  curl -s -H @- -H 'content-type: application/json' \
+    -X POST https://lowendinsight.dev/admin/payments/switches/tempo \
+    -d '{"enabled": false, "reason": "what is wrong, and where it is tracked", "actor": "your name"}'
+```
+
+A reason is required: whoever switches it back needs to know why it went off.
+Without HTTP, the same from a release shell:
+
+```bash
+flyctl ssh console -a lowendinsight -C "/opt/app/bin/lei_service rpc 'Lei.Payments.Switches.set(\"tempo\", false, \"reason\", \"your name\")'"
+```
+
+### Confirm it took
+
+```bash
+curl -s https://lowendinsight.dev/metrics | grep -E '^lei_payment_(switch_enabled|held)'
+```
+
+`lei_payment_switch_enabled{path="tempo"} 0`. From then on, a 402 no longer
+offers that method, and `lei_payment_outcomes{rail="tempo",outcome="unavailable",reason="switched_off"}`
+counts the challenges it declined. Every change, with who and why:
+`printf 'Authorization: Bearer %s\n' "$LEI_ADMIN_TOKEN" | curl -s -H @- https://lowendinsight.dev/admin/payments/switches`.
+
+**Monitoring while a path is off.** The canary skips its "the 402 offers
+stablecoin" check when `/metrics` reports `tempo` off, and says so as `SKIP`,
+so a deploy during the incident is not rolled back for it. Nothing alerts on a
+path left off: check `lei_payment_switch_enabled` when closing the incident.
+
+### Held stablecoin payments
+
+A `tempo` credential presented while `tempo` is off answers a transfer the
+agent already made. It is refused and not credited, and its challenge and
+credential are **held**: kept from the purge, counted on
+`lei_payment_held{rail="tempo"}`. Each one needs a decision.
+
+List them:
+
+```bash
+flyctl ssh console -a lowendinsight -C "/opt/app/bin/lei_service rpc 'Lei.Payments.Held.list() |> IO.inspect()'"
+```
+
+**To credit one** (the payment was good): release it. This verifies the transfer
+on chain and with Stripe exactly as a normal payment would, credits the payer
+once, and works with the rail still off and after the challenge has expired.
+
+```bash
+flyctl ssh console -a lowendinsight -C "/opt/app/bin/lei_service rpc 'Lei.Payments.Held.release(\"<challenge_id>\") |> IO.inspect()'"
+```
+
+**To refund one**: release it first, then refund the resulting PaymentIntent
+(`pi_…`, in the release output) in the Stripe Dashboard. Stripe only records a
+stablecoin payment once we ask it to verify the transaction, so until release
+there is nothing in Stripe to refund. The refund comes back through the webhook
+and reverses the credits (`Lei.Payments.Reversals`).
+
+### Switch back on
+
+Same call with `"enabled": true` and the reason it is safe again. Then:
+
+- `lei_payment_held` is 0, or each held payment has been decided
+- `lei_payment_outcomes` shows `issued` rising again for the path, and
+  `settled` following
+- for `pro_checkout`: Stripe Dashboard -> Developers -> Webhooks shows the
+  retried `checkout.session.completed` deliveries succeeding
+
+
 ## Security
 
 ### Authentication
