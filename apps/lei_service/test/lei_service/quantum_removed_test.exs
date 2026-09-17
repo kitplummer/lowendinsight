@@ -39,6 +39,14 @@ defmodule LeiService.QuantumRemovedTest do
     assert {"*/5 * * * *", LeiService.CacheCleanerWorker} in entries
   end
 
+  test "production reconciles the ledger against Stripe hourly (#139)" do
+    # A comparison that is never scheduled reports nothing, and nothing on
+    # /metrics would say so until someone noticed runs stayed at 0.
+    crontab = production_config()[Oban][:cron][:crontab] || []
+    workers = Enum.map(crontab, fn {_schedule, worker} -> worker end)
+    assert LeiService.StripeReconciliationWorker in workers
+  end
+
   test "trending is not scheduled: it is parked (#206)" do
     # The code and its routes remain; nothing refreshes them. Re-adding the
     # cron entry turns the most expensive thing we ran back on, so it should

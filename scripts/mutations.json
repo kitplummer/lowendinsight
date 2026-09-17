@@ -1850,8 +1850,8 @@
       "id": "trending-rescheduled-silently",
       "bug": "Trending is parked (#206): its source has been unavailable since 2026-03-01 and it was the most expensive thing we ran. Scheduling it again without a decision brings back hourly clones of fourteen languages' repositories.",
       "file": "config/config.exs",
-      "find": "      {\"*/5 * * * *\", LeiService.CacheCleanerWorker}\n",
-      "replace": "      {\"*/5 * * * *\", LeiService.CacheCleanerWorker},\n      {\"0 * * * *\", LeiService.TrendingScheduleWorker}\n",
+      "find": "      {\"*/5 * * * *\", LeiService.CacheCleanerWorker},\n",
+      "replace": "      {\"*/5 * * * *\", LeiService.CacheCleanerWorker},\n      {\"0 * * * *\", LeiService.TrendingScheduleWorker},\n",
       "guarded_by": "test/lei_service/quantum_removed_test.exs",
       "app": "apps/lei_service"
     },
@@ -1859,7 +1859,7 @@
       "id": "cache-cleaning-not-scheduled",
       "bug": "With no cron entry cached reports are never expired and Redis grows until it evicts what is still wanted.",
       "file": "config/config.exs",
-      "find": "      {\"*/5 * * * *\", LeiService.CacheCleanerWorker}\n",
+      "find": "      {\"*/5 * * * *\", LeiService.CacheCleanerWorker},\n",
       "replace": "",
       "guarded_by": "test/lei_service/quantum_removed_test.exs",
       "app": "apps/lei_service"
@@ -2402,6 +2402,15 @@
       "find": "             \"lei_rail\" => \"acp\",\n",
       "replace": "",
       "guarded_by": "test/lei/stripe_purchase_identity_test.exs",
+      "app": "apps/lei_service"
+    },
+    {
+      "id": "stripe-reconciliation-not-scheduled",
+      "bug": "With no cron entry the ledger is never compared with Stripe, and lei_stripe_reconciliation stays at runs 0 (#139).",
+      "file": "config/config.exs",
+      "find": "      # The ledger's purchases against Stripe's payments (#139).\n      {\"23 * * * *\", LeiService.StripeReconciliationWorker}\n",
+      "replace": "",
+      "guarded_by": "test/lei_service/quantum_removed_test.exs",
       "app": "apps/lei_service"
     }
   ]
