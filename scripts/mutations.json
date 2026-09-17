@@ -680,8 +680,8 @@
       "id": "settle-bucket-spent-by-all-traffic",
       "bug": "The settle rate limit is charged before looking for a credential, capping all analysis from one IP at 10 a minute. (#147)",
       "file": "apps/lei_service/lib/lei/payments/http.ex",
-      "find": "    if payment_credential?(conn) do",
-      "replace": "    if payment_credential?(conn) or true do",
+      "find": "      not payment_credential?(conn) ->\n        :no_credential\n\n",
+      "replace": "",
       "guarded_by": "test/lei/payments/mpp_http_test.exs",
       "app": "apps/lei_service"
     },
