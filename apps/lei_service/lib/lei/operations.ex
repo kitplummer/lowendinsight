@@ -2,7 +2,7 @@ defmodule Lei.Operations do
   @moduledoc """
   What a payment runbook does, as functions an agent can call (#139).
 
-  The runbooks under `.claude/skills/` are executed by agents through
+  An operator -- a person or an agent -- runs these through
   `scripts/payments.sh`, which reaches this module over `rpc`. So every
   operation:
 
@@ -13,9 +13,9 @@ defmodule Lei.Operations do
     * is safe to repeat: switching to the state a path is already in changes
       nothing, and a refund is keyed so a retry reaches the same refund.
 
-  Which of these an agent may run without asking is not decided here. It is
-  decided by `.claude/settings.json`, per `scripts/payments.sh` subcommand;
-  see `.claude/skills/payments-operations/SKILL.md`.
+  Which of these an agent may run without asking is not decided here: in a
+  Claude Code session, `.claude/settings.json` makes the ones that move money
+  prompt first.
   """
 
   import Ecto.Query

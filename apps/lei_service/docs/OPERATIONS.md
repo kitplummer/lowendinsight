@@ -785,145 +785,79 @@ Or via environment:
 LOG_LEVEL=debug ./bin/lei_service foreground
 ```
 
-## Payment kill switch
+## Payment kill switches
 
-> **These are executable runbooks.** The steps below are run through
-> `scripts/payments.sh` (JSON out, verified, safe to retry), by an operator or
-> by an agent using the skills in `.claude/skills/` -- start with
-> `payments-operations`. What an agent may do without asking is enforced in
-> `.claude/settings.json`: reading and switching a path **off**; everything that
-> moves money prompts the operator.
+Each way payment comes in can be switched off at runtime, without a deploy
+(`Lei.Payments.Switches`). This section describes what the mechanism does;
+when and how a deployment's operator uses it is a matter for that operator.
 
-Every way money comes in can be switched off in seconds, without a deploy
-(#139). Use it when a payment path is misbehaving: charging wrongly, crediting
-wrongly, or under attack. Switching off is safe to do first and ask about
-afterwards; switching back on is the step to think about.
+| path | switched off |
+|---|---|
+| `mpp` | no MPP card challenge is offered; a credential for an earlier challenge is refused and not credited (the card is charged only at settlement, so nothing is charged) |
+| `tempo` | no stablecoin challenge is offered; a credential is refused and not credited, and **held** (below), because the transfer was made on chain before the credential arrived |
+| `acp` | no agent checkout session is opened or completed; the card is charged only at completion |
+| `pro_checkout` | no Stripe Checkout is started; a checkout already paid at Stripe is not applied, and its webhook is answered 500 so Stripe retries it once the path is back on |
 
-| Path | What stops | Money already moved when a payment arrives? |
-|---|---|---|
-| `mpp` | agent card payments: no challenge is offered, no credential is verified or credited | no -- the card is charged at settlement, so nothing is charged |
-| `tempo` | agent stablecoin payments: no challenge offered, no credential credited | **yes** -- the transfer is on chain before the credential. It is **held** (below) |
-| `acp` | agent card checkout: no session opened, no session completed | no -- the card is charged at completion |
-| `pro_checkout` | Pro sign-up: no Stripe Checkout started. A checkout already paid at Stripe is not applied; its webhook gets a 500 and Stripe retries it for up to three days | yes, at Stripe -- it applies when the switch is back on |
+Refund and dispute events are never switched off.
 
-Off applies to challenges and sessions opened **before** the switch too. Money
-going back -- refunds and disputes -- is never switched off.
+State is append-only in Postgres (who, when, why); a path with no recorded
+change is on, and state that cannot be read is treated as off.
 
-### Switch a path off
-
-The admin token goes in the `Authorization` header only; a `?token=` query
-parameter is refused for changes, because query strings land in access logs.
-Feed it over stdin rather than as an argument:
+**Changing a switch.** `POST /admin/payments/switches/:path` with
+`{"enabled": false, "reason": "...", "actor": "..."}`, authorised by
+`LEI_ADMIN_TOKEN` in the `Authorization` header only (a `?token=` query
+parameter is refused for changes). `GET /admin/payments/switches` returns the
+state. Or, through the release, with verification against `/metrics`:
 
 ```bash
-printf 'Authorization: Bearer %s\n' "$LEI_ADMIN_TOKEN" |
-  curl -s -H @- -H 'content-type: application/json' \
-    -X POST https://lowendinsight.dev/admin/payments/switches/tempo \
-    -d '{"enabled": false, "reason": "what is wrong, and where it is tracked", "actor": "your name"}'
+scripts/payments.sh switch-off <path> --reason "..." --actor "..."
+scripts/payments.sh switch-on  <path> --reason "..." --actor "..."
 ```
 
-A reason is required: whoever switches it back needs to know why it went off.
-Without the admin token locally, the same through the release, verified
-against `/metrics`:
-
-```bash
-scripts/payments.sh switch-off tempo --reason "what is wrong, and where it is tracked" --actor "your name"
-```
-
-### Confirm it took
-
-```bash
-curl -s https://lowendinsight.dev/metrics | grep -E '^lei_payment_(switch_enabled|held)'
-```
-
-`lei_payment_switch_enabled{path="tempo"} 0`. From then on, a 402 no longer
-offers that method, and `lei_payment_outcomes{rail="tempo",outcome="unavailable",reason="switched_off"}`
-counts the challenges it declined. Every change, with who and why:
-`printf 'Authorization: Bearer %s\n' "$LEI_ADMIN_TOKEN" | curl -s -H @- https://lowendinsight.dev/admin/payments/switches`.
-
-**Monitoring while a path is off.** The canary skips its "the 402 offers
-stablecoin" check when `/metrics` reports `tempo` off, and says so as `SKIP`,
-so a deploy during the incident is not rolled back for it. Nothing alerts on a
-path left off: check `lei_payment_switch_enabled` when closing the incident.
+**Visible on `/metrics`:** `lei_payment_switch_enabled{path}` (1 on, 0 off)
+and `lei_payment_held{rail}`. The canary skips its stablecoin check only when
+`/metrics` reports `tempo` off, so a deploy while it is off is not rolled back
+for it.
 
 ### Held stablecoin payments
 
-A `tempo` credential presented while `tempo` is off answers a transfer the
-agent already made. It is refused and not credited, and its challenge and
-credential are **held**: kept from the purge, counted on
-`lei_payment_held{rail="tempo"}`. Each one needs a decision.
+A held payment's challenge and credential are kept from the challenge purge.
+`scripts/payments.sh held` lists them. `scripts/payments.sh release
+<challenge_id>` verifies the transfer and credits it exactly as a normal
+settlement would, with the path still off and after the challenge has expired.
+Stripe records a stablecoin payment only once asked to verify it, so a held
+payment can be refunded only after it is released.
 
-List them:
+### `scripts/payments.sh`
 
-```bash
-scripts/payments.sh held
-```
-
-**To credit one** (the payment was good): release it. This verifies the transfer
-on chain and with Stripe exactly as a normal payment would, credits the payer
-once, and works with the rail still off and after the challenge has expired.
-
-```bash
-scripts/payments.sh release <challenge_id> --actor "your name"
-```
-
-**To refund one**: release it first, then refund the resulting PaymentIntent
-(`pi_…`, in the release output) in the Stripe Dashboard. Stripe only records a
-stablecoin payment once we ask it to verify the transaction, so until release
-there is nothing in Stripe to refund. The refund comes back through the webhook
-and reverses the credits (`Lei.Payments.Reversals`).
-
-### Switch back on
-
-Same call with `"enabled": true` and the reason it is safe again. Then:
-
-- `lei_payment_held` is 0, or each held payment has been decided
-- `lei_payment_outcomes` shows `issued` rising again for the path, and
-  `settled` following
-- for `pro_checkout`: Stripe Dashboard -> Developers -> Webhooks shows the
-  retried `checkout.session.completed` deliveries succeeding
+The command-line interface to these operations (`Lei.Operations`, over `rpc`):
+one JSON object on stdout, exit `0` done and verified, `1` refused or not
+verified, `2` bad usage, `4` production unreachable. Every change is read back
+through a different path than the one that made it, and repeating a command is
+safe. `.claude/settings.json` makes the commands that move money prompt before
+they run in a Claude Code session.
 
 ## Ledger against Stripe
 
-Every hour (`LeiService.StripeReconciliationWorker`, at :23) the ledger's credit
-purchases from the last 7 days are compared with the PaymentIntents Stripe
-holds, one by one, in both directions (`Lei.StripeReconciliation`, #139). Pro
-subscription payments are not credit purchases and are not compared.
+`LeiService.StripeReconciliationWorker` (hourly, Oban cron) compares the
+ledger's credit purchases in a recent window with Stripe's PaymentIntents, one
+by one, in both directions (`Lei.StripeReconciliation`). A PaymentIntent is a
+credit purchase when its metadata carries `challenge_id` (MPP) or `lei_rail`
+(agent checkout). Each run is recorded; `scripts/payments.sh reconciliation`
+shows the latest.
 
-```bash
-curl -s https://lowendinsight.dev/metrics | grep '^lei_stripe_reconciliation'
-```
+`/metrics`, from the latest run: `lei_stripe_reconciliation{measure}` with
+`runs`, `age_seconds`, `failed`, and -- only when the run did not fail --
+`discrepancies`, `ledger_purchases`, `stripe_purchases`.
 
-| measure | means |
+| discrepancy kind | means |
 |---|---|
-| `runs` | runs recorded. `0` means it has never run |
-| `age_seconds` | since the latest run. Over ~2 hours: the job has stopped |
-| `failed` | `1` if the latest run could not compare (Stripe unreachable, no key, too many PaymentIntents to read). It then reports **no** discrepancy count |
-| `discrepancies` | problems the latest run found. Should be `0` |
-| `ledger_purchases`, `stripe_purchases` | how much it compared |
-
-The discrepancies themselves are on the latest run:
-
-```bash
-scripts/payments.sh reconciliation
-```
-
-What to do about each kind is also the `stripe-reconciliation-discrepancy`
-skill.
-
-| kind | what happened | what to do |
-|---|---|---|
-| `received_not_recorded` | Stripe received a credit purchase the ledger never credited. **A customer paid and got nothing.** | Find the payer from the PaymentIntent's metadata (`challenge_id` or `acp_session_id`), then credit or refund. A stablecoin payment refused while its rail was off is **held**, not this (see "Payment kill switch") |
-| `missing_in_stripe` | the ledger credited a purchase Stripe has no PaymentIntent for. **Credits given for nothing.** | Check the key's mode and the entry's `external_ref`. If the payment never happened, reverse the credits with an `adjustment:manual` entry |
-| `amount_mismatch` | the ledger credited a different amount than Stripe received | Compare `ledger_cents` with `stripe_cents`; correct with `adjustment:manual` |
-| `not_succeeded` | the ledger credited a PaymentIntent that has not succeeded | A rail granted credit before settlement, which ADR-002 forbids: treat as a bug and switch the rail off |
-| `mode_mismatch` | a purchase recorded against the other mode's Stripe | A half-flipped cutover (#141). Stop and check the keys |
-| `refund_not_recorded` | Stripe refunded more than the ledger reversed | Check the webhook endpoint's subscription (`BILLING_SETUP.md` §3) and `lei_stripe_reversal_events_total{result="unmatched"}` |
-
-A sandbox run will report `received_not_recorded` for payments made directly
-against Stripe by hand -- probes, CLI tests -- that carry a `challenge_id` but
-never went through the service. They leave the 7-day window on their own.
-
+| `received_not_recorded` | Stripe received a credit purchase the ledger has not credited |
+| `missing_in_stripe` | the ledger credited a purchase Stripe has no PaymentIntent for |
+| `amount_mismatch` | the ledger credited a different amount than Stripe received |
+| `not_succeeded` | the ledger credited a PaymentIntent that has not succeeded |
+| `mode_mismatch` | a purchase recorded against the other mode's Stripe |
+| `refund_not_recorded` | Stripe refunded more than the ledger reversed |
 
 ## Security
 

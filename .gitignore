@@ -37,10 +37,9 @@ dump.rdb
 # Gastown / GLITCHLAB runtime
 .runtime/
 .claude/*
-# Shared with every agent session in this repo: the payment runbooks and the
-# permission rules that bound what an agent may do without asking (#139).
-# Personal settings (settings.local.json) stay ignored.
-!.claude/skills/
+# Shared with every Claude Code session in this repo: the permission rules
+# that make money-moving commands prompt. Personal settings
+# (settings.local.json) stay ignored.
 !.claude/settings.json
 .logs/
 
