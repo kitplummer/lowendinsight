@@ -875,6 +875,44 @@ Same call with `"enabled": true` and the reason it is safe again. Then:
 - for `pro_checkout`: Stripe Dashboard -> Developers -> Webhooks shows the
   retried `checkout.session.completed` deliveries succeeding
 
+## Ledger against Stripe
+
+Every hour (`LeiService.StripeReconciliationWorker`, at :23) the ledger's credit
+purchases from the last 7 days are compared with the PaymentIntents Stripe
+holds, one by one, in both directions (`Lei.StripeReconciliation`, #139). Pro
+subscription payments are not credit purchases and are not compared.
+
+```bash
+curl -s https://lowendinsight.dev/metrics | grep '^lei_stripe_reconciliation'
+```
+
+| measure | means |
+|---|---|
+| `runs` | runs recorded. `0` means it has never run |
+| `age_seconds` | since the latest run. Over ~2 hours: the job has stopped |
+| `failed` | `1` if the latest run could not compare (Stripe unreachable, no key, too many PaymentIntents to read). It then reports **no** discrepancy count |
+| `discrepancies` | problems the latest run found. Should be `0` |
+| `ledger_purchases`, `stripe_purchases` | how much it compared |
+
+The discrepancies themselves are on the latest run:
+
+```bash
+flyctl ssh console -a lowendinsight -C "/opt/app/bin/lei_service rpc 'Lei.StripeReconciliation.latest() |> IO.inspect(limit: :infinity)'"
+```
+
+| kind | what happened | what to do |
+|---|---|---|
+| `received_not_recorded` | Stripe received a credit purchase the ledger never credited. **A customer paid and got nothing.** | Find the payer from the PaymentIntent's metadata (`challenge_id` or `acp_session_id`), then credit or refund. A stablecoin payment refused while its rail was off is **held**, not this (see "Payment kill switch") |
+| `missing_in_stripe` | the ledger credited a purchase Stripe has no PaymentIntent for. **Credits given for nothing.** | Check the key's mode and the entry's `external_ref`. If the payment never happened, reverse the credits with an `adjustment:manual` entry |
+| `amount_mismatch` | the ledger credited a different amount than Stripe received | Compare `ledger_cents` with `stripe_cents`; correct with `adjustment:manual` |
+| `not_succeeded` | the ledger credited a PaymentIntent that has not succeeded | A rail granted credit before settlement, which ADR-002 forbids: treat as a bug and switch the rail off |
+| `mode_mismatch` | a purchase recorded against the other mode's Stripe | A half-flipped cutover (#141). Stop and check the keys |
+| `refund_not_recorded` | Stripe refunded more than the ledger reversed | Check the webhook endpoint's subscription (`BILLING_SETUP.md` §3) and `lei_stripe_reversal_events_total{result="unmatched"}` |
+
+A sandbox run will report `received_not_recorded` for payments made directly
+against Stripe by hand -- probes, CLI tests -- that carry a `challenge_id` but
+never went through the service. They leave the 7-day window on their own.
+
 
 ## Security
 

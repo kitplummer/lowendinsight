@@ -207,7 +207,9 @@ config :lei_service, Oban,
       # been unavailable since 2026-03-01, what remained was a GitHub Search
       # proxy, and it was the most expensive thing we ran. Re-add this entry
       # to turn it back on.
-      {"*/5 * * * *", LeiService.CacheCleanerWorker}
+      {"*/5 * * * *", LeiService.CacheCleanerWorker},
+      # The ledger's purchases against Stripe's payments (#139).
+      {"23 * * * *", LeiService.StripeReconciliationWorker}
     ]
   ],
   # A deploy stops the node: wait for a running analysis instead of killing

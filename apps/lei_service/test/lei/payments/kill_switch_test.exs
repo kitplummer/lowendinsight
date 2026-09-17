@@ -23,7 +23,6 @@ defmodule Lei.Payments.KillSwitchTest do
   use ExUnit.Case, async: false
 
   import Mox
-  import Ecto.Query, only: [from: 2]
   import Plug.Test
   import Plug.Conn
 

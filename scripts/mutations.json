@@ -1850,8 +1850,8 @@
       "id": "trending-rescheduled-silently",
       "bug": "Trending is parked (#206): its source has been unavailable since 2026-03-01 and it was the most expensive thing we ran. Scheduling it again without a decision brings back hourly clones of fourteen languages' repositories.",
       "file": "config/config.exs",
-      "find": "      {\"*/5 * * * *\", LeiService.CacheCleanerWorker}\n",
-      "replace": "      {\"*/5 * * * *\", LeiService.CacheCleanerWorker},\n      {\"0 * * * *\", LeiService.TrendingScheduleWorker}\n",
+      "find": "      {\"*/5 * * * *\", LeiService.CacheCleanerWorker},\n",
+      "replace": "      {\"*/5 * * * *\", LeiService.CacheCleanerWorker},\n      {\"0 * * * *\", LeiService.TrendingScheduleWorker},\n",
       "guarded_by": "test/lei_service/quantum_removed_test.exs",
       "app": "apps/lei_service"
     },
@@ -1859,7 +1859,7 @@
       "id": "cache-cleaning-not-scheduled",
       "bug": "With no cron entry cached reports are never expired and Redis grows until it evicts what is still wanted.",
       "file": "config/config.exs",
-      "find": "      {\"*/5 * * * *\", LeiService.CacheCleanerWorker}\n",
+      "find": "      {\"*/5 * * * *\", LeiService.CacheCleanerWorker},\n",
       "replace": "",
       "guarded_by": "test/lei_service/quantum_removed_test.exs",
       "app": "apps/lei_service"
@@ -2303,6 +2303,114 @@
       "find": "s/^lei_payment_switch_enabled{path=\"tempo\"}",
       "replace": "s/^lei_payment_switch{path=\"tempo\"}",
       "guarded_by": "test/lei_service/canary_kill_switch_test.exs",
+      "app": "apps/lei_service"
+    },
+    {
+      "id": "recon-received-not-recorded-unchecked",
+      "bug": "A credit purchase Stripe received and the ledger never credited -- a customer who paid and got nothing -- went unreported (#139).",
+      "file": "apps/lei_service/lib/lei/stripe_reconciliation.ex",
+      "find": "for i <- stripe_purchases, not MapSet.member?(recorded, i[\"id\"]) do",
+      "replace": "for i <- stripe_purchases, false do",
+      "guarded_by": "test/lei/stripe_reconciliation_test.exs",
+      "app": "apps/lei_service"
+    },
+    {
+      "id": "recon-missing-in-stripe-unchecked",
+      "bug": "A ledger purchase Stripe had no record of -- credits given for money never received -- went unreported (#139).",
+      "file": "apps/lei_service/lib/lei/stripe_reconciliation.ex",
+      "find": "        if missing?(found),",
+      "replace": "        if false,",
+      "guarded_by": "test/lei/stripe_reconciliation_test.exs",
+      "app": "apps/lei_service"
+    },
+    {
+      "id": "recon-amount-unchecked",
+      "bug": "A purchase credited for more than Stripe received went unreported (#139).",
+      "file": "apps/lei_service/lib/lei/stripe_reconciliation.ex",
+      "find": "intent[\"amount_received\"] != purchase.cents",
+      "replace": "false",
+      "guarded_by": "test/lei/stripe_reconciliation_test.exs",
+      "app": "apps/lei_service"
+    },
+    {
+      "id": "recon-mode-unchecked",
+      "bug": "A purchase credited against the other mode's Stripe -- a test payment crediting a live org -- went unreported (#139).",
+      "file": "apps/lei_service/lib/lei/stripe_reconciliation.ex",
+      "find": "intent[\"livemode\"] != live?() &&",
+      "replace": "false &&",
+      "guarded_by": "test/lei/stripe_reconciliation_test.exs",
+      "app": "apps/lei_service"
+    },
+    {
+      "id": "recon-refund-unchecked",
+      "bug": "A refund Stripe made that the ledger never reversed went unreported (#139).",
+      "file": "apps/lei_service/lib/lei/stripe_reconciliation.ex",
+      "find": "stripe_refunded > ledger_refunded &&",
+      "replace": "false &&",
+      "guarded_by": "test/lei/stripe_reconciliation_test.exs",
+      "app": "apps/lei_service"
+    },
+    {
+      "id": "recon-list-failure-reads-clean",
+      "bug": "A failure to list Stripe's PaymentIntents compared the ledger against nothing and reported the run clean (#139).",
+      "file": "apps/lei_service/lib/lei/stripe_reconciliation.ex",
+      "find": "{:error, \"could not list PaymentIntents: #{inspect(reason)}\"}",
+      "replace": "{:ok, acc}",
+      "guarded_by": "test/lei/stripe_reconciliation_test.exs",
+      "app": "apps/lei_service"
+    },
+    {
+      "id": "recon-pages-truncated",
+      "bug": "More PaymentIntents than the page limit were compared as a partial list, reporting a clean run on what it had not read (#139).",
+      "file": "apps/lei_service/lib/lei/stripe_reconciliation.ex",
+      "find": "{:error, \"more than #{max_pages} pages of PaymentIntents; not comparing a partial list\"}",
+      "replace": "{:ok, acc}",
+      "guarded_by": "test/lei/stripe_reconciliation_test.exs",
+      "app": "apps/lei_service"
+    },
+    {
+      "id": "recon-grace-ignored",
+      "bug": "A stablecoin payment that succeeded seconds before its credit was written was reported as never credited (#139).",
+      "file": "apps/lei_service/lib/lei/stripe_reconciliation.ex",
+      "find": "(i[\"created\"] || 0) <= grace_cutoff",
+      "replace": "true",
+      "guarded_by": "test/lei/stripe_reconciliation_test.exs",
+      "app": "apps/lei_service"
+    },
+    {
+      "id": "recon-non-purchases-compared",
+      "bug": "Pro subscription payments, which never touch the ledger, were reported as purchases never credited (#139).",
+      "file": "apps/lei_service/lib/lei/stripe_reconciliation.ex",
+      "find": "do: Map.has_key?(meta, \"challenge_id\") or Map.has_key?(meta, \"lei_rail\")",
+      "replace": "do: true",
+      "guarded_by": "test/lei/stripe_reconciliation_test.exs",
+      "app": "apps/lei_service"
+    },
+    {
+      "id": "recon-failed-run-shows-count",
+      "bug": "A failed reconciliation run reported a discrepancy count of 0 on /metrics, reading as clean (#139).",
+      "file": "apps/lei_service/lib/lei/metrics.ex",
+      "find": "        if run.status == \"failed\" do",
+      "replace": "        if false do",
+      "guarded_by": "test/lei/stripe_reconciliation_test.exs",
+      "app": "apps/lei_service"
+    },
+    {
+      "id": "acp-purchase-unidentified-at-stripe",
+      "bug": "Agent card checkout PaymentIntents carried no metadata, so a purchase Stripe received and the ledger never credited was invisible to reconciliation (#139).",
+      "file": "apps/lei_service/lib/lei/acp.ex",
+      "find": "             \"lei_rail\" => \"acp\",\n",
+      "replace": "",
+      "guarded_by": "test/lei/stripe_purchase_identity_test.exs",
+      "app": "apps/lei_service"
+    },
+    {
+      "id": "stripe-reconciliation-not-scheduled",
+      "bug": "With no cron entry the ledger is never compared with Stripe, and lei_stripe_reconciliation stays at runs 0 (#139).",
+      "file": "config/config.exs",
+      "find": "      # The ledger's purchases against Stripe's payments (#139).\n      {\"23 * * * *\", LeiService.StripeReconciliationWorker}\n",
+      "replace": "",
+      "guarded_by": "test/lei_service/quantum_removed_test.exs",
       "app": "apps/lei_service"
     }
   ]
