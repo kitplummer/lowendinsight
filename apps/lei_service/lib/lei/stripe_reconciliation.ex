@@ -228,7 +228,9 @@ defmodule Lei.StripeReconciliation do
     end
   end
 
-  defp missing?({:error, %{"error" => %{"code" => "resource_missing"}}}), do: true
+  # Lei.Stripe returns a non-200 as {:error, {status, body}}: the shape
+  # captured from production for an unknown PaymentIntent.
+  defp missing?({:error, {404, %{"error" => %{"code" => "resource_missing"}}}}), do: true
   defp missing?(_), do: false
 
   defp purchase_intent?(%{"metadata" => %{} = meta}),
