@@ -2,8 +2,7 @@
 #
 # The executable interface to the payment runbooks (#139).
 #
-# Written to be run by an agent (the skills under .claude/skills/) as much as by
-# a person, so:
+# Written to be run by an agent as much as by a person, so:
 #
 #   * stdout is exactly one JSON object with an "ok" field; progress goes to
 #     stderr
@@ -17,8 +16,8 @@
 #     production machine over `flyctl ssh`, as Lei.Operations over rpc, with
 #     their arguments as base64 JSON -- nothing an agent passes is evaluated.
 #
-# What an agent may run without asking is set per subcommand in
-# .claude/settings.json, not here. See .claude/skills/payments-operations.
+# In a Claude Code session, .claude/settings.json makes the subcommands that
+# move money prompt before they run.
 #
 #   scripts/payments.sh status
 #   scripts/payments.sh switch-off <path> --reason TEXT [--actor NAME]

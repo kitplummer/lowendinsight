@@ -72,7 +72,7 @@ tenth-of-a-cent unit was the right choice: 15,000 units is $15.00, which is
 | Test customer | `cus_VF0Q3ox3rjYHmr` |
 | Test subscription | `sub_1UEWPV36n3SNNombezdApuys` |
 
-These live in sandbox account `acct_1T8rhd36n3SNNomb`. **Note the account id
+These live in the sandbox account (`acct_…`). **Note the account id
 fragment `36n3SNNomb` appears inside every object id** -- useful for spotting
 when a query has been pointed at the wrong Stripe context, which returns a
 valid, empty result rather than an error.
@@ -176,9 +176,7 @@ these events, which are the ones `Lei.StripeWebhookHandler` implements:
 | `charge.dispute.funds_reinstated` | Gives those credits back when the dispute is won |
 
 **An event the endpoint is not subscribed to is never delivered, and nothing
-reports its absence.** On 2026-09-16 the sandbox endpoint was subscribed to the
-first, third and fourth events only, so refunds made while #208 was being built
-never reached production. After changing the subscription, check it:
+reports its absence.** After changing the subscription, check it:
 
 ```bash
 stripe get /v1/webhook_endpoints | jq -r '.data[] | "\(.url) \(.enabled_events | join(","))"'
@@ -304,10 +302,10 @@ curl https://api.stripe.com/v1/crypto/deposit_addresses \
   -u "$STRIPE_SECRET_KEY:" -H "Stripe-Version: 2026-07-29.preview" -d network=tempo
 ```
 
-The sandbox address is `0x5ff8d73e8bccd3701c9aef78389f3b9771172b5c` (`cda_1UFN8E36n3SNNomb2KUhVIWG`). An address isn't a secret, but it switches with the key, so it goes in with the other `STRIPE_*` values:
+Use the address Stripe created (`cda_…`). An address isn't a secret, but it switches with the key, so it goes in with the other `STRIPE_*` values:
 
 ```bash
-printf 'TEMPO_DEPOSIT_ADDRESS=0x5ff8d73e8bccd3701c9aef78389f3b9771172b5c\n' | flyctl secrets import -a lowendinsight
+printf 'TEMPO_DEPOSIT_ADDRESS=%s\n' "$ADDRESS" | flyctl secrets import -a lowendinsight
 ```
 
 How a stablecoin payment is verified (behaviour observed in sandbox against real testnet transfers):
@@ -433,7 +431,7 @@ against the wrong one returns an empty list, not an error, which looks exactly
 like the meter never received anything.
 
 ```bash
-stripe config --list          # confirm account_id = acct_1T8rhd36n3SNNomb
+stripe config --list          # confirm account_id is the account you expect
 
 stripe get /v1/billing/meters/<METER_ID>/event_summaries \
   -d customer=<CUSTOMER_ID> \
