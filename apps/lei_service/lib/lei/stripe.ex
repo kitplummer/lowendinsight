@@ -18,6 +18,7 @@ defmodule Lei.StripeBehaviour do
               {:ok, map()} | {:error, {pos_integer(), map()}} | {:error, term()}
   @callback list_payment_intents(created_gte :: integer(), starting_after :: String.t() | nil) ::
               {:ok, map()} | {:error, term()}
+  @callback create_refund(map()) :: {:ok, map()} | {:error, term()}
   @callback retrieve_payment_intent(String.t()) ::
               {:ok, map()} | {:error, {pos_integer(), map()}} | {:error, term()}
   @callback list_deposit_addresses(String.t()) ::
@@ -377,6 +378,34 @@ defmodule Lei.Stripe do
       ] ++ if(starting_after, do: [{"starting_after", starting_after}], else: [])
 
     "/v1/payment_intents?" <> URI.encode_query(query)
+  end
+
+  @impl true
+  def create_refund(params) do
+    {body, extra_headers} = refund_request(params)
+
+    "https://api.stripe.com/v1/refunds"
+    |> HTTPoison.post(body, headers() ++ extra_headers, recv_timeout: 30_000)
+    |> json_result()
+  end
+
+  @doc false
+  # Keyed: an agent that retries a refund after a timeout must reach the same
+  # refund, not make a second one (Lei.Operations.refund/1).
+  def refund_request(params) do
+    metadata =
+      for {k, v} <- Map.get(params, :metadata, %{}), into: %{} do
+        {"metadata[#{k}]", to_string(v)}
+      end
+
+    fields =
+      %{"payment_intent" => params.payment_intent}
+      |> then(fn f ->
+        if params[:amount], do: Map.put(f, "amount", to_string(params.amount)), else: f
+      end)
+      |> Map.merge(metadata)
+
+    {URI.encode_query(fields), [{"Idempotency-Key", params.idempotency_key}]}
   end
 
   @impl true

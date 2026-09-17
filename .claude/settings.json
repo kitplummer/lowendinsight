@@ -1,0 +1,22 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(scripts/payments.sh status)",
+      "Bash(scripts/payments.sh held)",
+      "Bash(scripts/payments.sh reconciliation)",
+      "Bash(scripts/payments.sh ledger:*)",
+      "Bash(scripts/payments.sh switch-off:*)"
+    ],
+    "ask": [
+      "Bash(scripts/payments.sh switch-on:*)",
+      "Bash(scripts/payments.sh release:*)",
+      "Bash(scripts/payments.sh refund:*)",
+      "Bash(flyctl ssh:*)",
+      "Bash(flyctl secrets:*)",
+      "Bash(flyctl deploy:*)",
+      "Bash(stripe post:*)",
+      "Bash(stripe delete:*)",
+      "Bash(stripe refunds:*)"
+    ]
+  }
+}

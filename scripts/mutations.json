@@ -2421,6 +2421,96 @@
       "replace": "  defp missing?({:error, %{\"error\" => %{\"code\" => \"resource_missing\"}}}), do: true",
       "guarded_by": "test/lei/stripe_reconciliation_test.exs",
       "app": "apps/lei_service"
+    },
+    {
+      "id": "runbook-refund-not-asked",
+      "bug": "A refund moves money, and removing it from the ask rules let an agent run it without the operator (#139).",
+      "file": ".claude/settings.json",
+      "find": "      \"Bash(scripts/payments.sh refund:*)\",\n",
+      "replace": "",
+      "guarded_by": "test/lei_service/runbook_autonomy_test.exs",
+      "app": "apps/lei_service"
+    },
+    {
+      "id": "runbook-switch-on-allowed",
+      "bug": "Switching a payment path back on was allowed unprompted, past the 'stops money, does not move it' boundary (#139).",
+      "file": ".claude/settings.json",
+      "find": "      \"Bash(scripts/payments.sh switch-off:*)\"\n",
+      "replace": "      \"Bash(scripts/payments.sh switch-off:*)\",\n      \"Bash(scripts/payments.sh switch-on:*)\"\n",
+      "guarded_by": "test/lei_service/runbook_autonomy_test.exs",
+      "app": "apps/lei_service"
+    },
+    {
+      "id": "runbook-flyctl-ssh-unguarded",
+      "bug": "With flyctl ssh unguarded an agent could do anything the script does, over rpc, without the prompt (#139).",
+      "file": ".claude/settings.json",
+      "find": "      \"Bash(flyctl ssh:*)\",\n",
+      "replace": "",
+      "guarded_by": "test/lei_service/runbook_autonomy_test.exs",
+      "app": "apps/lei_service"
+    },
+    {
+      "id": "payments-script-switch-unverified",
+      "bug": "A switch was reported done without reading it back from /metrics (#139).",
+      "file": "scripts/payments.sh",
+      "find": "    if [ \"$(metric_switch \"$path\")\" = \"$expected\" ]; then",
+      "replace": "    if true; then",
+      "guarded_by": "test/lei_service/payments_script_test.exs",
+      "app": "apps/lei_service"
+    },
+    {
+      "id": "payments-script-unreachable-is-refusal",
+      "bug": "Production unreachable exited 1 like a refusal, so an agent could not tell a safe retry from a decision (#139).",
+      "file": "scripts/payments.sh",
+      "find": "then finish 4 \"$json\"; fi",
+      "replace": "then finish 1 \"$json\"; fi",
+      "guarded_by": "test/lei_service/payments_script_test.exs",
+      "app": "apps/lei_service"
+    },
+    {
+      "id": "payments-script-refund-verified-by-old-reversal",
+      "bug": "A second partial refund was verified by the ledger reversal of the first, before its own arrived (#139).",
+      "file": "scripts/payments.sh",
+      "find": "    if [ \"${total:-0}\" -gt \"${before:-0}\" ]; then",
+      "replace": "    if [ \"${total:-0}\" -gt 0 ]; then",
+      "guarded_by": "test/lei_service/payments_script_test.exs",
+      "app": "apps/lei_service"
+    },
+    {
+      "id": "payments-script-ids-unvalidated",
+      "bug": "Ids were passed toward production without validation (#139).",
+      "file": "scripts/payments.sh",
+      "find": "valid_id() { [[ \"$1\" =~ ^[A-Za-z0-9_-]{1,128}$ ]]; }",
+      "replace": "valid_id() { true; }",
+      "guarded_by": "test/lei_service/payments_script_test.exs",
+      "app": "apps/lei_service"
+    },
+    {
+      "id": "operations-refund-key-not-stable",
+      "bug": "A refund's idempotency key changed between attempts, so an agent retrying after a timeout could refund twice (#139).",
+      "file": "apps/lei_service/lib/lei/operations.ex",
+      "find": "idempotency_key: \"lei_refund_\" <> key,",
+      "replace": "idempotency_key: \"lei_refund_\" <> key <> Integer.to_string(System.unique_integer([:positive])),",
+      "guarded_by": "test/lei/operations_test.exs",
+      "app": "apps/lei_service"
+    },
+    {
+      "id": "operations-refund-any-payment",
+      "bug": "A refund reached Stripe for a payment that is not a ledger credit purchase, such as a Pro subscription (#139).",
+      "file": "apps/lei_service/lib/lei/operations.ex",
+      "find": "      is_nil(purchase) ->\n        failure(:not_a_credit_purchase)\n",
+      "replace": "",
+      "guarded_by": "test/lei/operations_test.exs",
+      "app": "apps/lei_service"
+    },
+    {
+      "id": "operations-switch-not-idempotent",
+      "bug": "Switching to the state a path was already in recorded a new change each time, so an agent's retry rewrote who and why (#139).",
+      "file": "apps/lei_service/lib/lei/operations.ex",
+      "find": "      Switches.enabled?(path) == enabled ->",
+      "replace": "      false ->",
+      "guarded_by": "test/lei/operations_test.exs",
+      "app": "apps/lei_service"
     }
   ]
 }
