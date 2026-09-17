@@ -2511,6 +2511,24 @@
       "replace": "      false ->",
       "guarded_by": "test/lei/operations_test.exs",
       "app": "apps/lei_service"
+    },
+    {
+      "id": "notify-silent-without-token",
+      "bug": "An alert with no ntfy token configured exited 0, reporting exactly what a delivered alert reports while going nowhere.",
+      "file": "scripts/notify.sh",
+      "find": "[ -n \"${NTFY_TOKEN:-}\" ] || fail 2 \"NTFY_TOKEN is not set: this alert would go nowhere\"\n",
+      "replace": "",
+      "guarded_by": "test/lei_service/notify_script_test.exs",
+      "app": "apps/lei_service"
+    },
+    {
+      "id": "notify-rejected-reads-sent",
+      "bug": "A notification ntfy refused was reported as sent.",
+      "file": "scripts/notify.sh",
+      "find": "  2??) printf 'notify: sent (%s)\\n' \"$status\" >&2 ;;",
+      "replace": "  *) printf 'notify: sent (%s)\\n' \"$status\" >&2 ;;",
+      "guarded_by": "test/lei_service/notify_script_test.exs",
+      "app": "apps/lei_service"
     }
   ]
 }
