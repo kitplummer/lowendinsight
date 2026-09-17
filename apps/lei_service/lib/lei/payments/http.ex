@@ -27,7 +27,7 @@ defmodule Lei.Payments.Http do
   require Logger
 
   alias Lei.{ApiKeys, Org, Payments, Repo, Wallets}
-  alias Lei.Payments.{ChallengeStore, MachineRail}
+  alias Lei.Payments.{ChallengeStore, MachineRail, Outcomes}
   alias Lei.Payments.Mpp.{Challenge, Credential, Receipt}
 
   @doc """
@@ -41,6 +41,7 @@ defmodule Lei.Payments.Http do
     conn = Lei.Payments.RateLimit.check(conn, :payment_challenge)
 
     if Lei.Payments.RateLimit.limited?(conn) do
+      Outcomes.record("unknown", "rate_limited", :payment_challenge)
       conn
     else
       issue(conn, org_id, credits, opts)
@@ -65,11 +66,15 @@ defmodule Lei.Payments.Http do
           not match?({:unavailable, _}, reason),
           do: {rail.name(), reason}
 
-    for {name, reason} <- unavailable,
-        do: Logger.info("Payment rail #{name} offered no challenge: #{inspect(reason)}")
+    for {name, reason} <- unavailable do
+      Logger.info("Payment rail #{name} offered no challenge: #{inspect(reason)}")
+      Outcomes.record(name, "unavailable", reason)
+    end
 
-    for {name, reason} <- failed,
-        do: Logger.error("Could not build #{name} payment requirements: #{inspect(reason)}")
+    for {name, reason} <- failed do
+      Logger.error("Could not build #{name} payment requirements: #{inspect(reason)}")
+      Outcomes.record(name, "challenge_error", reason)
+    end
 
     cond do
       offered != [] ->
@@ -106,6 +111,7 @@ defmodule Lei.Payments.Http do
     recorded = Enum.map(offered, fn {rail, challenge} -> remember(challenge, org_id, rail) end)
 
     if Enum.all?(recorded, &(&1 == :ok)) do
+      for {rail, _challenge} <- offered, do: Outcomes.record(rail.name(), "issued")
       [{_rail, first} | _] = offered
 
       conn
@@ -162,6 +168,7 @@ defmodule Lei.Payments.Http do
       conn = Lei.Payments.RateLimit.check(conn, :payment_settle)
 
       if Lei.Payments.RateLimit.limited?(conn) do
+        Outcomes.record("unknown", "rate_limited", :payment_settle)
         {:rate_limited, conn}
       else
         do_settle(conn, opts)
@@ -178,11 +185,45 @@ defmodule Lei.Payments.Http do
     end
   end
 
+  # Counted in two halves so the rail is known for every refusal it can be:
+  # a credential that cannot be parsed, or names a challenge we never issued,
+  # has no rail, and is counted as "unknown".
   defp do_settle(conn, opts) do
     with {:ok, header} <- credential_header(conn),
          {:ok, credential} <- Credential.from_header(header),
-         {:ok, issued, record, rail} <- recall(credential),
-         {:ok, settlement} <- rail.verify(credential, Keyword.put(opts, :challenge, issued)),
+         {:ok, issued, record, rail} <- recall(credential) do
+      # Before the attempt: presented minus settled and refused is attempts
+      # that raised part-way.
+      Outcomes.record(rail.name(), "presented")
+
+      conn
+      |> settle_recalled(credential, issued, record, rail, opts)
+      |> tap(&count_settlement(&1, rail, record))
+    else
+      {:error, reason} = error ->
+        Outcomes.record("unknown", "presented")
+        Outcomes.record("unknown", "refused", reason)
+        error
+
+      other ->
+        other
+    end
+  end
+
+  defp count_settlement({:ok, _conn, _settlement}, rail, record) do
+    # A settled challenge presented again is the retry of an agent whose
+    # response was lost. Counting it as another settlement would inflate
+    # conversion, which is settled challenges over issued ones.
+    Outcomes.record(rail.name(), "settled", if(record.settled_at, do: "retry"))
+  end
+
+  defp count_settlement({:error, reason}, rail, _record),
+    do: Outcomes.record(rail.name(), "refused", reason)
+
+  defp count_settlement(_other, _rail, _record), do: :ok
+
+  defp settle_recalled(conn, credential, issued, record, rail, opts) do
+    with {:ok, settlement} <- rail.verify(credential, Keyword.put(opts, :challenge, issued)),
          {:ok, org_id, issued_key} <- credit_payer(record, rail, settlement) do
       ChallengeStore.mark_settled(record, org_id)
 

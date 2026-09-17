@@ -85,6 +85,13 @@ defmodule Lei.Metrics do
       "# TYPE lei_stripe_reversal_events_total counter",
       reversal_event_metrics(),
       "",
+      # The payment path by rail, from Postgres so a deploy does not reset it
+      # (#139). A rail issuing challenges and settling none is broken; a spike
+      # in challenge_mismatch refusals is someone forging credentials.
+      "# HELP lei_payment_outcomes Payment challenges and credentials by rail, outcome and reason, last 24 hours",
+      "# TYPE lei_payment_outcomes gauge",
+      payment_outcome_metrics(),
+      "",
       "# HELP lei_credit_reconciliation Ledger agreement with recorded usage",
       "# TYPE lei_credit_reconciliation gauge",
       reconciliation_metrics(),
@@ -155,6 +162,33 @@ defmodule Lei.Metrics do
       require Logger
       Logger.error("Reversal metrics failed: #{inspect(error)}")
       [~s(lei_credit_reversals{measure="error"} 1)]
+  end
+
+  defp payment_outcome_metrics do
+    counts =
+      Map.new(Lei.Payments.Outcomes.summary(), fn row ->
+        {{row.rail, row.outcome, row.reason}, row.count}
+      end)
+
+    # Every configured rail's main outcomes at zero, so "none in 24 hours"
+    # reads differently from "not collected".
+    defaults =
+      for rail <- Application.get_env(:lei_service, :payment_rails, []),
+          outcome <- ~w(issued presented settled refused),
+          into: %{},
+          do: {{rail.name(), outcome, ""}, 0}
+
+    defaults
+    |> Map.merge(counts)
+    |> Enum.sort()
+    |> Enum.map(fn {{rail, outcome, reason}, count} ->
+      ~s(lei_payment_outcomes{rail="#{rail}",outcome="#{outcome}",reason="#{reason}",window="24h"} #{count})
+    end)
+  rescue
+    error ->
+      require Logger
+      Logger.error("Payment outcome metrics failed: #{inspect(error)}")
+      [~s(lei_payment_outcomes{measure="error"} 1)]
   end
 
   defp to_int(%Decimal{} = d), do: Decimal.to_integer(d)

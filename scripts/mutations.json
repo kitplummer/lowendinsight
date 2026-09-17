@@ -2151,6 +2151,69 @@
       "replace": "credits = proportion(purchase, amount)",
       "guarded_by": "test/lei/payments/reversals_test.exs",
       "app": "apps/lei_service"
+    },
+    {
+      "id": "payment-challenge-issued-not-counted",
+      "bug": "Nothing counted the payment challenges issued, so a rail issuing challenges and settling none looked like a quiet day (#139).",
+      "file": "apps/lei_service/lib/lei/payments/http.ex",
+      "find": "      for {rail, _challenge} <- offered, do: Outcomes.record(rail.name(), \"issued\")\n",
+      "replace": "",
+      "guarded_by": "test/lei/payments/outcomes_test.exs",
+      "app": "apps/lei_service"
+    },
+    {
+      "id": "payment-refusal-not-counted",
+      "bug": "A refused credential left only a log line; a burst of forged credentials was invisible from outside (#139).",
+      "file": "apps/lei_service/lib/lei/payments/http.ex",
+      "find": "do: Outcomes.record(rail.name(), \"refused\", reason)",
+      "replace": "do: :ok",
+      "guarded_by": "test/lei/payments/outcomes_test.exs",
+      "app": "apps/lei_service"
+    },
+    {
+      "id": "payment-unknown-challenge-refusal-not-counted",
+      "bug": "A credential for a challenge never issued -- the forged-credential case -- has no rail, and was the refusal most easily left uncounted (#139).",
+      "file": "apps/lei_service/lib/lei/payments/http.ex",
+      "find": "        Outcomes.record(\"unknown\", \"refused\", reason)\n",
+      "replace": "",
+      "guarded_by": "test/lei/payments/outcomes_test.exs",
+      "app": "apps/lei_service"
+    },
+    {
+      "id": "payment-retry-counted-as-settlement",
+      "bug": "A settled challenge's credential presented again counted as a second settlement, inflating conversion (#139).",
+      "file": "apps/lei_service/lib/lei/payments/http.ex",
+      "find": "if(record.settled_at, do: \"retry\")",
+      "replace": "nil",
+      "guarded_by": "test/lei/payments/outcomes_test.exs",
+      "app": "apps/lei_service"
+    },
+    {
+      "id": "payment-refusal-reason-carries-detail",
+      "bug": "A refusal counted under its full error, detail included, makes a metric series per distinct value -- values a caller controls (#139).",
+      "file": "apps/lei_service/lib/lei/payments/outcomes.ex",
+      "find": "def reason_name({reason, _detail}) when is_atom(reason), do: Atom.to_string(reason)",
+      "replace": "def reason_name({reason, detail}) when is_atom(reason), do: \"#{reason}:#{inspect(detail)}\"",
+      "guarded_by": "test/lei/payments/outcomes_test.exs",
+      "app": "apps/lei_service"
+    },
+    {
+      "id": "payment-outcome-count-overwritten",
+      "bug": "An outcome bucket's count replaced rather than incremented reads 1 however many attempts it holds (#139).",
+      "file": "apps/lei_service/lib/lei/payments/outcomes.ex",
+      "find": "on_conflict: [inc: [count: 1]]",
+      "replace": "on_conflict: {:replace, [:count]}",
+      "guarded_by": "test/lei/payments/outcomes_test.exs",
+      "app": "apps/lei_service"
+    },
+    {
+      "id": "payment-outcome-zero-defaults-missing",
+      "bug": "Without zero-valued series for each configured rail, no payments in 24 hours looks the same on /metrics as the counts not being collected (#139).",
+      "file": "apps/lei_service/lib/lei/metrics.ex",
+      "find": "outcome <- ~w(issued presented settled refused),",
+      "replace": "outcome <- [],",
+      "guarded_by": "test/lei/payments/outcomes_test.exs",
+      "app": "apps/lei_service"
     }
   ]
 }
