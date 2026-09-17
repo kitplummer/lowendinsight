@@ -1,14 +1,22 @@
 name: deploy
 
-# Deploys main to Fly, then gates on the smoke suite running against the live
-# host. A green build is not the gate -- answering correctly in production is.
+# Deploys main to Fly once umbrella_ci has passed on it, then gates on the smoke
+# suite running against the live host. A green build is necessary, not
+# sufficient -- answering correctly in production is the gate.
+#
+# Until 2026-09-16 this ran on push, beside umbrella_ci rather than after it:
+# #209 and #210 were live about ten minutes before their CI finished, and that
+# CI failed. A failed umbrella_ci run now deploys nothing.
 #
 # Requires the FLY_API_TOKEN repository secret (`fly tokens create deploy`).
 # Without it the job fails fast at the auth check rather than half-deploying.
 
 on:
-  push:
+  workflow_run:
+    workflows: [umbrella_ci]
+    types: [completed]
     branches: [main]
+  # Manual override: deploys the chosen ref without waiting for CI.
   workflow_dispatch:
 
 # Never let two deploys interleave. Cancelling mid-deploy could leave the app
@@ -18,12 +26,61 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
+  # Which commit, and whether to deploy it at all.
+  gate:
+    name: CI passed on the tip of main
+    runs-on: ubuntu-latest
+    # A push to main that passed. Not the nightly scheduled run, which has
+    # nothing new to deploy, and not a failure.
+    if: >-
+      github.event_name == 'workflow_dispatch' ||
+      (github.event.workflow_run.conclusion == 'success' &&
+       github.event.workflow_run.event == 'push')
+    outputs:
+      sha: ${{ steps.decide.outputs.sha }}
+      deploy: ${{ steps.decide.outputs.deploy }}
+    steps:
+      - id: decide
+        env:
+          GH_TOKEN: ${{ github.token }}
+          EVENT: ${{ github.event_name }}
+          RUN_SHA: ${{ github.event.workflow_run.head_sha }}
+        run: |
+          if [ "$EVENT" = "workflow_dispatch" ]; then
+            echo "sha=${GITHUB_SHA}" >> "$GITHUB_OUTPUT"
+            echo "deploy=true" >> "$GITHUB_OUTPUT"
+            echo "Manual deploy of ${GITHUB_SHA}; CI is not checked."
+            exit 0
+          fi
+
+          # Two merges close together finish CI in either order. Deploying the
+          # older one after the newer would put production back a version, so
+          # only the current tip deploys; the newer commit's own run deploys it.
+          TIP=$(gh api "repos/${GITHUB_REPOSITORY}/commits/main" --jq .sha)
+          if [ -z "$TIP" ]; then
+            echo "::error::Could not read the tip of main; not deploying."
+            exit 1
+          fi
+          echo "sha=${RUN_SHA}" >> "$GITHUB_OUTPUT"
+          if [ "$RUN_SHA" = "$TIP" ]; then
+            echo "deploy=true" >> "$GITHUB_OUTPUT"
+            echo "CI passed on ${RUN_SHA}, the tip of main. Deploying."
+          else
+            echo "deploy=false" >> "$GITHUB_OUTPUT"
+            echo "::notice::CI passed on ${RUN_SHA}, but main is now at ${TIP}. Not deploying; that commit's CI run deploys it."
+          fi
+
   deploy:
     name: Deploy and verify
+    needs: gate
+    if: needs.gate.outputs.deploy == 'true'
     runs-on: ubuntu-latest
     environment: production
     steps:
       - uses: actions/checkout@v4
+        with:
+          # The commit CI passed, not whatever main is when this job starts.
+          ref: ${{ needs.gate.outputs.sha }}
 
       - uses: superfly/flyctl-actions/setup-flyctl@master
 
