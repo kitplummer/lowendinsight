@@ -1,0 +1,33 @@
+name: notify-test
+
+# Sends one test notification through scripts/notify.sh, to prove an
+# operations alert actually arrives before anything depends on it. Run by hand:
+#
+#   gh workflow run notify-test.yml -f message="..."
+#
+# The step fails if NTFY_TOKEN or NTFY_TOPIC is unset, or ntfy refuses the post.
+
+on:
+  workflow_dispatch:
+    inputs:
+      message:
+        description: Message body
+        required: false
+        default: Test notification from LowEndInsight operations
+
+jobs:
+  send:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Send a test notification
+        env:
+          NTFY_TOKEN: ${{ secrets.NTFY_TOKEN }}
+          NTFY_TOPIC: ${{ secrets.NTFY_TOPIC }}
+          # Through env, not interpolated into the script: an input is text,
+          # never shell.
+          MESSAGE: ${{ inputs.message }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          scripts/notify.sh --title "LowEndInsight: test notification" \
+            --priority 3 --tags test_tube --click "$RUN_URL" "$MESSAGE"
