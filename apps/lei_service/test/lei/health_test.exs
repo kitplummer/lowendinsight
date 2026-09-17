@@ -55,7 +55,7 @@ defmodule Lei.HealthTest do
 
   test "readiness returns ok when database is available" do
     result = Lei.Health.readiness()
-    assert result.status == "ok"
+    assert result.status == "ok", "readiness degraded: #{inspect(result.checks)}"
     assert result.checks.database == "ok"
   end
 
