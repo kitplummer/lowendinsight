@@ -11,6 +11,5 @@
 EEF-CVE-2026-32686,GHSA-rhv4-8758-jx7v # MEDIUM unbounded exponent; decimals come only from Postgres numeric columns and internal arithmetic, no request input is cast to :decimal
 
 # cowlib 2.20.0 is the latest release; no fix published.
-EEF-CVE-2026-43971 # MEDIUM cow_link:link/1, not called by cowboy, plug_cowboy, plug or this code
 EEF-CVE-2026-43966,GHSA-w4f7-4cxr-rv3c # MEDIUM cow_http_struct_hd:escape_string/2, not called by cowboy, plug_cowboy, plug or this code
 EEF-CVE-2026-43969,GHSA-g2wm-735q-3f56 # LOW cow_cookie:cookie/1 (request encoder), not called by cowboy, plug_cowboy, plug or this code
