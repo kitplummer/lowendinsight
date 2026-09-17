@@ -12,6 +12,10 @@ name: audit
 #     the alert, as for monitor.yml.
 #   - on a PR that changes dependencies or the audit itself: an unacknowledged
 #     advisory fails the PR; a stale acknowledgement is only a warning.
+#   - on any other PR: the job still runs and passes without auditing. `audit`
+#     is a required status check on main, and a check that never reports blocks
+#     the merge -- a `paths:` filter on the trigger blocked every PR that did not
+#     touch dependencies (#213, 2026-09-17).
 #
 # scripts/preflight.sh still runs the non-strict audit locally.
 
@@ -19,12 +23,6 @@ on:
   schedule:
     - cron: '17 6 * * *'
   pull_request:
-    paths:
-      - 'mix.lock'
-      - '**/mix.exs'
-      - 'scripts/acknowledged-advisories.txt'
-      - 'scripts/dependency-audit.sh'
-      - '.github/workflows/audit.yml'
   workflow_dispatch:
 
 jobs:
@@ -34,16 +32,44 @@ jobs:
       MIX_ENV: test
     steps:
     - uses: actions/checkout@v4
+      with:
+        fetch-depth: 0
+    # Decided per PR from its diff, so the required check always reports.
+    - name: Does this change dependencies?
+      id: scope
+      env:
+        EVENT: ${{ github.event_name }}
+        BASE_REF: ${{ github.base_ref }}
+      run: |
+        if [ "$EVENT" != "pull_request" ]; then
+          echo "audit=true" >> "$GITHUB_OUTPUT"
+          exit 0
+        fi
+        CHANGED=$(git diff --name-only "origin/${BASE_REF}...HEAD")
+        if [ -z "$CHANGED" ]; then
+          # An empty diff here means the comparison failed, not that nothing
+          # changed. Audit rather than pass on nothing.
+          echo "::warning::Could not list this PR's changes; auditing."
+          echo "audit=true" >> "$GITHUB_OUTPUT"
+        elif printf '%s\n' "$CHANGED" | grep -qE '(^|/)mix\.(lock|exs)$|^scripts/(acknowledged-advisories\.txt|dependency-audit\.sh)$|^\.github/workflows/audit\.yml$'; then
+          echo "audit=true" >> "$GITHUB_OUTPUT"
+        else
+          echo "audit=false" >> "$GITHUB_OUTPUT"
+          echo "No dependency or audit changes; not auditing. The daily --strict run covers new advisories."
+        fi
     - uses: erlef/setup-beam@v1
+      if: steps.scope.outputs.audit == 'true'
       with:
         elixir-version: 1.20.4
         otp-version: 28.5.0.6
     - name: Install Dependencies
+      if: steps.scope.outputs.audit == 'true'
       run: |
         mix local.rebar --force
         mix local.hex --force
         mix deps.get
     - name: Hex and mix_audit advisories
+      if: steps.scope.outputs.audit == 'true'
       run: |
         if [ "${{ github.event_name }}" = "pull_request" ]; then
           scripts/dependency-audit.sh
