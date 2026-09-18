@@ -1778,7 +1778,7 @@
       "id": "batch-misses-not-queued",
       "bug": "The batch endpoint charged for cache misses and queued nothing: the caller got a job id naming no work, and the analysis never ran (ADR-004 step 4).",
       "file": "apps/lei_service/lib/lei/web/router.ex",
-      "find": "[schedule: &enqueue_dependency/1] ++ opts",
+      "find": "[schedule: scheduler()] ++ opts",
       "replace": "opts",
       "guarded_by": "test/lei_service/batch_enqueue_test.exs",
       "app": "apps/lei_service"
@@ -2816,6 +2816,24 @@
       "find": "Ecto.Adapters.SQL.Sandbox.mode(LeiService.Repo, :manual)\n",
       "replace": "Ecto.Adapters.SQL.Sandbox.mode(LeiService.Repo, :manual)\nLeiService.Repo.delete_all(\"oban_jobs\")\n",
       "guarded_by": "test/lei_service/repo_sandboxing_test.exs",
+      "app": "apps/lei_service"
+    },
+    {
+      "id": "unqueued-work-stays-charged",
+      "bug": "A batch charged at admission for every cache miss, then enqueued jobs through a different repo. A dependency that failed to enqueue was reported as failed in the response and stayed paid for: money taken for work that would never run (#217).",
+      "file": "apps/lei_service/lib/lei/web/router.ex",
+      "find": "            credited = credit_unqueued(org_id, unqueued)",
+      "replace": "            credited = credit_unqueued(org_id, 0)",
+      "guarded_by": "test/lei/web/batch_unqueued_refund_test.exs",
+      "app": "apps/lei_service"
+    },
+    {
+      "id": "unqueued-credit-covers-the-whole-batch",
+      "bug": "The compensating credit was written for every cache miss rather than only the ones that failed to queue, so a batch that queued successfully was refunded work it had actually been given.",
+      "file": "apps/lei_service/lib/lei/web/router.ex",
+      "find": "            unqueued = get_in(result, [:summary, :failed]) || 0",
+      "replace": "            unqueued = misses",
+      "guarded_by": "test/lei/web/batch_unqueued_refund_test.exs",
       "app": "apps/lei_service"
     }
   ]
