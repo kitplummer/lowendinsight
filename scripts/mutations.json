@@ -2718,6 +2718,33 @@
       "replace": "      ~s(lei_unbilled_pro_orgs{state=\"no_customer\"} 0),",
       "guarded_by": "test/lei/unbilled_pro_test.exs",
       "app": "apps/lei_service"
+    },
+    {
+      "id": "monitor-failure-does-not-page",
+      "bug": "A failing production check reached nobody but a GitHub email, whose delivery depends on the recipient's notification settings and which arrives looking identical to a routine CI failure.",
+      "file": ".github/workflows/monitor.yml",
+      "find": "      - name: Page on a failed check\n        id: page\n        if: failure()",
+      "replace": "      - name: Page on a failed check\n        id: page\n        if: false",
+      "guarded_by": "test/lei_service/payment_monitoring_wiring_test.exs",
+      "app": "apps/lei_service"
+    },
+    {
+      "id": "monitor-pages-every-run-of-an-incident",
+      "bug": "The monitor paged on the failing state rather than the transition into it. Running every 15 minutes, one outage sent 96 pages a day -- worse than the email it replaced, because the operator stops reading.",
+      "file": ".github/workflows/monitor.yml",
+      "find": "          if [ \"$PREVIOUS\" = \"failure\" ]; then",
+      "replace": "          if [ \"$PREVIOUS\" = \"never-matches\" ]; then",
+      "guarded_by": "test/lei_service/payment_monitoring_wiring_test.exs",
+      "app": "apps/lei_service"
+    },
+    {
+      "id": "monitor-page-suppressed-when-lookup-fails",
+      "bug": "A failed lookup of the previous run left PREVIOUS empty, which compared equal to nothing and silently suppressed the page. A page withheld because a query failed is a page that did not happen.",
+      "file": ".github/workflows/monitor.yml",
+      "find": "          PREVIOUS=\"${PREVIOUS:-unknown}\"",
+      "replace": "          PREVIOUS=\"${PREVIOUS:-failure}\"",
+      "guarded_by": "test/lei_service/payment_monitoring_wiring_test.exs",
+      "app": "apps/lei_service"
     }
   ]
 }
