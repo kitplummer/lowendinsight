@@ -26,7 +26,7 @@ exercised against production with a real Stripe Checkout, not simulated.
 | Included credit | **Verified** — 15,000-unit tier absorbs it; amount due stays $29 |
 | `POST /v1/analyze` | **Verified** authenticated (was raising until #91/#92) |
 | Stripe keys | Test mode (sandbox) — live mode still to do |
-| ACP self-provisioning | Reachable but **unauthenticated** — see below |
+| ACP self-provisioning | **Authenticated** since 2026-09-18 — bearer token and HMAC, see below |
 
 ### The verified chain
 
@@ -196,17 +196,28 @@ has its own; a secret from a different endpoint fails every signature check.
 > shows **no event deliveries at all**, so no checkout ever completed and no org
 > was charged and left `pending`. The bug had no victims.
 
-### Point the endpoint at the canonical domain
+### The endpoint is on the canonical domain
 
-The registered endpoint currently targets `https://lowendinsight.fly.dev/webhooks/stripe`
-even though the destination is named `lowendinsight.dev`. Both hostnames serve
-the same app, so this works — but it makes the fly.dev hostname load-bearing for
-billing, and it is the same inconsistency `lei_base_url` had on the redirect
-side. Update it to:
+Confirmed 2026-09-18, in the sandbox account:
 
 ```
-https://lowendinsight.dev/webhooks/stripe
+$ stripe get /v1/webhook_endpoints | jq -r '.data[] | "\(.url)  \(.status)"'
+https://lowendinsight.dev/webhooks/stripe  enabled
 ```
+
+It had previously been registered against `https://lowendinsight.fly.dev`, and
+this section said so for longer than it was true. Keep it on `lowendinsight.dev`.
+
+`lowendinsight.fly.dev` is the hostname Fly assigns every app. It resolves to
+the same machine today -- both answer `/v1/health` with the same uptime -- so
+either works, which is exactly why the wrong one can be registered and never
+noticed. It is infrastructure naming, not ours: it changes if the app is
+renamed or moves off Fly, and a webhook endpoint pointing at it would then fail
+the way this file warns about, invisibly.
+
+**Live mode needs its own endpoint.** Webhook endpoints do not exist across
+modes, so recreating it is part of section 6, and it brings a new signing
+secret with it.
 
 ### Rotating the webhook signing secret
 
@@ -280,9 +291,21 @@ update Fly, verify, and let the old key lapse rather than revoking it first.
 | `STRIPE_WEBHOOK_SECRET` | yes | must match the registered endpoint |
 | `STRIPE_PRO_PRICE_ID` | yes | verify it points at a test-mode price |
 | `STRIPE_METERED_PRICE_ID` | yes | verify it is metered, priced per cent |
-| `STRIPE_PROFILE_ID` | **not yet** | `profile_test_…` in sandbox, `profile_…` live. Agents' Shared Payment Tokens are scoped to it; without it the MPP rail answers 402 with `payment: "unavailable"` and no challenge (#143) |
-| `TEMPO_DEPOSIT_ADDRESS` | **not yet** | a Stripe crypto deposit address on Tempo, created with the same key (below). Without it, or until Stripe confirms it belongs to the key's account, 402s offer no stablecoin challenge (#144) |
+| `STRIPE_PROFILE_ID` | yes | `profile_test_…` in sandbox, `profile_…` live. Agents' Shared Payment Tokens are scoped to it; without it the MPP rail answers 402 with `payment: "unavailable"` and no challenge (#143) |
+| `TEMPO_DEPOSIT_ADDRESS` | yes | a Stripe crypto deposit address on Tempo, created with the same key (below). Without it, or until Stripe confirms it belongs to the key's account, 402s offer no stablecoin challenge (#144) |
+| `LEI_ACP_BEARER_TOKEN` | yes | set 2026-09-18. Until then unset, and an absent secret meant "authenticated" -- see ACP self-provisioning below |
+| `LEI_ACP_SIGNING_SECRET` | yes | set 2026-09-18. HMAC over the raw body; requires `conn.private[:raw_body]`, fixed in #62 |
 | `LEI_BASE_URL` | no | defaults to `https://lowendinsight.dev` |
+
+Verify against the app rather than this table, which is a snapshot and will
+drift -- two of these rows read **not yet** on 2026-09-18 while the secrets had
+already been deployed:
+
+```bash
+flyctl secrets list -a lowendinsight
+```
+
+It prints names, digests and status, never values.
 
 **Test and live mode have separate objects.** Price IDs, webhook endpoints and
 signing secrets created in test mode do not exist in live mode. Switching keys
@@ -466,14 +489,53 @@ run as a real test, not a formality.
 
 ## ACP self-provisioning
 
-`LEI_ACP_BEARER_TOKEN` and `LEI_ACP_SIGNING_SECRET` are **unset**, and
-`Lei.Acp.Auth` skips both the bearer and HMAC checks when they are absent.
-`POST /acp/checkout` is therefore open to anyone.
+**Both secrets are set (2026-09-18), and `POST /acp/checkout` and
+`/checkout/:id/complete` now require a bearer token and a valid HMAC
+signature.** Until that day they were unset, and `Lei.Acp.Auth` treated an
+absent secret as authenticated -- so both routes were open to anyone for as
+long as they had existed.
 
-Since 2026-09-15 the only SKU is `lei-credits-29000`: $29 charged once buys
-29,000 credits on a prepaid org with no monthly allowance (ADR-002). There is no
-free SKU, so an open endpoint provisions nothing without a successful payment.
-The former `lei-free` SKU gave any caller a free-tier org, and `lei-pro-monthly`
-created an unlimited Pro org from a one-off charge that was never billed again.
+The only thing that had bounded that was the SKU. Since 2026-09-15 the only one
+is `lei-credits-29000`: $29 charged once buys 29,000 credits on a prepaid org
+with no monthly allowance (ADR-002). With no free SKU, an open endpoint
+provisions nothing without a successful payment. That is a pricing accident
+rather than a control, and it had not always held: the former `lei-free` SKU
+gave any caller a free-tier org, and `lei-pro-monthly` created an unlimited Pro
+org from a one-off charge that was never billed again.
 
-Setting either secret turns the corresponding check on.
+### Verified when set
+
+Both checks were exercised against production rather than assumed, in this
+order -- the bearer token first, alone, because it has no dependency on request
+body handling:
+
+| | |
+|---|---|
+| no credentials | `401` |
+| bearer token only | `201` |
+| bearer + valid signature | `201` |
+| bearer, no signature, once the signing secret was set | `401` |
+
+That third row is the one worth keeping. Section 3 warns that setting
+`LEI_ACP_SIGNING_SECRET` while `conn.private[:raw_body]` is nil rejects every
+ACP request, because the HMAC is computed over a body the plug never captured.
+#62 moved the body reader to the endpoint's own `Plug.Parsers`
+(`endpoint.ex:46-50`), and a signed request returning `201` is the evidence
+that the fix holds in production -- reading the code is not.
+
+### Handing the credentials out
+
+An ACP client needs both values. They are write-only in Fly and cannot be read
+back, so a client that does not have them cannot call these routes at all --
+which is the intended state until a partner is given them.
+
+Rotate them the same way they were set, over stdin, never as an argument:
+
+```bash
+read -rs TOKEN && printf 'LEI_ACP_BEARER_TOKEN=%s\n' "$TOKEN" \
+  | flyctl secrets import -a lowendinsight && unset TOKEN
+```
+
+Unlike a Stripe signing secret there is no grace period: the moment the new
+value deploys, a client presenting the old one gets `401`. Update the client
+first, or accept the gap.
