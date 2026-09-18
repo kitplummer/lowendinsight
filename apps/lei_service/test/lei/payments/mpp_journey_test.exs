@@ -26,6 +26,8 @@ defmodule Lei.Payments.JourneyTest do
     Lei.RateLimiter.clear()
     :ok = Ecto.Adapters.SQL.Sandbox.checkout(Lei.Repo)
     Ecto.Adapters.SQL.Sandbox.mode(Lei.Repo, {:shared, self()})
+    :ok = Ecto.Adapters.SQL.Sandbox.checkout(LeiService.Repo)
+    Ecto.Adapters.SQL.Sandbox.mode(LeiService.Repo, {:shared, self()})
 
     address = "0x" <> String.duplicate("b", 39) <> "2"
     {:ok, org} = Wallets.provision(address)

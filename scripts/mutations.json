@@ -2799,6 +2799,24 @@
       "replace": "           upgrade_url: \"https://lowendinsight.fly.dev/signup?tier=pro\"",
       "guarded_by": "test/lei/payments/upgrade_url_test.exs",
       "app": "apps/lei_service"
+    },
+    {
+      "id": "lei-service-repo-not-sandboxed",
+      "bug": "LeiService.Repo, which Oban writes through, was never put in manual sandbox mode, so every test that enqueued a job committed it. The jobs aged, and once older than backlog_after_minutes the next run's readiness reported the queue backed up -- a failure no seed reproduced, because the trigger was wall-clock time between runs (#217).",
+      "file": "apps/lei_service/test/test_helper.exs",
+      "find": "Ecto.Adapters.SQL.Sandbox.mode(LeiService.Repo, :manual)",
+      "replace": "Ecto.Adapters.SQL.Sandbox.mode(LeiService.Repo, :auto)",
+      "guarded_by": "test/lei_service/repo_sandboxing_test.exs",
+      "app": "apps/lei_service"
+    },
+    {
+      "id": "suite-clears-oban-jobs-to-hide-a-leak",
+      "bug": "The suite cleared oban_jobs before every run, which made it pass whether or not the sandbox worked. A suite that tidies up after itself before it starts is describing a leak, not preventing one.",
+      "file": "apps/lei_service/test/test_helper.exs",
+      "find": "Ecto.Adapters.SQL.Sandbox.mode(LeiService.Repo, :manual)\n",
+      "replace": "Ecto.Adapters.SQL.Sandbox.mode(LeiService.Repo, :manual)\nLeiService.Repo.delete_all(\"oban_jobs\")\n",
+      "guarded_by": "test/lei_service/repo_sandboxing_test.exs",
+      "app": "apps/lei_service"
     }
   ]
 }

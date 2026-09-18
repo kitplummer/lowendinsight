@@ -12,8 +12,8 @@ defmodule LeiService.QueueHealthTest do
   alias LeiService.QueueHealth
 
   setup do
-    Ecto.Adapters.SQL.query!(LeiService.Repo, "DELETE FROM oban_jobs", [])
-    on_exit(fn -> Ecto.Adapters.SQL.query!(LeiService.Repo, "DELETE FROM oban_jobs", []) end)
+    :ok = Ecto.Adapters.SQL.Sandbox.checkout(LeiService.Repo)
+    Ecto.Adapters.SQL.Sandbox.mode(LeiService.Repo, {:shared, self()})
     :ok
   end
 

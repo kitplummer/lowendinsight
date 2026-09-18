@@ -6,6 +6,8 @@ defmodule Lei.Web.RouterTest do
   @opts Lei.Web.Router.init([])
 
   setup do
+    :ok = Ecto.Adapters.SQL.Sandbox.checkout(LeiService.Repo)
+    Ecto.Adapters.SQL.Sandbox.mode(LeiService.Repo, {:shared, self()})
     Lei.BatchCache.clear()
     Lei.RateLimiter.clear()
 

@@ -12,9 +12,10 @@ defmodule LeiService.BatchEnqueueTest do
   @opts Lei.Web.Router.init([])
 
   setup do
+    :ok = Ecto.Adapters.SQL.Sandbox.checkout(LeiService.Repo)
+    Ecto.Adapters.SQL.Sandbox.mode(LeiService.Repo, {:shared, self()})
     Lei.BatchCache.clear()
     Lei.RateLimiter.clear()
-    Ecto.Adapters.SQL.query!(LeiService.Repo, "DELETE FROM oban_jobs", [])
 
     secret = Application.get_env(:lei_service, :jwt_secret, "lei_dev_secret")
     signer = Joken.Signer.create("HS256", secret)

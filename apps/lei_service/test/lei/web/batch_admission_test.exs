@@ -18,6 +18,8 @@ defmodule Lei.Web.BatchAdmissionTest do
   setup do
     :ok = Ecto.Adapters.SQL.Sandbox.checkout(Lei.Repo)
     Ecto.Adapters.SQL.Sandbox.mode(Lei.Repo, {:shared, self()})
+    :ok = Ecto.Adapters.SQL.Sandbox.checkout(LeiService.Repo)
+    Ecto.Adapters.SQL.Sandbox.mode(LeiService.Repo, {:shared, self()})
     Lei.BatchCache.clear()
     Lei.RateLimiter.clear()
     :ok

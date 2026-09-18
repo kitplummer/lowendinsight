@@ -4,6 +4,13 @@
 
 defmodule LeiService.EndpointTest do
   use ExUnit.Case, async: true
+
+  setup do
+    :ok = Ecto.Adapters.SQL.Sandbox.checkout(LeiService.Repo)
+    Ecto.Adapters.SQL.Sandbox.mode(LeiService.Repo, {:shared, self()})
+    :ok
+  end
+
   use Plug.Test
 
   @opts LeiService.Endpoint.init([])
