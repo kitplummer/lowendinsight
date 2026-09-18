@@ -13,7 +13,8 @@ defmodule Lei.MeterReportingTest do
     {:ok, org} =
       ApiKeys.find_or_create_org("Meter Org #{System.unique_integer([:positive])}",
         tier: "pro",
-        status: "active"
+        status: "active",
+        stripe_customer_id: "cus_test_1a5839aa"
       )
 
     {:ok, org} =
@@ -89,7 +90,8 @@ defmodule Lei.MeterReportingTest do
       {:ok, pro} =
         ApiKeys.find_or_create_org("Meter NoCus #{System.unique_integer([:positive])}",
           tier: "pro",
-          status: "active"
+          status: "active",
+          stripe_customer_id: "cus_test_ebd97028"
         )
 
       {:ok, _raw, key} = ApiKeys.create_api_key(pro, "meter", ["analyze"])

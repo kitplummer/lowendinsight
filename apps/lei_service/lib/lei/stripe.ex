@@ -131,12 +131,12 @@ defmodule Lei.Stripe do
 
   @impl true
   def create_payment_intent(params) do
-    {body, _} = payment_intent_request(params)
+    {body, _extra_headers} = payment_intent_request(params)
 
     case HTTPoison.post(
            "https://api.stripe.com/v1/payment_intents",
            body,
-           headers()
+           payment_intent_headers(params)
          ) do
       {:ok, %HTTPoison.Response{status_code: 200, body: resp_body}} ->
         {:ok, Poison.decode!(resp_body)}
@@ -342,6 +342,14 @@ defmodule Lei.Stripe do
   @doc false
   # The request create_payment_intent/1 sends, separated so its bytes can be
   # asserted without a network (as shared_payment_token_request/1).
+  #
+  # `Idempotency-Key` is required, not optional. This was the one money-moving
+  # call without one: an agent retrying /acp/checkout/:id/complete after a
+  # timeout created a second real charge, because the session-state guard only
+  # helps once the first call has returned, and a timeout is exactly when it
+  # has not. Required rather than defaulted so a new caller cannot omit it
+  # silently -- a missing key here is a duplicate charge, which is the failure
+  # nobody notices until a customer says so.
   def payment_intent_request(params) do
     metadata =
       for {k, v} <- Map.get(params, :metadata, %{}), into: %{} do
@@ -365,7 +373,21 @@ defmodule Lei.Stripe do
         })
       )
 
-    {body, []}
+    {body, [{"Idempotency-Key", params.idempotency_key}]}
+  end
+
+  @doc false
+  # The complete header list create_payment_intent/1 posts.
+  #
+  # Assembled here rather than inline at the call site so it can be asserted.
+  # The defect was not in building the key -- that half looked right -- but in
+  # the caller destructuring the request as `{body, _}` and posting bare
+  # `headers()`, discarding it. A header dropped after it is built is the same
+  # as one never built, and no test of the request builder alone can see the
+  # difference.
+  def payment_intent_headers(params) do
+    {_body, extra} = payment_intent_request(params)
+    headers() ++ extra
   end
 
   @impl true

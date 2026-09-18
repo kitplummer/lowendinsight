@@ -33,6 +33,24 @@ defmodule Lei.StripeReconciliation do
   than `grace_minutes` (15) ago is not yet expected in the ledger: a
   stablecoin payment succeeds at Stripe a moment before its credit is written.
 
+  ## Verification probes
+
+  Going live means making real payments against production to prove a rail
+  works. Stripe received that money and the ledger deliberately never credited
+  it, so each probe reports as `received_not_recorded` on every subsequent run
+  and never stops. A check that is permanently red is one nobody reads by the
+  second week, so probes are excluded by naming convention -- a
+  `challenge_id` beginning with `reconciliation_probe_prefix` -- and
+  **counted** as `probe_excluded` rather than dropped.
+
+  Two things keep the exclusion from becoming a blind spot. It applies only to
+  the "Stripe has it, the ledger does not" branch, so a probe that *did* reach
+  the ledger is still checked for amount, mode, currency and refunds like any
+  other purchase. And the count is on `/metrics`, so an exclusion that starts
+  swallowing more than it should is visible as a number that climbs.
+
+  An empty prefix excludes nothing.
+
   ## When it cannot do its job
 
   A Stripe error, a missing key, or more PaymentIntents than `max_pages` pages
@@ -51,6 +69,7 @@ defmodule Lei.StripeReconciliation do
   @max_pages 20
   @kept_discrepancies 100
   @purchase_prefixes ~w(acp mpp tempo)
+  @probe_prefix "probe"
 
   defmodule Run do
     @moduledoc false
@@ -63,6 +82,7 @@ defmodule Lei.StripeReconciliation do
       field(:stripe_purchases, :integer)
       field(:discrepancy_count, :integer)
       field(:discrepancies, {:array, :map}, default: [])
+      field(:probe_excluded, :integer, default: 0)
       field(:error, :string)
 
       timestamps(updated_at: false)
@@ -136,8 +156,16 @@ defmodule Lei.StripeReconciliation do
                 (i["created"] || 0) <= grace_cutoff
             end)
 
+          # Split before reporting, not after: a probe is only ever excluded
+          # from this branch, so one that did reach the ledger has already
+          # been checked by check_purchase/3 above.
+          {probes, uncredited} =
+            stripe_purchases
+            |> Enum.reject(&MapSet.member?(recorded, &1["id"]))
+            |> Enum.split_with(&probe?/1)
+
           stripe_side =
-            for i <- stripe_purchases, not MapSet.member?(recorded, i["id"]) do
+            for i <- uncredited do
               discrepancy("received_not_recorded", i["id"], %{
                 "amount_received" => i["amount_received"],
                 "metadata" => i["metadata"]
@@ -148,6 +176,7 @@ defmodule Lei.StripeReconciliation do
            %{
              ledger_purchases: length(purchases),
              stripe_purchases: length(stripe_purchases),
+             probe_excluded: length(probes),
              discrepancies: List.flatten(ledger_side) ++ stripe_side
            }}
       end
@@ -238,6 +267,22 @@ defmodule Lei.StripeReconciliation do
 
   defp purchase_intent?(_), do: false
 
+  # A probe is named, never inferred from shape: nothing about an amount or a
+  # rail makes a payment a probe, so only the convention does. An empty prefix
+  # excludes nothing, which is what an unconfigured deploy should do.
+  defp probe?(%{"metadata" => %{"challenge_id" => id}}) when is_binary(id) do
+    case probe_prefix() do
+      "" -> false
+      prefix -> String.starts_with?(id, prefix)
+    end
+  end
+
+  defp probe?(_), do: false
+
+  defp probe_prefix do
+    Application.get_env(:lei_service, :reconciliation_probe_prefix, @probe_prefix) || ""
+  end
+
   defp ledger_purchases(window_start) do
     since = DateTime.to_naive(window_start)
 
@@ -305,6 +350,7 @@ defmodule Lei.StripeReconciliation do
             status: if(found == [], do: "ok", else: "discrepancies"),
             ledger_purchases: r.ledger_purchases,
             stripe_purchases: r.stripe_purchases,
+            probe_excluded: r.probe_excluded,
             discrepancy_count: length(found),
             discrepancies: Enum.take(found, @kept_discrepancies)
           }

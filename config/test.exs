@@ -68,7 +68,12 @@ config :lei_service,
   # absent delete it.
   stripe_profile_id: "profile_test_lei",
   acp_bearer_token: nil,
-  acp_signing_secret: nil
+  acp_signing_secret: nil,
+  # Lei.Acp.Auth refuses when neither secret is set, because unconfigured
+  # meant "authenticated" in production for as long as the routes existed.
+  # The tests that assert that refusal delete this key; everything else
+  # exercises the routes without secrets, as before.
+  acp_allow_unauthenticated: true
 
 # --- Usage billing test defaults ---
 config :lei_service,
