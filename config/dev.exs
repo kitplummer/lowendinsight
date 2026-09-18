@@ -40,3 +40,13 @@ config :lei_service, Lei.Repo,
 
 config :lowendinsight,
   jobs_per_core_max: String.to_integer(System.get_env("LEI_JOBS_PER_CORE_MAX") || "2")
+
+# --- ACP (local development) ---
+
+# Lei.Acp.Auth refuses a request it cannot authenticate. Neither
+# LEI_ACP_BEARER_TOKEN nor LEI_ACP_SIGNING_SECRET is set locally, and an
+# absent secret used to mean "authenticated" -- which is exactly how
+# /acp/checkout came to be open in production. Development opts in
+# explicitly instead, so that production, where this file is not loaded,
+# fails closed.
+config :lei_service, acp_allow_unauthenticated: true
