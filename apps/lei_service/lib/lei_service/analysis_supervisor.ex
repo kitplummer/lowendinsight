@@ -26,13 +26,26 @@ defmodule LeiService.AnalysisSupervisor do
         %{uuid: uuid, urls: urls, start_time: DateTime.to_iso8601(start_time)}
         |> LeiService.AnalysisWorker.new()
 
-      case Oban.insert(changeset) do
-        {:ok, _job} ->
-          Logger.debug("Job enqueued for #{uuid}")
+      # Both shapes the insert fails in, as one named error the routes can
+      # single out (#217). A missing or drifted oban_jobs table raises from
+      # Postgrex rather than returning an error tuple, so the case alone never
+      # saw it -- it escaped as a 500 with the caller already charged.
+      try do
+        case Oban.insert(changeset) do
+          {:ok, _job} ->
+            Logger.debug("Job enqueued for #{uuid}")
 
-        {:error, changeset} ->
-          Logger.error("Failed to enqueue job: #{inspect(changeset)}")
-          raise RuntimeError, message: "Failed to queue the analysis job."
+          {:error, reason} ->
+            raise LeiService.EnqueueError, uuid: uuid, reason: reason
+        end
+      rescue
+        error in LeiService.EnqueueError ->
+          Logger.error(Exception.message(error))
+          reraise error, __STACKTRACE__
+
+        error ->
+          Logger.error("Failed to enqueue job for #{uuid}: #{inspect(error)}")
+          reraise LeiService.EnqueueError.exception(uuid: uuid, reason: error), __STACKTRACE__
       end
     else
       try do

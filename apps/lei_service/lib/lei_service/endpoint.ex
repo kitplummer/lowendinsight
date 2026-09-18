@@ -256,11 +256,15 @@ defmodule LeiService.Endpoint do
     with :ok <- analyzable(conn.body_params),
          split = cache_split(conn.body_params["urls"]),
          {:ok, conn, billing} <- Lei.Payments.Gate.admit(conn, admission(split)) do
-      {status, body} = analyze_urls(conn, billing, uuid, start_time)
+      try do
+        {status, body} = analyze_urls(conn, billing, uuid, start_time)
 
-      conn
-      |> put_resp_content_type(@content_type)
-      |> send_resp(status, body)
+        conn
+        |> put_resp_content_type(@content_type)
+        |> send_resp(status, body)
+      rescue
+        error in LeiService.EnqueueError -> not_queued(conn, billing, split, error)
+      end
     else
       {:halt, conn} -> conn
       {:invalid, body} -> send_json(conn, 422, body)
@@ -355,26 +359,30 @@ defmodule LeiService.Endpoint do
     with {:ok, urls, cache_mode, cache_timeout} <- sbom_request(conn.body_params),
          :ok <- urls_analyzable(urls),
          split = cache_split(urls),
-         {:ok, conn, _billing} <- Lei.Payments.Gate.admit(conn, admission(split)) do
+         {:ok, conn, billing} <- Lei.Payments.Gate.admit(conn, admission(split)) do
       opts = %{cache_mode: cache_mode, cache_timeout: cache_timeout}
 
       # Charged at admission, so nothing is recorded here.
-      case LeiService.Analysis.process_urls(urls, uuid, start_time, opts) do
-        {:ok, result} ->
-          conn
-          |> put_resp_content_type(@content_type)
-          |> send_resp(200, add_sbom_metadata(result, length(urls)))
+      try do
+        case LeiService.Analysis.process_urls(urls, uuid, start_time, opts) do
+          {:ok, result} ->
+            conn
+            |> put_resp_content_type(@content_type)
+            |> send_resp(200, add_sbom_metadata(result, length(urls)))
 
-        {:timeout, timed_out_uuid} ->
-          send_json(conn, 202, %{
-            state: "incomplete",
-            uuid: timed_out_uuid,
-            sbom_urls_found: length(urls),
-            error: "SBOM analysis did not complete within #{cache_timeout}ms timeout"
-          })
+          {:timeout, timed_out_uuid} ->
+            send_json(conn, 202, %{
+              state: "incomplete",
+              uuid: timed_out_uuid,
+              sbom_urls_found: length(urls),
+              error: "SBOM analysis did not complete within #{cache_timeout}ms timeout"
+            })
 
-        {:error, error} ->
-          send_json(conn, 422, %{error: error})
+          {:error, error} ->
+            send_json(conn, 422, %{error: error})
+        end
+      rescue
+        error in LeiService.EnqueueError -> not_queued(conn, billing, split, error)
       end
     else
       {:error, message} -> send_json(conn, 422, %{error: message})
@@ -420,6 +428,29 @@ defmodule LeiService.Endpoint do
   # cached report is a hit, anything else a miss. Billing from the response
   # instead recorded nothing for async, stale and timed-out requests, whose
   # responses carry no cache counts (#152).
+  # Charged at admission and the work never reached the queue: give the credits
+  # back and say so, rather than letting the raise become a bare 500 with the
+  # money kept (#217). Only LeiService.EnqueueError is rescued -- a request
+  # whose work *was* queued and then failed some other way has been served.
+  defp not_queued(conn, {org_id, _api_key_id, _tier}, split, error) do
+    credits = credits_for(split)
+
+    Logger.error(
+      "#{conn.request_path}: #{Exception.message(error)}; returning #{credits} credits"
+    )
+
+    Lei.Credits.credit_unqueued(org_id, credits, %{
+      "route" => conn.request_path,
+      "uuid" => error.uuid
+    })
+
+    send_json(conn, 503, %{
+      error: "analysis_not_queued",
+      message: "the analysis could not be queued; you have not been charged",
+      credits_returned: credits
+    })
+  end
+
   defp cache_split(urls) when is_list(urls) do
     urls = Enum.filter(urls, &is_binary/1)
     hits = Enum.count(urls, &LeiService.Datastore.in_cache?/1)

@@ -844,33 +844,16 @@ defmodule Lei.Web.Router do
     Application.get_env(:lei_service, :batch_scheduler) || (&enqueue_dependency/1)
   end
 
-  # Credits back what was charged for and never queued. A credit rather than a
-  # reversal: reversal:* belongs to a rail undoing a purchase, and nothing was
-  # purchased here.
-  #
-  # Failure to write it is logged and does not fail the request -- the work
-  # that *was* queued is still valid, and refusing the response would not give
-  # the credits back either. lei_credit_reconciliation is what surfaces the
-  # gap if this write is ever lost.
+  # Credits back what was charged for and never queued (#217). The shared
+  # helper writes the entry; this decides how much and reports it.
   defp credit_unqueued(_org_id, 0), do: 0.0
 
   defp credit_unqueued(org_id, unqueued) when unqueued > 0 do
     credits = Lei.Credits.cost_in_credits(0, unqueued)
 
-    case Lei.Credits.grant(org_id, credits, "adjustment:unqueued",
-           external_ref: "unqueued:" <> Ecto.UUID.generate(),
-           metadata: %{"unqueued" => unqueued}
-         ) do
-      {:ok, _entry} ->
-        Lei.UsageTracker.calculate_cost(0, unqueued) |> Decimal.to_float()
-
-      {:error, reason} ->
-        Logger.error(
-          "batch: charged org #{org_id} for #{unqueued} dependencies that were not " <>
-            "queued, and could not credit them back: #{inspect(reason)}"
-        )
-
-        0.0
+    case Lei.Credits.credit_unqueued(org_id, credits, %{"unqueued" => unqueued}) do
+      {:ok, _} -> Lei.UsageTracker.calculate_cost(0, unqueued) |> Decimal.to_float()
+      {:error, _reason} -> 0.0
     end
   end
 

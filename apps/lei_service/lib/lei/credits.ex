@@ -62,6 +62,43 @@ defmodule Lei.Credits do
   end
 
   @doc """
+  Gives back credits charged for work that could not be queued (#217).
+
+  Admission charges before any job exists (#152), and the ledger write and the
+  Oban insert go through different repos, so they cannot share a transaction.
+  The money follows the work afterwards instead.
+
+  A credit rather than a reversal: `reversal:*` belongs to a rail undoing a
+  purchase, and nothing was purchased here.
+
+  Failure is logged and returned, never raised. The caller is already handling
+  one failure; losing the response as well would not give the credits back.
+  """
+  def credit_unqueued(org_id, credits, metadata \\ %{})
+
+  def credit_unqueued(_org_id, credits, _metadata) when credits <= 0, do: {:ok, :nothing}
+
+  def credit_unqueued(org_id, credits, metadata) do
+    case grant(org_id, credits, "adjustment:unqueued",
+           external_ref: "unqueued:" <> Ecto.UUID.generate(),
+           metadata: metadata
+         ) do
+      {:ok, entry} ->
+        {:ok, entry}
+
+      {:error, reason} ->
+        require Logger
+
+        Logger.error(
+          "charged org #{org_id} #{credits} credits for work that was not queued, and " <>
+            "could not credit it back: #{inspect(reason)}"
+        )
+
+        {:error, reason}
+    end
+  end
+
+  @doc """
   Remove credits. `credits` must be positive; the entry is written negative.
 
   A debit is allowed to take the balance below zero. The alternative is

@@ -788,8 +788,8 @@
       "id": "sbom-analysis-unbilled",
       "bug": "POST /v1/analyze/sbom runs the analysis without debiting it: every repository an SBOM names, free. (#152)",
       "file": "apps/lei_service/lib/lei_service/endpoint.ex",
-      "find": "         {:ok, conn, _billing} <- Lei.Payments.Gate.admit(conn, admission(split)) do",
-      "replace": "         {:ok, conn, _billing} <- Lei.Payments.Gate.admit(conn, admission({0, 0})) do",
+      "find": "         split = cache_split(urls),\n         {:ok, conn, billing} <- Lei.Payments.Gate.admit(conn, admission(split)) do",
+      "replace": "         split = cache_split(urls),\n         {:ok, conn, billing} <- Lei.Payments.Gate.admit(conn, admission({0, 0})) do",
       "guarded_by": "test/lei_service/unbilled_paths_test.exs",
       "app": "apps/lei_service"
     },
@@ -797,8 +797,8 @@
       "id": "sbom-not-gated",
       "bug": "POST /v1/analyze/sbom admits any key without checking balance or quota, so a wallet org with no credits is served. (#152)",
       "file": "apps/lei_service/lib/lei_service/endpoint.ex",
-      "find": "         {:ok, conn, _billing} <- Lei.Payments.Gate.admit(conn, admission(split)) do",
-      "replace": "         {:ok, conn, _billing} <- {:ok, conn, admission(split)} do",
+      "find": "         split = cache_split(urls),\n         {:ok, conn, billing} <- Lei.Payments.Gate.admit(conn, admission(split)) do",
+      "replace": "         split = cache_split(urls),\n         {:ok, conn, billing} <- {:ok, conn, admission(split)} do",
       "guarded_by": "test/lei_service/unbilled_paths_test.exs",
       "app": "apps/lei_service"
     },
@@ -806,8 +806,8 @@
       "id": "analyze-billed-from-response",
       "bug": "/v1/analyze bills from nothing the request knew in advance -- an async analysis of an uncached repository is recorded as zero and collected later for free. (#152)",
       "file": "apps/lei_service/lib/lei_service/endpoint.ex",
-      "find": "         {:ok, conn, billing} <- Lei.Payments.Gate.admit(conn, admission(split)) do",
-      "replace": "         {:ok, conn, billing} <- Lei.Payments.Gate.admit(conn, admission({0, 0})) do",
+      "find": "         split = cache_split(conn.body_params[\"urls\"]),\n         {:ok, conn, billing} <- Lei.Payments.Gate.admit(conn, admission(split)) do",
+      "replace": "         split = cache_split(conn.body_params[\"urls\"]),\n         {:ok, conn, billing} <- Lei.Payments.Gate.admit(conn, admission({0, 0})) do",
       "guarded_by": "test/lei_service/unbilled_paths_test.exs",
       "app": "apps/lei_service"
     },
@@ -2834,6 +2834,24 @@
       "find": "            unqueued = get_in(result, [:summary, :failed]) || 0",
       "replace": "            unqueued = misses",
       "guarded_by": "test/lei/web/batch_unqueued_refund_test.exs",
+      "app": "apps/lei_service"
+    },
+    {
+      "id": "analyze-enqueue-failure-keeps-the-money",
+      "bug": "An analysis charged at admission whose Oban insert failed raised past the route, became a bare 500 from Plug.ErrorHandler, and left the caller charged for work no job existed for (#217).",
+      "file": "apps/lei_service/lib/lei_service/endpoint.ex",
+      "find": "        error in LeiService.EnqueueError -> not_queued(conn, billing, split, error)\n      end\n    else\n      {:halt, conn} -> conn",
+      "replace": "        error in LeiService.EnqueueError -> reraise error, __STACKTRACE__\n      end\n    else\n      {:halt, conn} -> conn",
+      "guarded_by": "test/lei_service/analyze_unqueued_credit_test.exs",
+      "app": "apps/lei_service"
+    },
+    {
+      "id": "enqueue-failure-not-distinguishable",
+      "bug": "A database error from Oban's insert -- schema drift, a missing table -- raised from Postgrex rather than returning an error tuple, so the case clause never saw it and it escaped as a 500 with the caller already charged.",
+      "file": "apps/lei_service/lib/lei_service/analysis_supervisor.ex",
+      "find": "          reraise LeiService.EnqueueError.exception(uuid: uuid, reason: error), __STACKTRACE__",
+      "replace": "          reraise error, __STACKTRACE__",
+      "guarded_by": "test/lei_service/analyze_unqueued_credit_test.exs",
       "app": "apps/lei_service"
     }
   ]
