@@ -59,6 +59,14 @@ defmodule LeiService.AnalyzeUnqueuedCreditTest do
     Ecto.Adapters.SQL.query!(LeiService.Repo, "DROP TABLE oban_jobs CASCADE", [])
   end
 
+  # A URL no earlier test can have cached. The first version used a real
+  # repository and passed locally only because Redis happened not to hold it;
+  # in CI an earlier test had cached it, so the request was a cache hit, never
+  # reached the queue, and answered 200. The cache is shared state and not
+  # sandboxed, so the input has to be unique rather than the cache cleared.
+  defp uncached_url,
+    do: "https://github.com/kitplummer/unqueued-#{System.unique_integer([:positive])}"
+
   defp post(path, body, key) do
     conn(:post, path, Poison.encode!(body))
     |> put_req_header("content-type", "application/json")
@@ -79,7 +87,7 @@ defmodule LeiService.AnalyzeUnqueuedCreditTest do
       break_the_queue!()
 
       conn =
-        post("/v1/analyze", %{"urls" => ["https://github.com/kitplummer/xmpp4rails"]}, ctx.key)
+        post("/v1/analyze", %{"urls" => [uncached_url()]}, ctx.key)
 
       # Not a bare 500: the caller is told the work was not accepted.
       assert conn.status == 503
@@ -93,7 +101,7 @@ defmodule LeiService.AnalyzeUnqueuedCreditTest do
 
     test "charges normally when the work does queue", ctx do
       conn =
-        post("/v1/analyze", %{"urls" => ["https://github.com/kitplummer/xmpp4rails"]}, ctx.key)
+        post("/v1/analyze", %{"urls" => [uncached_url()]}, ctx.key)
 
       assert conn.status in [200, 202]
       assert credited(ctx.org.id) == 0
@@ -102,22 +110,24 @@ defmodule LeiService.AnalyzeUnqueuedCreditTest do
   end
 
   describe "POST /v1/analyze/sbom" do
-    @sbom %{
-      "bomFormat" => "CycloneDX",
-      "specVersion" => "1.4",
-      "components" => [
-        %{
-          "type" => "library",
-          "name" => "xmpp4rails",
-          "purl" => "pkg:github/kitplummer/xmpp4rails@1.0"
-        }
-      ]
-    }
-
     test "credits back the whole charge when the work cannot be queued", ctx do
       break_the_queue!()
 
-      conn = post("/v1/analyze/sbom", %{"sbom" => @sbom}, ctx.key)
+      # Built per test, for the same reason as uncached_url/0: a module
+      # attribute is one fixed purl that an earlier run could have cached.
+      sbom = %{
+        "bomFormat" => "CycloneDX",
+        "specVersion" => "1.4",
+        "components" => [
+          %{
+            "type" => "library",
+            "name" => "unqueued",
+            "purl" => "pkg:github/kitplummer/unqueued-#{System.unique_integer([:positive])}@1.0"
+          }
+        ]
+      }
+
+      conn = post("/v1/analyze/sbom", %{"sbom" => sbom}, ctx.key)
 
       assert conn.status == 503
       assert Poison.decode!(conn.resp_body)["error"] == "analysis_not_queued"
@@ -136,7 +146,7 @@ defmodule LeiService.AnalyzeUnqueuedCreditTest do
       assert_raise LeiService.EnqueueError, fn ->
         LeiService.AnalysisSupervisor.perform_analysis(
           UUID.uuid4(),
-          ["https://github.com/kitplummer/xmpp4rails"],
+          [uncached_url()],
           DateTime.utc_now()
         )
       end
