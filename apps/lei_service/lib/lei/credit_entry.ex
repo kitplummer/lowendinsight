@@ -13,6 +13,10 @@ defmodule Lei.CreditEntry do
   # Adding a payment rail means adding its reason here, deliberately. A typo in
   # a rail name would otherwise create a category of revenue that nothing
   # reconciles and no report knows to look for.
+  # adjustment:unqueued gives back credits charged at admission for work that
+  # could not be queued. The ledger write and the Oban insert go through
+  # different repos and cannot share a transaction, so the money follows the
+  # work afterwards rather than atomically with it (#217).
   @reasons ~w(
     grant:subscription
     purchase:stripe
@@ -29,6 +33,7 @@ defmodule Lei.CreditEntry do
     reinstatement:x402
     reinstatement:tempo
     adjustment:manual
+    adjustment:unqueued
     expiry
   )
 

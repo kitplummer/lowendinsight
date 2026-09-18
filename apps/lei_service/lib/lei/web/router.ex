@@ -374,18 +374,27 @@ defmodule Lei.Web.Router do
 
           # Charged at admission for the split priced above, which is what the
           # billing block reports.
-          {:ok, conn, {_org_id, _api_key_id, tier}} ->
+          {:ok, conn, {org_id, _api_key_id, tier}} ->
             # The library has no queue: it schedules through this (ADR-004).
-            result =
-              Lei.BatchAnalyzer.analyze(dependencies, [schedule: &enqueue_dependency/1] ++ opts)
+            result = Lei.BatchAnalyzer.analyze(dependencies, [schedule: scheduler()] ++ opts)
 
             cost = Lei.UsageTracker.calculate_cost(hits, misses)
+
+            # Admission charged for every miss, before any job existed (#152).
+            # Anything that did not reach the queue is given back: the ledger
+            # write and the Oban insert go through different repos and cannot
+            # share a transaction, so the money follows the work rather than
+            # committing with it (#217).
+            unqueued = get_in(result, [:summary, :failed]) || 0
+            credited = credit_unqueued(org_id, unqueued)
 
             enriched =
               Map.put(result, :billing, %{
                 cache_hits: hits,
                 cache_misses: misses,
                 cost_cents: Decimal.to_float(cost),
+                unqueued: unqueued,
+                credited_back_cents: credited,
                 tier: tier || "unknown"
               })
 
@@ -828,6 +837,43 @@ defmodule Lei.Web.Router do
   # One job per uncached dependency, returning the job's own id so a caller
   # can poll work that exists. Oban's uniqueness means a dependency already
   # queued in the last 15 minutes returns that job rather than a second one.
+  # Overridable so a failure to enqueue can be exercised without breaking Oban
+  # itself. The queue belongs to the caller of the library (ADR-004), and this
+  # is that caller.
+  defp scheduler do
+    Application.get_env(:lei_service, :batch_scheduler) || (&enqueue_dependency/1)
+  end
+
+  # Credits back what was charged for and never queued. A credit rather than a
+  # reversal: reversal:* belongs to a rail undoing a purchase, and nothing was
+  # purchased here.
+  #
+  # Failure to write it is logged and does not fail the request -- the work
+  # that *was* queued is still valid, and refusing the response would not give
+  # the credits back either. lei_credit_reconciliation is what surfaces the
+  # gap if this write is ever lost.
+  defp credit_unqueued(_org_id, 0), do: 0.0
+
+  defp credit_unqueued(org_id, unqueued) when unqueued > 0 do
+    credits = Lei.Credits.cost_in_credits(0, unqueued)
+
+    case Lei.Credits.grant(org_id, credits, "adjustment:unqueued",
+           external_ref: "unqueued:" <> Ecto.UUID.generate(),
+           metadata: %{"unqueued" => unqueued}
+         ) do
+      {:ok, _entry} ->
+        Lei.UsageTracker.calculate_cost(0, unqueued) |> Decimal.to_float()
+
+      {:error, reason} ->
+        Logger.error(
+          "batch: charged org #{org_id} for #{unqueued} dependencies that were not " <>
+            "queued, and could not credit them back: #{inspect(reason)}"
+        )
+
+        0.0
+    end
+  end
+
   defp enqueue_dependency(dep) do
     %{
       "ecosystem" => dep["ecosystem"],
