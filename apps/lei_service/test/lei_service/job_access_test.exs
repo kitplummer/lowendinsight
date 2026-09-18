@@ -36,7 +36,8 @@ defmodule LeiService.JobAccessTest do
     {:ok, org} =
       ApiKeys.create_org("Job Access #{System.unique_integer([:positive])}",
         tier: "pro",
-        status: "active"
+        status: "active",
+        stripe_customer_id: "cus_test_93b18fe1"
       )
 
     {:ok, key, _} = ApiKeys.create_api_key(org, "jobs", ["analyze"])

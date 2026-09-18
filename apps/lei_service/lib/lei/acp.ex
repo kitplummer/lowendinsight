@@ -106,6 +106,13 @@ defmodule Lei.Acp do
            amount: session.amount_cents,
            currency: session.currency,
            payment_method: payment_method,
+           # The session is the charge's identity: one session buys one block
+           # of credits, so a client retrying /complete after a timeout gets
+           # back the intent that already took the money rather than a second
+           # charge. check_session_open/1 cannot cover that -- it only sees a
+           # completed session once the first call returned, which a timeout
+           # means it did not.
+           idempotency_key: "acp_" <> to_string(session.id),
            # How Stripe's side knows this is a credit purchase, so reconciliation
            # can find one Stripe received and the ledger never credited
            # (Lei.StripeReconciliation). The MPP rails set challenge_id.

@@ -109,7 +109,13 @@ defmodule Lei.UsageTracker do
           do: :ok,
           else: {:error, {:insufficient_credits, balance}}
 
-      org.tier == "pro" ->
+      # Unlimited only while billable. A Pro org with no customer id cannot be
+      # reported to Stripe -- report_meter_event/3 below silently does nothing
+      # for one -- so serving it without limit is free service nothing counts.
+      # It falls through to the free tier rather than being refused: a customer
+      # who genuinely paid should keep working while the discrepancy is
+      # visible on lei_unbilled_pro_orgs, not be locked out by our bookkeeping.
+      org.tier == "pro" and billable_pro?(org) ->
         :ok
 
       true ->
@@ -124,6 +130,67 @@ defmodule Lei.UsageTracker do
              {:quota_exceeded,
               %{used: used, limit: limit, requested: analyses, remaining: max(limit - used, 0)}}}
     end
+  end
+
+  @doc """
+  Whether a Pro organisation can actually be billed for what it uses.
+
+  The single definition, because there were three and they disagreed:
+  `allowance/3` and `check_free_tier_quota/1` both served any Pro org without
+  limit, while `report_meter_event/3` reported usage only for one holding a
+  `stripe_customer_id` and silently returned `:ok` otherwise. An org in the gap
+  was served without limit and never billed, and nothing said so.
+
+  Public so the serving paths, the tests and `Lei.Metrics` all read the same
+  rule rather than restating it.
+  """
+  def billable_pro?(%Org{tier: "pro", stripe_customer_id: id}) when is_binary(id), do: id != ""
+  def billable_pro?(%Org{}), do: false
+
+  @doc """
+  Active Pro organisations that cannot be billed, by what they are missing.
+
+  The database and both changesets now refuse to create one, so this should
+  stay at zero. It is published because those three are only as good as their
+  reach: a row that predates the constraint, or an operator editing the
+  database directly, still has to be visible. A guard that cannot report what
+  it failed to prevent is half a guard.
+
+    * `no_customer` -- served without limit, never reported to Stripe
+    * `no_subscription` -- has a customer, so usage is reported, but nothing
+      recurring was ever charged
+  """
+  def unbilled_pro_counts do
+    # Prepaid and wallet orgs never reach the pro branch of allowance/3, so a
+    # "pro" tier on one is inert and counting it would be noise in a gauge
+    # whose whole value is being zero.
+    active_pro =
+      from(o in Org,
+        where:
+          o.tier == "pro" and o.status == "active" and o.prepaid == false and
+            is_nil(o.wallet_address)
+      )
+
+    %{
+      no_customer:
+        Repo.aggregate(
+          from(o in active_pro,
+            where: is_nil(o.stripe_customer_id) or o.stripe_customer_id == ""
+          ),
+          :count,
+          :id
+        ),
+      no_subscription:
+        Repo.aggregate(
+          from(o in active_pro,
+            where:
+              not (is_nil(o.stripe_customer_id) or o.stripe_customer_id == "") and
+                (is_nil(o.stripe_subscription_id) or o.stripe_subscription_id == "")
+          ),
+          :count,
+          :id
+        )
+    }
   end
 
   defp prepaid?(%Org{prepaid: true}), do: true
@@ -217,19 +284,26 @@ defmodule Lei.UsageTracker do
       %Org{prepaid: true} = org ->
         check_credit_balance(org)
 
-      %Org{tier: "pro"} ->
-        {:ok, :unlimited}
+      # The same rule as allowance/3, through the same predicate. This is the
+      # pre-flight check at the edge, and the two answering differently would
+      # mean a request admitted here and refused at the point of work.
+      %Org{tier: "pro"} = org ->
+        if billable_pro?(org), do: {:ok, :unlimited}, else: free_tier_remaining(org)
 
       %Org{tier: "free"} = org ->
-        usage = get_current_usage(org_id)
-        total_analyses = usage.cache_hits + usage.cache_misses
-        limit = org.free_tier_analyses_limit || free_tier_limit()
+        free_tier_remaining(org)
+    end
+  end
 
-        if total_analyses >= limit do
-          {:error, :quota_exceeded, %{used: total_analyses, limit: limit}}
-        else
-          {:ok, limit - total_analyses}
-        end
+  defp free_tier_remaining(%Org{id: org_id} = org) do
+    usage = get_current_usage(org_id)
+    total_analyses = usage.cache_hits + usage.cache_misses
+    limit = org.free_tier_analyses_limit || free_tier_limit()
+
+    if total_analyses >= limit do
+      {:error, :quota_exceeded, %{used: total_analyses, limit: limit}}
+    else
+      {:ok, limit - total_analyses}
     end
   end
 

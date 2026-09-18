@@ -39,7 +39,10 @@ defmodule Lei.Web.SignupSuccessTest do
     {:ok, org} =
       ApiKeys.create_org("Signup Success #{System.unique_integer([:positive])}",
         tier: "pro",
-        status: status
+        status: status,
+        # An already-active Pro org has necessarily been through Stripe, so it
+        # holds a customer id -- Lei.Org will not let one exist without it.
+        stripe_customer_id: if(status == "active", do: "cus_already_active")
       )
 
     org

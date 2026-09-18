@@ -78,12 +78,24 @@ defmodule Lei.Signup do
   defp activate(%Org{status: "active"} = org, _checkout), do: {:ok, org}
 
   defp activate(org, checkout) do
+    # The billing address Checkout collected, in the same write that activates
+    # them. Stripe asked the person for it; we never ask an agent (#223).
+    location =
+      checkout
+      |> Lei.BuyerLocation.from_checkout()
+      |> Org.usable_location_attrs()
+
     org
-    |> Org.stripe_changeset(%{
-      status: "active",
-      stripe_customer_id: checkout["customer"],
-      stripe_subscription_id: checkout["subscription"]
-    })
+    |> Org.stripe_changeset(
+      Map.merge(
+        %{
+          status: "active",
+          stripe_customer_id: checkout["customer"],
+          stripe_subscription_id: checkout["subscription"]
+        },
+        location
+      )
+    )
     |> Repo.update()
   end
 end

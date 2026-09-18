@@ -71,7 +71,13 @@ defmodule Lei.Web.BillingIntegrationTest do
     end
 
     test "pro tier is never quota-blocked" do
-      {:ok, org} = ApiKeys.find_or_create_org("Pro Unlimited Org", tier: "pro", status: "active")
+      {:ok, org} =
+        ApiKeys.find_or_create_org("Pro Unlimited Org",
+          tier: "pro",
+          status: "active",
+          stripe_customer_id: "cus_test_88b95abd"
+        )
+
       {:ok, raw_key, _} = ApiKeys.create_api_key(org, "test", ["analyze"])
 
       # Record heavy usage
@@ -88,7 +94,13 @@ defmodule Lei.Web.BillingIntegrationTest do
   # ---------------------------------------------------------------
   describe "billing info in batch response" do
     test "response includes billing block with cost breakdown" do
-      {:ok, org} = ApiKeys.find_or_create_org("Billing Resp Org", tier: "pro", status: "active")
+      {:ok, org} =
+        ApiKeys.find_or_create_org("Billing Resp Org",
+          tier: "pro",
+          status: "active",
+          stripe_customer_id: "cus_test_9f24c50a"
+        )
+
       {:ok, raw_key, _} = ApiKeys.create_api_key(org, "test", ["analyze"])
 
       conn = batch_analyze(sample_deps(3), raw_key)
@@ -152,7 +164,13 @@ defmodule Lei.Web.BillingIntegrationTest do
   # ---------------------------------------------------------------
   describe "GET /v1/usage" do
     test "returns current period usage for authenticated org" do
-      {:ok, org} = ApiKeys.find_or_create_org("Usage API Org", tier: "pro", status: "active")
+      {:ok, org} =
+        ApiKeys.find_or_create_org("Usage API Org",
+          tier: "pro",
+          status: "active",
+          stripe_customer_id: "cus_test_23b9c5ac"
+        )
+
       {:ok, raw_key, api_key} = ApiKeys.create_api_key(org, "test", ["analyze"])
 
       # Record some usage
@@ -180,7 +198,13 @@ defmodule Lei.Web.BillingIntegrationTest do
     end
 
     test "shows overage when usage exceeds pro credit" do
-      {:ok, org} = ApiKeys.find_or_create_org("Overage API Org", tier: "pro", status: "active")
+      {:ok, org} =
+        ApiKeys.find_or_create_org("Overage API Org",
+          tier: "pro",
+          status: "active",
+          stripe_customer_id: "cus_test_76c05c51"
+        )
+
       {:ok, raw_key, api_key} = ApiKeys.create_api_key(org, "test", ["analyze"])
 
       # 2000 * 0.5 + 200 * 5.0 = 1000 + 1000 = 2000 cents > 1500 credit
@@ -269,7 +293,13 @@ defmodule Lei.Web.BillingIntegrationTest do
     end
 
     test "dashboard renders usage section for pro tier" do
-      {:ok, org} = ApiKeys.find_or_create_org("Dash Pro Org", tier: "pro", status: "active")
+      {:ok, org} =
+        ApiKeys.find_or_create_org("Dash Pro Org",
+          tier: "pro",
+          status: "active",
+          stripe_customer_id: "cus_test_8c1e4d8c"
+        )
+
       {:ok, raw_key, api_key} = ApiKeys.create_api_key(org, "admin", ["admin", "analyze"])
 
       {:ok, _} = UsageTracker.record_usage(org.id, api_key.id, 500, 100)
@@ -298,7 +328,12 @@ defmodule Lei.Web.BillingIntegrationTest do
   # ---------------------------------------------------------------
   describe "Stripe billing meter events" do
     test "reports this usage only, never a running total" do
-      {:ok, org} = ApiKeys.find_or_create_org("Meter Org", tier: "pro", status: "active")
+      {:ok, org} =
+        ApiKeys.find_or_create_org("Meter Org",
+          tier: "pro",
+          status: "active",
+          stripe_customer_id: "cus_test_c763d160"
+        )
 
       org =
         org
@@ -340,7 +375,12 @@ defmodule Lei.Web.BillingIntegrationTest do
     # the insert has committed -- so asserting on it proves the ordering
     # directly, rather than by simulating a failure.
     test "the meter event is derived from the committed row" do
-      {:ok, org} = ApiKeys.find_or_create_org("Order Org", tier: "pro", status: "active")
+      {:ok, org} =
+        ApiKeys.find_or_create_org("Order Org",
+          tier: "pro",
+          status: "active",
+          stripe_customer_id: "cus_test_9b607115"
+        )
 
       org =
         org
@@ -365,7 +405,12 @@ defmodule Lei.Web.BillingIntegrationTest do
     end
 
     test "the identifier is stable for the same write and changes for new usage" do
-      {:ok, org} = ApiKeys.find_or_create_org("Ident Org", tier: "pro", status: "active")
+      {:ok, org} =
+        ApiKeys.find_or_create_org("Ident Org",
+          tier: "pro",
+          status: "active",
+          stripe_customer_id: "cus_test_3ba8265f"
+        )
 
       org =
         org
@@ -401,7 +446,12 @@ defmodule Lei.Web.BillingIntegrationTest do
     end
 
     test "a metering failure does not fail usage recording" do
-      {:ok, org} = ApiKeys.find_or_create_org("Meter Fail Org", tier: "pro", status: "active")
+      {:ok, org} =
+        ApiKeys.find_or_create_org("Meter Fail Org",
+          tier: "pro",
+          status: "active",
+          stripe_customer_id: "cus_test_88e309e6"
+        )
 
       org =
         org
@@ -426,7 +476,11 @@ defmodule Lei.Web.BillingIntegrationTest do
   describe "usage tracking after analysis" do
     test "batch analysis records usage in database" do
       {:ok, org} =
-        ApiKeys.find_or_create_org("Track Record Org", tier: "pro", status: "active")
+        ApiKeys.find_or_create_org("Track Record Org",
+          tier: "pro",
+          status: "active",
+          stripe_customer_id: "cus_test_c6bb97fb"
+        )
 
       {:ok, raw_key, _} = ApiKeys.create_api_key(org, "test", ["analyze"])
 

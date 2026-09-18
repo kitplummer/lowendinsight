@@ -161,6 +161,13 @@ config :lei_service,
   # codebase keeps meeting -- so the list is set here rather than left to a
   # default.
   payment_rails: [Lei.Payments.Rails.Mpp, Lei.Payments.Rails.Tempo],
+  # A go-live verification payment is real money Stripe received that the
+  # ledger deliberately never credited, so it would report as "received, never
+  # credited" on every run forever. Probes name themselves with this prefix in
+  # their challenge id and are counted separately instead. Declared here rather
+  # than as a production secret so it is greppable and testable; "" excludes
+  # nothing. See Lei.StripeReconciliation.
+  reconciliation_probe_prefix: "probe",
   rate_limits: %{
     free: 60,
     pro: 600,

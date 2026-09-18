@@ -182,6 +182,32 @@ jobs:
           done
           echo "Previous version is serving. The deploy that triggered this rollback still needs fixing."
 
+      # Paging, not a notification.
+      #
+      # A failed deploy produced a red job and a GitHub email, which depends on
+      # the recipient's notification settings and arrives in the same place as
+      # everything else. The two states that matter most reach nobody who is
+      # not already looking: a migration that aborted the release
+      # (release_command, before any traffic), and a rollback that itself
+      # failed -- production is then on neither version and no other check
+      # runs for up to fifteen minutes.
+      #
+      # failure() covers every step above, including the rollback.
+      - name: Page on a failed deploy
+        if: failure()
+        env:
+          NTFY_TOKEN: ${{ secrets.NTFY_TOKEN }}
+          NTFY_TOPIC: ${{ secrets.NTFY_TOPIC }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+          SHA: ${{ needs.gate.outputs.sha }}
+          SMOKE: ${{ steps.smoke.outcome }}
+          CANARY: ${{ steps.canary.outcome }}
+        run: |
+          scripts/notify.sh \
+            --title "LEI: deploy failed" --priority 5 --tags rotating_light \
+            --click "$RUN_URL" \
+            "Deploy of ${SHA:0:7} failed (smoke: ${SMOKE:-not reached}, canary: ${CANARY:-not reached}). If the rollback did not run, production is on the new version. Check /readyz."
+
       - name: Report deployed version
         if: success()
         env:

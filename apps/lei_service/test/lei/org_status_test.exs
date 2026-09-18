@@ -20,23 +20,19 @@ defmodule Lei.OrgStatusTest do
     end
 
     test "creates org with specified tier" do
-      {:ok, org} = ApiKeys.find_or_create_org("Pro Org", tier: "pro", status: "active")
+      {:ok, org} =
+        ApiKeys.find_or_create_org("Pro Org",
+          tier: "pro",
+          status: "active",
+          stripe_customer_id: "cus_test_ae148674"
+        )
+
       assert org.tier == "pro"
     end
 
     test "defaults to pending status" do
       {:ok, org} = ApiKeys.find_or_create_org("Default Status Org")
       assert org.status == "pending"
-    end
-  end
-
-  describe "activate_org/1" do
-    test "sets status to active" do
-      {:ok, org} = ApiKeys.find_or_create_org("Activate Org", status: "pending")
-      assert org.status == "pending"
-
-      {:ok, activated} = ApiKeys.activate_org(org)
-      assert activated.status == "active"
     end
   end
 

@@ -95,8 +95,19 @@ defmodule Lei.UsageTrackerTest do
       assert {:ok, 150} = UsageTracker.check_free_tier_quota(org.id)
     end
 
-    test "returns unlimited for pro tier" do
-      {:ok, pro_org} = ApiKeys.find_or_create_org("Pro Org", tier: "pro", status: "active")
+    # Was "returns unlimited for pro tier", creating the org with no
+    # stripe_customer_id -- the state that is served without limit and never
+    # billed. It asserted the bug. Unlimited is for a Pro org that can be
+    # charged for what it uses; see Lei.UnbilledProTest for the other half.
+    test "returns unlimited for a billable pro tier" do
+      {:ok, pro_org} =
+        ApiKeys.find_or_create_org("Pro Org", tier: "pro", status: "pending")
+
+      pro_org =
+        pro_org
+        |> Ecto.Changeset.change(status: "active", stripe_customer_id: "cus_pro_quota")
+        |> Lei.Repo.update!()
+
       assert {:ok, :unlimited} = UsageTracker.check_free_tier_quota(pro_org.id)
     end
 

@@ -2307,10 +2307,10 @@
     },
     {
       "id": "recon-received-not-recorded-unchecked",
-      "bug": "A credit purchase Stripe received and the ledger never credited -- a customer who paid and got nothing -- went unreported (#139).",
+      "bug": "A credit purchase Stripe received and the ledger never credited -- a customer who paid and got nothing -- went unreported (#139). The probe exclusion splits this list, so this also guards the exclusion against swallowing the whole branch.",
       "file": "apps/lei_service/lib/lei/stripe_reconciliation.ex",
-      "find": "for i <- stripe_purchases, not MapSet.member?(recorded, i[\"id\"]) do",
-      "replace": "for i <- stripe_purchases, false do",
+      "find": "            for i <- uncredited do",
+      "replace": "            for i <- [] do",
       "guarded_by": "test/lei/stripe_reconciliation_test.exs",
       "app": "apps/lei_service"
     },
@@ -2528,6 +2528,267 @@
       "find": "  2??) printf 'notify: sent (%s)\\n' \"$status\" >&2 ;;",
       "replace": "  *) printf 'notify: sent (%s)\\n' \"$status\" >&2 ;;",
       "guarded_by": "test/lei_service/notify_script_test.exs",
+      "app": "apps/lei_service"
+    },
+    {
+      "id": "monitor-ignores-stripe-discrepancies",
+      "bug": "The ledger and Stripe disagreeing -- money received and never credited -- was published on /metrics and read by nothing for the first two days it existed.",
+      "file": ".github/workflows/monitor.yml",
+      "find": "          if [ \"${DISCREPANCIES:-0}\" -gt 0 ]; then",
+      "replace": "          if [ \"${DISCREPANCIES:-0}\" -gt 99999 ]; then",
+      "guarded_by": "test/lei_service/payment_monitoring_wiring_test.exs",
+      "app": "apps/lei_service"
+    },
+    {
+      "id": "monitor-ignores-stale-reconciliation",
+      "bug": "An hourly reconciliation that stopped running kept reporting its last clean result, which reads exactly like a fresh one.",
+      "file": ".github/workflows/monitor.yml",
+      "find": "          if [ -n \"${AGE:-}\" ] && [ \"$AGE\" -gt 10800 ]; then",
+      "replace": "          if [ -n \"${AGE:-}\" ] && [ \"$AGE\" -gt 0 ] && false; then",
+      "guarded_by": "test/lei_service/payment_monitoring_wiring_test.exs",
+      "app": "apps/lei_service"
+    },
+    {
+      "id": "monitor-ignores-switched-off-rail",
+      "bug": "A payment rail switched off during an incident and never switched back on is revenue quietly declining; a disabled rail refuses cleanly, which looks like no demand.",
+      "file": ".github/workflows/monitor.yml",
+      "find": "            echo \"::error::Payment path(s) switched off: ${OFF}.",
+      "replace": "            echo \"::notice::Payment path(s) switched off: ${OFF}.",
+      "guarded_by": "test/lei_service/payment_monitoring_wiring_test.exs",
+      "app": "apps/lei_service"
+    },
+    {
+      "id": "monitor-ignores-held-credentials",
+      "bug": "A held stablecoin credential is a transfer that already happened on chain against a rail that refused it: the customer has paid and has nothing, and it does not resolve on its own.",
+      "file": ".github/workflows/monitor.yml",
+      "find": "          HELD=$(echo \"$METRICS\" | grep '^lei_payment_held{' | awk '{s+=$2} END {print s+0}')",
+      "replace": "          HELD=0",
+      "guarded_by": "test/lei_service/payment_monitoring_wiring_test.exs",
+      "app": "apps/lei_service"
+    },
+    {
+      "id": "monitor-smoke-warns-without-key",
+      "bug": "The monitor's smoke step warned and exited 0 when LEI_SMOKE_API_KEY was unset. The secret was never set, so it reported success on every run for a week while executing nothing.",
+      "file": ".github/workflows/monitor.yml",
+      "find": "            echo \"::error::LEI_SMOKE_API_KEY is not set, so the smoke suite did not run.",
+      "replace": "            echo \"::warning::LEI_SMOKE_API_KEY is not set, so the smoke suite did not run.",
+      "guarded_by": "test/lei_service/payment_monitoring_wiring_test.exs",
+      "app": "apps/lei_service"
+    },
+    {
+      "id": "deploy-failure-does-not-page",
+      "bug": "A failed deploy -- including a migration that aborted the release, and a rollback that itself failed -- produced a red job and a GitHub email, reaching nobody who was not already looking.",
+      "file": ".github/workflows/deploy.yml",
+      "find": "      - name: Page on a failed deploy\n        if: failure()",
+      "replace": "      - name: Page on a failed deploy\n        if: false",
+      "guarded_by": "test/lei_service/payment_monitoring_wiring_test.exs",
+      "app": "apps/lei_service"
+    },
+    {
+      "id": "reconciliation-probe-exclusion-hides-real",
+      "bug": "The probe exclusion was applied to every uncredited payment rather than to named probes, so real money received and never credited stopped being reported.",
+      "file": "apps/lei_service/lib/lei/stripe_reconciliation.ex",
+      "find": "  defp probe?(%{\"metadata\" => %{\"challenge_id\" => id}}) when is_binary(id) do",
+      "replace": "  defp probe?(%{\"metadata\" => %{\"challenge_id\" => _id}}) when true do\n    id = probe_prefix()\n",
+      "guarded_by": "test/lei/stripe_reconciliation_test.exs",
+      "app": "apps/lei_service"
+    },
+    {
+      "id": "reconciliation-probe-count-unpublished",
+      "bug": "Probes were excluded from the discrepancy list without being counted anywhere, so an exclusion that began swallowing real payments would have been invisible.",
+      "file": "apps/lei_service/lib/lei/metrics.ex",
+      "find": "              ~s(lei_stripe_reconciliation{measure=\"probe_excluded\"} #{run.probe_excluded || 0})",
+      "replace": "              ~s(lei_stripe_reconciliation{measure=\"runs_seen\"} #{run.id})",
+      "guarded_by": "test/lei/stripe_reconciliation_test.exs",
+      "app": "apps/lei_service"
+    },
+    {
+      "id": "backup-failure-does-not-page",
+      "bug": "A daily backup that stops completing fails quietly; the absence of a dump is discovered at the moment it is needed.",
+      "file": ".github/workflows/backup.yml",
+      "find": "      - name: Page on a failed backup\n        if: failure()",
+      "replace": "      - name: Page on a failed backup\n        if: false",
+      "guarded_by": "test/lei_service/payment_monitoring_wiring_test.exs",
+      "app": "apps/lei_service"
+    },
+    {
+      "id": "monitor-absent-payment-gauge-reads-as-zero",
+      "bug": "Every payment check read its number out of /metrics with grep, and grep finding nothing is the same empty string as a rail reporting zero -- so a collector that stopped being registered turned the whole step green.",
+      "file": ".github/workflows/monitor.yml",
+      "find": "              echo \"::error::/metrics is not publishing ${family}.",
+      "replace": "              echo \"::notice::/metrics is not publishing ${family}.",
+      "guarded_by": "test/lei_service/payment_monitoring_wiring_test.exs",
+      "app": "apps/lei_service"
+    },
+    {
+      "id": "acp-unconfigured-auth-passes",
+      "bug": "Lei.Acp.Auth returned {:ok, conn} -- authenticated -- when LEI_ACP_BEARER_TOKEN and LEI_ACP_SIGNING_SECRET were absent. Neither was ever set in production, so POST /acp/checkout and /complete were open to anyone for as long as they existed.",
+      "file": "apps/lei_service/lib/lei/acp/auth.ex",
+      "find": "      if missing == [], do: :ok, else: {:unconfigured, missing}",
+      "replace": "      _ = missing\n      :ok",
+      "guarded_by": "test/lei/acp_auth_test.exs",
+      "app": "apps/lei_service"
+    },
+    {
+      "id": "acp-auth-gated-on-deploy-env",
+      "bug": "The refusal was derived from LEI_DEPLOY_ENV rather than from an explicit opt-in, so a deploy that lost that variable silently re-opened the endpoint -- the same dependency that downgrades Lei.Stripe.ObjectCheck to \"ok\".",
+      "file": "apps/lei_service/lib/lei/acp/auth.ex",
+      "find": "    if Application.get_env(:lei_service, :acp_allow_unauthenticated, false) == true do",
+      "replace": "    if not Lei.Stripe.Mode.production?() do",
+      "guarded_by": "test/lei/acp_auth_test.exs",
+      "app": "apps/lei_service"
+    },
+    {
+      "id": "acp-refusal-discloses-configuration",
+      "bug": "The refusal named the missing secret in the response body, letting an anonymous caller read our configuration state off a 503.",
+      "file": "apps/lei_service/lib/lei/acp/auth.ex",
+      "find": "    send_json(conn, 503, %{error: \"checkout unavailable\"})",
+      "replace": "    send_json(conn, 503, %{error: \"checkout unavailable\", unconfigured: missing})",
+      "guarded_by": "test/lei/acp_auth_test.exs",
+      "app": "apps/lei_service"
+    },
+    {
+      "id": "acp-charge-not-idempotent",
+      "bug": "The ACP charge was the only money-moving Stripe call with no Idempotency-Key, so an agent retrying /acp/checkout/:id/complete after a timeout created a second real charge.",
+      "file": "apps/lei_service/lib/lei/stripe.ex",
+      "find": "    {body, [{\"Idempotency-Key\", params.idempotency_key}]}\n  end\n\n  @doc false\n  # The complete header list",
+      "replace": "    {body, []}\n  end\n\n  @doc false\n  # The complete header list",
+      "guarded_by": "test/lei/stripe_test.exs",
+      "app": "apps/lei_service"
+    },
+    {
+      "id": "acp-charge-headers-discarded",
+      "bug": "create_payment_intent/1 destructured the request as {body, _} and posted bare headers(), throwing away the Idempotency-Key the builder had produced. A header dropped by the caller is the same as no header.",
+      "file": "apps/lei_service/lib/lei/stripe.ex",
+      "find": "    headers() ++ extra\n  end",
+      "replace": "    headers()\n  end",
+      "guarded_by": "test/lei/stripe_test.exs",
+      "app": "apps/lei_service"
+    },
+    {
+      "id": "acp-idempotency-key-not-the-session",
+      "bug": "The ACP charge's idempotency key was not derived from the session, so two completions of one session were two distinct charges.",
+      "file": "apps/lei_service/lib/lei/acp.ex",
+      "find": "           idempotency_key: \"acp_\" <> to_string(session.id),",
+      "replace": "           idempotency_key: \"acp_\" <> Integer.to_string(System.unique_integer([:positive])),",
+      "guarded_by": "test/lei/stripe_purchase_identity_test.exs",
+      "app": "apps/lei_service"
+    },
+    {
+      "id": "pro-unlimited-without-a-customer",
+      "bug": "allowance/3 served any org with tier \"pro\" without limit, while report_meter_event/3 reported usage only for one holding a stripe_customer_id. An org in the gap was served without limit and never billed, and nothing said so.",
+      "file": "apps/lei_service/lib/lei/usage_tracker.ex",
+      "find": "      org.tier == \"pro\" and billable_pro?(org) ->",
+      "replace": "      org.tier == \"pro\" ->",
+      "guarded_by": "test/lei/unbilled_pro_test.exs",
+      "app": "apps/lei_service"
+    },
+    {
+      "id": "pro-quota-check-ignores-billability",
+      "bug": "check_free_tier_quota/1 answered :unlimited for any pro org, disagreeing with allowance/3 -- the pre-flight check at the edge would admit a request the point of work refuses.",
+      "file": "apps/lei_service/lib/lei/usage_tracker.ex",
+      "find": "        if billable_pro?(org), do: {:ok, :unlimited}, else: free_tier_remaining(org)",
+      "replace": "        {:ok, :unlimited}",
+      "guarded_by": "test/lei/unbilled_pro_test.exs",
+      "app": "apps/lei_service"
+    },
+    {
+      "id": "billable-pro-accepts-a-blank-customer",
+      "bug": "An empty-string stripe_customer_id counted as billable, so an org that cannot be charged was served without limit. Stripe is never told, because report_meter_event/3 requires a usable id.",
+      "file": "apps/lei_service/lib/lei/usage_tracker.ex",
+      "find": "  def billable_pro?(%Org{tier: \"pro\", stripe_customer_id: id}) when is_binary(id), do: id != \"\"",
+      "replace": "  def billable_pro?(%Org{tier: \"pro\", stripe_customer_id: id}) when is_binary(id), do: true",
+      "guarded_by": "test/lei/unbilled_pro_test.exs",
+      "app": "apps/lei_service"
+    },
+    {
+      "id": "active-pro-buildable-without-a-customer",
+      "bug": "The changesets let an active Pro org be built with no stripe_customer_id, which is the row that is served without limit and never billed.",
+      "file": "apps/lei_service/lib/lei/org.ex",
+      "find": "    if served_as_pro? and not billable? do",
+      "replace": "    if false and served_as_pro? and not billable? do",
+      "guarded_by": "test/lei/unbilled_pro_test.exs",
+      "app": "apps/lei_service"
+    },
+    {
+      "id": "unbilled-pro-gauge-unpublished",
+      "bug": "Nothing published how many active Pro orgs cannot be billed, so a row predating the constraint, or one written by an operator editing the database, stayed invisible.",
+      "file": "apps/lei_service/lib/lei/metrics.ex",
+      "find": "      ~s(lei_unbilled_pro_orgs{state=\"no_customer\"} #{counts.no_customer}),",
+      "replace": "      ~s(lei_unbilled_pro_orgs{state=\"no_customer\"} 0),",
+      "guarded_by": "test/lei/unbilled_pro_test.exs",
+      "app": "apps/lei_service"
+    },
+    {
+      "id": "monitor-failure-does-not-page",
+      "bug": "A failing production check reached nobody but a GitHub email, whose delivery depends on the recipient's notification settings and which arrives looking identical to a routine CI failure.",
+      "file": ".github/workflows/monitor.yml",
+      "find": "      - name: Page on a failed check\n        id: page\n        if: failure()",
+      "replace": "      - name: Page on a failed check\n        id: page\n        if: false",
+      "guarded_by": "test/lei_service/payment_monitoring_wiring_test.exs",
+      "app": "apps/lei_service"
+    },
+    {
+      "id": "monitor-pages-every-run-of-an-incident",
+      "bug": "The monitor paged on the failing state rather than the transition into it. Running every 15 minutes, one outage sent 96 pages a day -- worse than the email it replaced, because the operator stops reading.",
+      "file": ".github/workflows/monitor.yml",
+      "find": "          if [ \"$PREVIOUS\" = \"failure\" ]; then",
+      "replace": "          if [ \"$PREVIOUS\" = \"never-matches\" ]; then",
+      "guarded_by": "test/lei_service/payment_monitoring_wiring_test.exs",
+      "app": "apps/lei_service"
+    },
+    {
+      "id": "monitor-page-suppressed-when-lookup-fails",
+      "bug": "A failed lookup of the previous run left PREVIOUS empty, which compared equal to nothing and silently suppressed the page. A page withheld because a query failed is a page that did not happen.",
+      "file": ".github/workflows/monitor.yml",
+      "find": "          PREVIOUS=\"${PREVIOUS:-unknown}\"",
+      "replace": "          PREVIOUS=\"${PREVIOUS:-failure}\"",
+      "guarded_by": "test/lei_service/payment_monitoring_wiring_test.exs",
+      "app": "apps/lei_service"
+    },
+    {
+      "id": "buyer-location-us-postal-unvalidated",
+      "bug": "A US location was accepted with a postal code Stripe cannot use, so the address stored against a paying customer could not be calculated from.",
+      "file": "apps/lei_service/lib/lei/org.ex",
+      "find": "        |> validate_required([:billing_postal_code],\n          message: \"is required for a US location\"\n        )",
+      "replace": "        |> validate_required([])",
+      "guarded_by": "test/lei/buyer_location_test.exs",
+      "app": "apps/lei_service"
+    },
+    {
+      "id": "checkout-collects-no-billing-address",
+      "bug": "Stripe Checkout was created without billing_address_collection, so the only buyer who has a location -- a person -- was never asked for one, and Stripe Tax had nothing to calculate the subscription from.",
+      "file": "apps/lei_service/lib/lei/stripe.ex",
+      "find": "      \"billing_address_collection\" => \"required\"",
+      "replace": "      \"billing_address_collection\" => \"auto\"",
+      "guarded_by": "test/lei/checkout_location_test.exs",
+      "app": "apps/lei_service"
+    },
+    {
+      "id": "signup-success-drops-the-address",
+      "bug": "The address Checkout collected was thrown away when the returning customer activated, so a paying subscriber had no location on record.",
+      "file": "apps/lei_service/lib/lei/signup.ex",
+      "find": "      |> Lei.BuyerLocation.from_checkout()\n      |> Org.usable_location_attrs()",
+      "replace": "      |> then(fn _ -> nil end)\n      |> Org.usable_location_attrs()",
+      "guarded_by": "test/lei/checkout_location_test.exs",
+      "app": "apps/lei_service"
+    },
+    {
+      "id": "webhook-drops-the-address",
+      "bug": "checkout.session.completed activated the org without keeping the address Checkout collected. Either route may arrive first, so a customer activated by the webhook had no location.",
+      "file": "apps/lei_service/lib/lei/stripe_webhook_handler.ex",
+      "find": "        session\n        |> Lei.BuyerLocation.from_checkout()\n        |> Lei.Org.usable_location_attrs()",
+      "replace": "        session\n        |> then(fn _ -> nil end)\n        |> Lei.Org.usable_location_attrs()",
+      "guarded_by": "test/lei/checkout_location_test.exs",
+      "app": "apps/lei_service"
+    },
+    {
+      "id": "unusable-address-fails-activation",
+      "bug": "An address Stripe returned that we cannot calculate tax from failed the changeset, so a customer who had already paid was not activated because of their postal code.",
+      "file": "apps/lei_service/lib/lei/org.ex",
+      "find": "    if changeset.valid? do",
+      "replace": "    if true do",
+      "guarded_by": "test/lei/checkout_location_test.exs",
       "app": "apps/lei_service"
     },
     {
