@@ -196,17 +196,28 @@ has its own; a secret from a different endpoint fails every signature check.
 > shows **no event deliveries at all**, so no checkout ever completed and no org
 > was charged and left `pending`. The bug had no victims.
 
-### Point the endpoint at the canonical domain
+### The endpoint is on the canonical domain
 
-The registered endpoint currently targets `https://lowendinsight.fly.dev/webhooks/stripe`
-even though the destination is named `lowendinsight.dev`. Both hostnames serve
-the same app, so this works — but it makes the fly.dev hostname load-bearing for
-billing, and it is the same inconsistency `lei_base_url` had on the redirect
-side. Update it to:
+Confirmed 2026-09-18, in the sandbox account:
 
 ```
-https://lowendinsight.dev/webhooks/stripe
+$ stripe get /v1/webhook_endpoints | jq -r '.data[] | "\(.url)  \(.status)"'
+https://lowendinsight.dev/webhooks/stripe  enabled
 ```
+
+It had previously been registered against `https://lowendinsight.fly.dev`, and
+this section said so for longer than it was true. Keep it on `lowendinsight.dev`.
+
+`lowendinsight.fly.dev` is the hostname Fly assigns every app. It resolves to
+the same machine today -- both answer `/v1/health` with the same uptime -- so
+either works, which is exactly why the wrong one can be registered and never
+noticed. It is infrastructure naming, not ours: it changes if the app is
+renamed or moves off Fly, and a webhook endpoint pointing at it would then fail
+the way this file warns about, invisibly.
+
+**Live mode needs its own endpoint.** Webhook endpoints do not exist across
+modes, so recreating it is part of section 6, and it brings a new signing
+secret with it.
 
 ### Rotating the webhook signing secret
 
