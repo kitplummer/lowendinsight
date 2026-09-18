@@ -36,7 +36,8 @@ defmodule LeiService.TrendingTriggerAuthTest do
       {:ok, org} =
         ApiKeys.create_org("Trending Trigger #{System.unique_integer([:positive])}",
           tier: "pro",
-          status: "active"
+          status: "active",
+          stripe_customer_id: "cus_test_96266d7a"
         )
 
       {:ok, key, _} = ApiKeys.create_api_key(org, "t", unquote(scopes))

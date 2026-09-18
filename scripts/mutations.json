@@ -1101,10 +1101,10 @@
     },
     {
       "id": "signup-success-activates-without-stripe",
-      "bug": "GET /signup/success activated a pending Pro org and issued an admin key without asking Stripe whether the checkout was paid (security, 2026-09-14).",
+      "bug": "GET /signup/success activated a pending Pro org and issued an admin key without asking Stripe whether the checkout was paid (security, 2026-09-14). The replacement no longer calls ApiKeys.activate_org/1, which was deleted: that function's last role was to be this mutation, i.e. the shape of the bug itself.",
       "file": "apps/lei_service/lib/lei/web/router.ex",
       "find": "{:ok, org} <- Lei.Signup.confirm_paid_checkout(org, conn.params[\"session_id\"]),",
-      "replace": "{:ok, org} <- Lei.ApiKeys.activate_org(org),",
+      "replace": "{:ok, org} <- {:ok, org},",
       "guarded_by": "test/lei/web/signup_success_test.exs",
       "app": "apps/lei_service"
     },
@@ -2528,6 +2528,51 @@
       "find": "  2??) printf 'notify: sent (%s)\\n' \"$status\" >&2 ;;",
       "replace": "  *) printf 'notify: sent (%s)\\n' \"$status\" >&2 ;;",
       "guarded_by": "test/lei_service/notify_script_test.exs",
+      "app": "apps/lei_service"
+    },
+    {
+      "id": "pro-unlimited-without-a-customer",
+      "bug": "allowance/3 served any org with tier \"pro\" without limit, while report_meter_event/3 reported usage only for one holding a stripe_customer_id. An org in the gap was served without limit and never billed, and nothing said so.",
+      "file": "apps/lei_service/lib/lei/usage_tracker.ex",
+      "find": "      org.tier == \"pro\" and billable_pro?(org) ->",
+      "replace": "      org.tier == \"pro\" ->",
+      "guarded_by": "test/lei/unbilled_pro_test.exs",
+      "app": "apps/lei_service"
+    },
+    {
+      "id": "pro-quota-check-ignores-billability",
+      "bug": "check_free_tier_quota/1 answered :unlimited for any pro org, disagreeing with allowance/3 -- the pre-flight check at the edge would admit a request the point of work refuses.",
+      "file": "apps/lei_service/lib/lei/usage_tracker.ex",
+      "find": "        if billable_pro?(org), do: {:ok, :unlimited}, else: free_tier_remaining(org)",
+      "replace": "        {:ok, :unlimited}",
+      "guarded_by": "test/lei/unbilled_pro_test.exs",
+      "app": "apps/lei_service"
+    },
+    {
+      "id": "billable-pro-accepts-a-blank-customer",
+      "bug": "An empty-string stripe_customer_id counted as billable, so an org that cannot be charged was served without limit. Stripe is never told, because report_meter_event/3 requires a usable id.",
+      "file": "apps/lei_service/lib/lei/usage_tracker.ex",
+      "find": "  def billable_pro?(%Org{tier: \"pro\", stripe_customer_id: id}) when is_binary(id), do: id != \"\"",
+      "replace": "  def billable_pro?(%Org{tier: \"pro\", stripe_customer_id: id}) when is_binary(id), do: true",
+      "guarded_by": "test/lei/unbilled_pro_test.exs",
+      "app": "apps/lei_service"
+    },
+    {
+      "id": "active-pro-buildable-without-a-customer",
+      "bug": "The changesets let an active Pro org be built with no stripe_customer_id, which is the row that is served without limit and never billed.",
+      "file": "apps/lei_service/lib/lei/org.ex",
+      "find": "    if served_as_pro? and not billable? do",
+      "replace": "    if false and served_as_pro? and not billable? do",
+      "guarded_by": "test/lei/unbilled_pro_test.exs",
+      "app": "apps/lei_service"
+    },
+    {
+      "id": "unbilled-pro-gauge-unpublished",
+      "bug": "Nothing published how many active Pro orgs cannot be billed, so a row predating the constraint, or one written by an operator editing the database, stayed invisible.",
+      "file": "apps/lei_service/lib/lei/metrics.ex",
+      "find": "      ~s(lei_unbilled_pro_orgs{state=\"no_customer\"} #{counts.no_customer}),",
+      "replace": "      ~s(lei_unbilled_pro_orgs{state=\"no_customer\"} 0),",
+      "guarded_by": "test/lei/unbilled_pro_test.exs",
       "app": "apps/lei_service"
     }
   ]

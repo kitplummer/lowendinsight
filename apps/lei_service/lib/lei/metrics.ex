@@ -119,9 +119,30 @@ defmodule Lei.Metrics do
       # without asking Stripe: did our call succeed, and was it made.
       "# HELP lei_stripe_metering Metered usage reported to Stripe",
       "# TYPE lei_stripe_metering gauge",
-      metering_metrics()
+      metering_metrics(),
+      "",
+      # Should stay at zero: the database and both changesets refuse to create
+      # one. Published because a row that predates the constraint, or an
+      # operator editing the database directly, still has to be visible.
+      "# HELP lei_unbilled_pro_orgs Active pro organisations that cannot be billed",
+      "# TYPE lei_unbilled_pro_orgs gauge",
+      unbilled_pro_metrics()
     ]
     |> List.flatten()
+  end
+
+  defp unbilled_pro_metrics do
+    counts = Lei.UsageTracker.unbilled_pro_counts()
+
+    [
+      ~s(lei_unbilled_pro_orgs{state="no_customer"} #{counts.no_customer}),
+      ~s(lei_unbilled_pro_orgs{state="no_subscription"} #{counts.no_subscription})
+    ]
+  rescue
+    error ->
+      require Logger
+      Logger.error("Unbilled pro metrics failed: #{inspect(error)}")
+      [~s(lei_unbilled_pro_orgs{state="error"} 1)]
   end
 
   defp reconciliation_metrics do

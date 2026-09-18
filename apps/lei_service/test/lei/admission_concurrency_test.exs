@@ -117,7 +117,8 @@ defmodule Lei.AdmissionConcurrencyTest do
     {:ok, org} =
       ApiKeys.create_org("Usage #{System.unique_integer([:positive])}",
         tier: "pro",
-        status: "active"
+        status: "active",
+        stripe_customer_id: "cus_test_c425fe2f"
       )
 
     track(org)
