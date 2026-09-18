@@ -2529,6 +2529,60 @@
       "replace": "  *) printf 'notify: sent (%s)\\n' \"$status\" >&2 ;;",
       "guarded_by": "test/lei_service/notify_script_test.exs",
       "app": "apps/lei_service"
+    },
+    {
+      "id": "acp-unconfigured-auth-passes",
+      "bug": "Lei.Acp.Auth returned {:ok, conn} -- authenticated -- when LEI_ACP_BEARER_TOKEN and LEI_ACP_SIGNING_SECRET were absent. Neither was ever set in production, so POST /acp/checkout and /complete were open to anyone for as long as they existed.",
+      "file": "apps/lei_service/lib/lei/acp/auth.ex",
+      "find": "      if missing == [], do: :ok, else: {:unconfigured, missing}",
+      "replace": "      _ = missing\n      :ok",
+      "guarded_by": "test/lei/acp_auth_test.exs",
+      "app": "apps/lei_service"
+    },
+    {
+      "id": "acp-auth-gated-on-deploy-env",
+      "bug": "The refusal was derived from LEI_DEPLOY_ENV rather than from an explicit opt-in, so a deploy that lost that variable silently re-opened the endpoint -- the same dependency that downgrades Lei.Stripe.ObjectCheck to \"ok\".",
+      "file": "apps/lei_service/lib/lei/acp/auth.ex",
+      "find": "    if Application.get_env(:lei_service, :acp_allow_unauthenticated, false) == true do",
+      "replace": "    if not Lei.Stripe.Mode.production?() do",
+      "guarded_by": "test/lei/acp_auth_test.exs",
+      "app": "apps/lei_service"
+    },
+    {
+      "id": "acp-refusal-discloses-configuration",
+      "bug": "The refusal named the missing secret in the response body, letting an anonymous caller read our configuration state off a 503.",
+      "file": "apps/lei_service/lib/lei/acp/auth.ex",
+      "find": "    send_json(conn, 503, %{error: \"checkout unavailable\"})",
+      "replace": "    send_json(conn, 503, %{error: \"checkout unavailable\", unconfigured: missing})",
+      "guarded_by": "test/lei/acp_auth_test.exs",
+      "app": "apps/lei_service"
+    },
+    {
+      "id": "acp-charge-not-idempotent",
+      "bug": "The ACP charge was the only money-moving Stripe call with no Idempotency-Key, so an agent retrying /acp/checkout/:id/complete after a timeout created a second real charge.",
+      "file": "apps/lei_service/lib/lei/stripe.ex",
+      "find": "    {body, [{\"Idempotency-Key\", params.idempotency_key}]}\n  end\n\n  @doc false\n  # The complete header list",
+      "replace": "    {body, []}\n  end\n\n  @doc false\n  # The complete header list",
+      "guarded_by": "test/lei/stripe_test.exs",
+      "app": "apps/lei_service"
+    },
+    {
+      "id": "acp-charge-headers-discarded",
+      "bug": "create_payment_intent/1 destructured the request as {body, _} and posted bare headers(), throwing away the Idempotency-Key the builder had produced. A header dropped by the caller is the same as no header.",
+      "file": "apps/lei_service/lib/lei/stripe.ex",
+      "find": "    headers() ++ extra\n  end",
+      "replace": "    headers()\n  end",
+      "guarded_by": "test/lei/stripe_test.exs",
+      "app": "apps/lei_service"
+    },
+    {
+      "id": "acp-idempotency-key-not-the-session",
+      "bug": "The ACP charge's idempotency key was not derived from the session, so two completions of one session were two distinct charges.",
+      "file": "apps/lei_service/lib/lei/acp.ex",
+      "find": "           idempotency_key: \"acp_\" <> to_string(session.id),",
+      "replace": "           idempotency_key: \"acp_\" <> Integer.to_string(System.unique_integer([:positive])),",
+      "guarded_by": "test/lei/stripe_purchase_identity_test.exs",
+      "app": "apps/lei_service"
     }
   ]
 }
