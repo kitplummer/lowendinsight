@@ -25,16 +25,58 @@ defmodule Lei.Org do
 
   def changeset(org, attrs) do
     org
-    |> cast(attrs, [:name, :tier, :status])
+    |> cast(attrs, [:name, :tier, :status, :stripe_customer_id])
     |> validate_required([:name])
     |> validate_inclusion(:tier, @valid_tiers)
     |> validate_inclusion(:status, @valid_statuses)
+    |> validate_active_pro_is_billable()
     |> generate_slug()
     |> unique_constraint(:slug)
   end
 
-  def activate_changeset(org) do
-    change(org, status: "active")
+  @doc """
+  An active Pro organisation must carry the customer Stripe will bill.
+
+  Applied to every changeset that can set `:tier` or `:status`, because the
+  two used to be settable independently of the field that makes them
+  chargeable. `Lei.UsageTracker` served any Pro org without limit while only
+  reporting usage for one with a `stripe_customer_id`, so the difference
+  between those two conditions was free service that nothing counted.
+
+  Uses `get_field/2` rather than `get_change/2`: what matters is the row that
+  results, not which half of it this particular update supplied. Activating a
+  Pro org that already holds a customer id is fine, and so is supplying both
+  at once -- which is what `Lei.Signup` and the webhook do.
+
+  The database carries the same rule as a check constraint. This one exists to
+  answer with a changeset error rather than an exception, and to say which
+  field is missing.
+  """
+  def validate_active_pro_is_billable(changeset) do
+    billable? =
+      case get_field(changeset, :stripe_customer_id) do
+        id when is_binary(id) -> id != ""
+        _ -> false
+      end
+
+    # Prepaid and wallet orgs are gated on their credit balance, which
+    # Lei.UsageTracker.allowance/3 tests before it looks at the tier, so the
+    # tier column is inert for them and the rule does not apply.
+    served_as_pro? =
+      get_field(changeset, :tier) == "pro" and get_field(changeset, :status) == "active" and
+        get_field(changeset, :prepaid) != true and
+        get_field(changeset, :wallet_address) in [nil, ""]
+
+    if served_as_pro? and not billable? do
+      add_error(
+        changeset,
+        :stripe_customer_id,
+        "is required to activate a pro organisation: without it the org is served " <>
+          "without limit and never reported to Stripe"
+      )
+    else
+      changeset
+    end
   end
 
   def stripe_changeset(org, attrs) do
@@ -46,6 +88,8 @@ defmodule Lei.Org do
       :status
     ])
     |> validate_inclusion(:status, @valid_statuses)
+    |> validate_active_pro_is_billable()
+    |> check_constraint(:stripe_customer_id, name: :orgs_pro_active_requires_customer)
   end
 
   @doc """

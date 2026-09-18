@@ -140,7 +140,8 @@ defmodule LeiService.RemoteUrlTest do
       {:ok, org} =
         Lei.ApiKeys.create_org("Remote Url #{System.unique_integer([:positive])}",
           tier: "pro",
-          status: "active"
+          status: "active",
+          stripe_customer_id: "cus_test_3180ac02"
         )
 
       {:ok, key, _} = Lei.ApiKeys.create_api_key(org, "t", ["analyze"])

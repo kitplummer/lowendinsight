@@ -54,14 +54,6 @@ defmodule Lei.OrgTest do
     end
   end
 
-  describe "activate_changeset/1" do
-    test "sets status to active" do
-      org = %Org{status: "pending"}
-      cs = Org.activate_changeset(org)
-      assert Ecto.Changeset.get_change(cs, :status) == "active"
-    end
-  end
-
   describe "stripe_changeset/2" do
     test "sets stripe fields" do
       org = %Org{}

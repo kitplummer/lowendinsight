@@ -19,14 +19,12 @@ defmodule Lei.ApiKeys do
   scope and returns only org metadata, so idempotent creation there is intended.
   """
   def create_org(name, opts \\ []) do
-    tier = Keyword.get(opts, :tier, "free")
-    status = Keyword.get(opts, :status, "pending")
     slug = slugify(name)
 
     case Repo.get_by(Org, slug: slug) do
       nil ->
         %Org{}
-        |> Org.changeset(%{name: name, tier: tier, status: status})
+        |> Org.changeset(org_attrs(name, opts))
         |> Repo.insert()
 
       _existing ->
@@ -42,15 +40,12 @@ defmodule Lei.ApiKeys do
   goes on to issue credentials -- use `create_org/2`.
   """
   def find_or_create_org(name, opts \\ []) do
-    tier = Keyword.get(opts, :tier, "free")
-    status = Keyword.get(opts, :status, "pending")
-
     slug = slugify(name)
 
     case Repo.get_by(Org, slug: slug) do
       nil ->
         %Org{}
-        |> Org.changeset(%{name: name, tier: tier, status: status})
+        |> Org.changeset(org_attrs(name, opts))
         |> Repo.insert()
 
       org ->
@@ -66,10 +61,17 @@ defmodule Lei.ApiKeys do
     |> String.trim("-")
   end
 
-  def activate_org(%Org{} = org) do
-    org
-    |> Org.activate_changeset()
-    |> Repo.update()
+  # An active Pro org must carry the customer Stripe will bill (Lei.Org), so
+  # the caller has to be able to supply it in the same insert. Without that,
+  # the only way to create one would be to write an invalid row and correct
+  # it, which is the state the constraint exists to forbid.
+  defp org_attrs(name, opts) do
+    %{
+      name: name,
+      tier: Keyword.get(opts, :tier, "free"),
+      status: Keyword.get(opts, :status, "pending"),
+      stripe_customer_id: Keyword.get(opts, :stripe_customer_id)
+    }
   end
 
   def create_api_key(org, name, scopes \\ []) do

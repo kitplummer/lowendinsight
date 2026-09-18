@@ -81,7 +81,12 @@ defmodule Lei.OrgTakeoverTest do
     test "find_or_create_org ignores the requested tier for an existing org" do
       {:ok, free_org} = ApiKeys.create_org("Tier Test", tier: "free", status: "active")
 
-      {:ok, same_org} = ApiKeys.find_or_create_org("Tier Test", tier: "pro", status: "active")
+      {:ok, same_org} =
+        ApiKeys.find_or_create_org("Tier Test",
+          tier: "pro",
+          status: "active",
+          stripe_customer_id: "cus_test_30a99afb"
+        )
 
       assert same_org.id == free_org.id
       assert same_org.tier == "free", "documents why signup paths must not use this"
