@@ -30,6 +30,8 @@ defmodule LeiService.AgentPaymentTest do
   setup do
     :ok = Ecto.Adapters.SQL.Sandbox.checkout(Lei.Repo)
     Ecto.Adapters.SQL.Sandbox.mode(Lei.Repo, {:shared, self()})
+    :ok = Ecto.Adapters.SQL.Sandbox.checkout(LeiService.Repo)
+    Ecto.Adapters.SQL.Sandbox.mode(LeiService.Repo, {:shared, self()})
     Lei.RateLimiter.clear()
     LeiService.Plugs.RateLimiter.clear()
 

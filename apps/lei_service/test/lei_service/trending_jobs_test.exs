@@ -14,7 +14,8 @@ defmodule LeiService.TrendingJobsTest do
   alias LeiService.{CacheCleanerWorker, TrendingRefreshWorker, TrendingScheduleWorker}
 
   setup do
-    Ecto.Adapters.SQL.query!(LeiService.Repo, "DELETE FROM oban_jobs", [])
+    :ok = Ecto.Adapters.SQL.Sandbox.checkout(LeiService.Repo)
+    Ecto.Adapters.SQL.Sandbox.mode(LeiService.Repo, {:shared, self()})
     saved = Application.get_env(:lei_service, :trending_jobs)
     on_exit(fn -> Application.put_env(:lei_service, :trending_jobs, saved || []) end)
     :ok

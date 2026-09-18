@@ -10,6 +10,11 @@ defmodule LeiService.ObanSchemaVersionTest do
   """
   use ExUnit.Case, async: true
 
+  setup do
+    :ok = Ecto.Adapters.SQL.Sandbox.checkout(LeiService.Repo)
+    :ok
+  end
+
   test "the migrated Oban schema matches the installed Oban" do
     migrated = Oban.Migrations.Postgres.migrated_version(repo: LeiService.Repo)
     expected = Oban.Migrations.Postgres.current_version()
