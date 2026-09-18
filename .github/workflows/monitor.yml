@@ -183,6 +183,126 @@ jobs:
             exit 1
           fi
 
+      # Everything above watches the service. This watches the money.
+      #
+      # Stage F built these signals over two days (#213, #215, #216, #208) and
+      # nothing read them: the counters were on /metrics and the only thing
+      # that would have noticed a discrepancy was someone running
+      # scripts/payments.sh by hand. That is the shape this repository keeps
+      # meeting, one layer further out -- the check existed and reported
+      # correctly, and no one was on the other end.
+      - name: Check payment rails and the Stripe ledger
+        run: |
+          METRICS=$(curl -s --max-time 15 https://lowendinsight.dev/metrics)
+
+          if [ -z "$METRICS" ]; then
+            echo "::error::/metrics returned nothing. No payment signal could be read at all."
+            exit 1
+          fi
+
+          gauge() {
+            echo "$METRICS" | grep -F "$1" | awk '{print $2}' | tr -d '\r' | head -1
+          }
+
+          FAILED=0
+
+          # A gauge family that vanished is not an all-clear.
+          #
+          # Every check below reads its number out of this one response with
+          # grep, and grep finding nothing looks exactly like a rail reporting
+          # zero: the switch check goes quiet, the held check reads 0, the
+          # unmatched-reversal check reads 0. A collector that stopped being
+          # registered, or a metric renamed in a refactor, would turn this
+          # whole step green. So the families are asserted present before
+          # anything reads a value out of them.
+          for family in lei_payment_switch_enabled lei_payment_held \
+                        lei_stripe_reversal_events_total lei_payment_outcomes; do
+            if ! echo "$METRICS" | grep -q "^${family}"; then
+              echo "::error::/metrics is not publishing ${family}. The check that reads it cannot run, and an absent counter reads exactly like a clean one."
+              FAILED=1
+            fi
+          done
+
+          # -- ledger against Stripe (#216)
+          #
+          # Absent means the release predates the hourly job, not that it is
+          # clean; that is an error rather than a pass, because "no answer"
+          # and "no discrepancies" are the two things that must never look
+          # alike here.
+          if ! echo "$METRICS" | grep -q "lei_stripe_reconciliation"; then
+            echo "::error::No Stripe reconciliation metrics. The ledger is not being compared with Stripe."
+            exit 1
+          fi
+
+          if [ -n "$(gauge 'lei_stripe_reconciliation{measure="error"}')" ]; then
+            echo "::error::Stripe reconciliation could not be computed. It is not reporting clean, it is not reporting."
+            FAILED=1
+          fi
+
+          RECON_FAILED=$(gauge 'lei_stripe_reconciliation{measure="failed"}')
+          AGE=$(gauge 'lei_stripe_reconciliation{measure="age_seconds"}')
+          DISCREPANCIES=$(gauge 'lei_stripe_reconciliation{measure="discrepancies"}')
+          PROBES=$(gauge 'lei_stripe_reconciliation{measure="probe_excluded"}')
+
+          echo "reconciliation — age: ${AGE:-unknown}s  discrepancies: ${DISCREPANCIES:-unknown}  probes excluded: ${PROBES:-0}"
+
+          if [ "${RECON_FAILED:-0}" -eq 1 ]; then
+            echo "::error::The last Stripe reconciliation run failed. Inspect it with: scripts/payments.sh reconciliation"
+            FAILED=1
+          fi
+
+          # The job runs hourly. Three hours means it has stopped, and a stale
+          # clean result reads exactly like a fresh one on every other gauge.
+          if [ -n "${AGE:-}" ] && [ "$AGE" -gt 10800 ]; then
+            echo "::error::The last Stripe reconciliation was ${AGE}s ago; the hourly job has stopped. Every figure below it is stale."
+            FAILED=1
+          fi
+
+          if [ "${DISCREPANCIES:-0}" -gt 0 ]; then
+            echo "::error::${DISCREPANCIES} payment(s) disagree between the ledger and Stripe — money received and not credited, or credited and not received. Run: scripts/payments.sh reconciliation"
+            FAILED=1
+          fi
+
+          # -- refunds and disputes that matched no purchase (#208)
+          UNMATCHED=$(gauge 'lei_stripe_reversal_events_total{result="unmatched"}')
+          if [ "${UNMATCHED:-0}" -gt 0 ]; then
+            echo "::error::${UNMATCHED} refund/dispute event(s) matched no credit purchase. Credits were not taken back for money that was."
+            FAILED=1
+          fi
+
+          # -- rails switched off (#215)
+          #
+          # A kill switch used during an incident and never switched back is
+          # revenue silently declining, and nothing else reports it: a rail
+          # that is off refuses cleanly, which looks like no demand.
+          OFF=$(echo "$METRICS" | grep '^lei_payment_switch_enabled{' | grep ' 0$' \
+            | sed -n 's/^lei_payment_switch_enabled{path="\([^"]*\)"} 0$/\1/p' | paste -sd, -)
+
+          if [ -n "$OFF" ]; then
+            echo "::error::Payment path(s) switched off: ${OFF}. If an incident is over, re-enable with: scripts/payments.sh switch-on <path> --reason ..."
+            FAILED=1
+          fi
+
+          # -- credentials presented and held (#215)
+          #
+          # A held stablecoin credential is a transfer that already happened on
+          # chain against a rail that refused it: the customer has paid and has
+          # nothing. These do not resolve on their own.
+          HELD=$(echo "$METRICS" | grep '^lei_payment_held{' | awk '{s+=$2} END {print s+0}')
+          if [ "${HELD:-0}" -gt 0 ]; then
+            echo "::error::${HELD} payment credential(s) held after a refusal. Someone has paid and not been credited. Run: scripts/payments.sh held"
+            FAILED=1
+          fi
+
+          # -- conversion, reported and not judged
+          #
+          # Deliberately never fails. Scanners and probes issue challenges that
+          # nobody settles, so any threshold here would be noise; the number is
+          # printed so a human reading a real alert above has the context.
+          echo "$METRICS" | grep '^lei_payment_outcomes{' | grep -v ' 0$' || echo "no payment outcomes in the last 24h"
+
+          exit $FAILED
+
       # Between deploys, nothing else exercises the journey the site exists
       # for. Not strict here: without an admin key the analysis check can be
       # satisfied by a cached report, and the canary says so rather than
@@ -194,16 +314,22 @@ jobs:
           STRIPE_EXPECTED_MODE: ${{ vars.STRIPE_EXPECTED_MODE || 'test' }}
         run: scripts/canary.sh https://lowendinsight.dev
 
-      # Warns rather than fails when the key is absent. The readiness check above
-      # is the primary signal and has already run; failing here every 15 minutes
-      # until someone sets a secret would be alert fatigue on day one, and an
-      # alarm nobody trusts is worse than no alarm.
+      # Fails when the key is absent, rather than warning and passing.
+      #
+      # It warned and exited 0 from the day it was added, and the secret was
+      # never set -- so this step reported success on every run while executing
+      # nothing, and the summary said "Verify production" throughout. That is
+      # the failure this whole file exists to catch, inside the file itself.
+      #
+      # The original reasoning was that failing every 15 minutes until someone
+      # sets a secret is alert fatigue. It is: the answer is to set the secret,
+      # not to let the check describe work it did not do.
       - name: Smoke test against production
         env:
           LEI_SMOKE_API_KEY: ${{ secrets.LEI_SMOKE_API_KEY }}
         run: |
           if [ -z "$LEI_SMOKE_API_KEY" ]; then
-            echo "::warning::LEI_SMOKE_API_KEY is not set, so only the readiness check ran. Signing up on a schedule would create a real org every 15 minutes. Create a dedicated smoke-test org and add its key as a repository secret to enable full verification."
-            exit 0
+            echo "::error::LEI_SMOKE_API_KEY is not set, so the smoke suite did not run. Create a dedicated smoke-test org and add its key as a repository secret; signing up on a schedule would otherwise create a real org every 15 minutes."
+            exit 1
           fi
           ./scripts/smoke-test.sh https://lowendinsight.dev
