@@ -123,7 +123,14 @@ defmodule Lei.Payments.Gate do
        Map.merge(
          %{
            error: "free_tier_quota_exceeded",
-           upgrade_url: "https://lowendinsight.fly.dev/signup?tier=pro"
+           # Derived, not hardcoded. This was
+           # https://lowendinsight.fly.dev/signup?tier=pro -- Fly's assigned
+           # hostname rather than the one the service is named after, and the
+           # only customer-facing URL still on it. Both resolve to the same
+           # machine today, which is why it survived; that stops being true
+           # the moment the app is renamed or moves off Fly, and a link sent
+           # to a paying customer is the worst place to find out.
+           upgrade_url: base_url() <> "/signup?tier=pro"
          },
          detail
        )
@@ -154,6 +161,12 @@ defmodule Lei.Payments.Gate do
   # request needs, or the agent pays and is refused again.
   defp top_up(balance, required) do
     max(default_top_up() - min(balance, 0), required - balance)
+  end
+
+  # Where this service tells a customer it lives. The same setting the Stripe
+  # redirect URLs use (Lei.Web.Router), so one change moves both.
+  defp base_url do
+    Application.get_env(:lei_service, :lei_base_url, "http://localhost:4000")
   end
 
   defp default_top_up, do: Application.get_env(:lei_service, :default_top_up_credits, 15_000)
