@@ -63,27 +63,7 @@ defmodule Lei.Stripe do
 
   @impl true
   def create_checkout_session(params) do
-    metered_price_id = params[:metered_price_id]
-
-    base_params = %{
-      "mode" => "subscription",
-      "payment_method_types[0]" => "card",
-      "line_items[0][price]" => params.price_id,
-      "line_items[0][quantity]" => "1",
-      "success_url" => params.success_url,
-      "cancel_url" => params.cancel_url,
-      "metadata[org_id]" => to_string(params.org_id)
-    }
-
-    # Add metered usage price as second line item if configured
-    base_params =
-      if metered_price_id do
-        Map.put(base_params, "line_items[1][price]", metered_price_id)
-      else
-        base_params
-      end
-
-    body = URI.encode_query(base_params)
+    {body, _headers} = checkout_session_request(params)
 
     case HTTPoison.post(
            "https://api.stripe.com/v1/checkout/sessions",
@@ -222,6 +202,34 @@ defmodule Lei.Stripe do
       {:error, reason} ->
         {:error, reason}
     end
+  end
+
+  @doc false
+  # The request create_checkout_session/1 sends, separated so its bytes can be
+  # asserted without a network.
+  #
+  # `billing_address_collection` is the reason this is a function. Stripe Tax
+  # calculates from an address, and Checkout is the only place we can obtain
+  # one: it asks the person directly. The machine rails never ask, because an
+  # agent has no location to give (Lei.BuyerLocation).
+  def checkout_session_request(params) do
+    base = %{
+      "mode" => "subscription",
+      "payment_method_types[0]" => "card",
+      "line_items[0][price]" => params.price_id,
+      "line_items[0][quantity]" => "1",
+      "success_url" => params.success_url,
+      "cancel_url" => params.cancel_url,
+      "metadata[org_id]" => to_string(params.org_id),
+      "billing_address_collection" => "required"
+    }
+
+    base =
+      if params[:metered_price_id],
+        do: Map.put(base, "line_items[1][price]", params[:metered_price_id]),
+        else: base
+
+    {URI.encode_query(base), []}
   end
 
   @doc """

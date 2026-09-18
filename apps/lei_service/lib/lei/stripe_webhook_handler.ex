@@ -163,6 +163,13 @@ defmodule Lei.StripeWebhookHandler do
         stripe_subscription_id: session["subscription"]
       }
       |> maybe_put(:stripe_metered_subscription_item_id, extract_subscription_item_id(session))
+      # The address Checkout collected from the person. Either this or
+      # /signup/success may arrive first, so both keep it (#223).
+      |> Map.merge(
+        session
+        |> Lei.BuyerLocation.from_checkout()
+        |> Lei.Org.usable_location_attrs()
+      )
 
     org
     |> Org.stripe_changeset(attrs)

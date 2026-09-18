@@ -2529,6 +2529,51 @@
       "replace": "  *) printf 'notify: sent (%s)\\n' \"$status\" >&2 ;;",
       "guarded_by": "test/lei_service/notify_script_test.exs",
       "app": "apps/lei_service"
+    },
+    {
+      "id": "buyer-location-us-postal-unvalidated",
+      "bug": "A US location was accepted with a postal code Stripe cannot use, so the address stored against a paying customer could not be calculated from.",
+      "file": "apps/lei_service/lib/lei/org.ex",
+      "find": "        |> validate_required([:billing_postal_code],\n          message: \"is required for a US location\"\n        )",
+      "replace": "        |> validate_required([])",
+      "guarded_by": "test/lei/buyer_location_test.exs",
+      "app": "apps/lei_service"
+    },
+    {
+      "id": "checkout-collects-no-billing-address",
+      "bug": "Stripe Checkout was created without billing_address_collection, so the only buyer who has a location -- a person -- was never asked for one, and Stripe Tax had nothing to calculate the subscription from.",
+      "file": "apps/lei_service/lib/lei/stripe.ex",
+      "find": "      \"billing_address_collection\" => \"required\"",
+      "replace": "      \"billing_address_collection\" => \"auto\"",
+      "guarded_by": "test/lei/checkout_location_test.exs",
+      "app": "apps/lei_service"
+    },
+    {
+      "id": "signup-success-drops-the-address",
+      "bug": "The address Checkout collected was thrown away when the returning customer activated, so a paying subscriber had no location on record.",
+      "file": "apps/lei_service/lib/lei/signup.ex",
+      "find": "      |> Lei.BuyerLocation.from_checkout()\n      |> Org.usable_location_attrs()",
+      "replace": "      |> then(fn _ -> nil end)\n      |> Org.usable_location_attrs()",
+      "guarded_by": "test/lei/checkout_location_test.exs",
+      "app": "apps/lei_service"
+    },
+    {
+      "id": "webhook-drops-the-address",
+      "bug": "checkout.session.completed activated the org without keeping the address Checkout collected. Either route may arrive first, so a customer activated by the webhook had no location.",
+      "file": "apps/lei_service/lib/lei/stripe_webhook_handler.ex",
+      "find": "        session\n        |> Lei.BuyerLocation.from_checkout()\n        |> Lei.Org.usable_location_attrs()",
+      "replace": "        session\n        |> then(fn _ -> nil end)\n        |> Lei.Org.usable_location_attrs()",
+      "guarded_by": "test/lei/checkout_location_test.exs",
+      "app": "apps/lei_service"
+    },
+    {
+      "id": "unusable-address-fails-activation",
+      "bug": "An address Stripe returned that we cannot calculate tax from failed the changeset, so a customer who had already paid was not activated because of their postal code.",
+      "file": "apps/lei_service/lib/lei/org.ex",
+      "find": "    if changeset.valid? do",
+      "replace": "    if true do",
+      "guarded_by": "test/lei/checkout_location_test.exs",
+      "app": "apps/lei_service"
     }
   ]
 }
