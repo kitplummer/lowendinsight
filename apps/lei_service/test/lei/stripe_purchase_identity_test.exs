@@ -48,6 +48,7 @@ defmodule Lei.StripePurchaseIdentityTest do
         amount: 2900,
         currency: "usd",
         payment_method: "pm_card_visa",
+        idempotency_key: "acp_sess_identity",
         metadata: %{"lei_rail" => "acp", "credits" => "29000"}
       })
 
@@ -72,5 +73,22 @@ defmodule Lei.StripePurchaseIdentityTest do
 
     refute first =~ "starting_after"
     assert next =~ "starting_after=pi_last"
+  end
+
+  # The session is the charge's identity. Asserted through Acp.complete_session
+  # rather than on the request builder, because the defect was that nothing
+  # passed a key at all -- the builder was reachable only with one supplied by
+  # hand, which is how it looked correct.
+  test "the charge is keyed to the session, so a retried completion cannot charge twice" do
+    {:ok, session} = Acp.create_session("lei-credits-29000")
+    name = "ACP Idem #{System.unique_integer([:positive])}"
+    {:ok, session} = Acp.update_session(session.id, %{customer_name: name})
+
+    expect(Lei.StripeMock, :create_payment_intent, fn params ->
+      assert params.idempotency_key == "acp_" <> to_string(session.id)
+      {:ok, %{"id" => "pi_acp_idem", "status" => "succeeded"}}
+    end)
+
+    assert {:ok, _} = Acp.complete_session(session.id, %{"payment_method" => "pm_card_visa"})
   end
 end
