@@ -236,7 +236,11 @@ defmodule Lei.Metrics do
             [
               ~s(lei_stripe_reconciliation{measure="discrepancies"} #{run.discrepancy_count}),
               ~s(lei_stripe_reconciliation{measure="ledger_purchases"} #{run.ledger_purchases}),
-              ~s(lei_stripe_reconciliation{measure="stripe_purchases"} #{run.stripe_purchases})
+              ~s(lei_stripe_reconciliation{measure="stripe_purchases"} #{run.stripe_purchases}),
+              # Verification probes the comparison deliberately did not report.
+              # Published so an exclusion that starts swallowing more than it
+              # should reads as a number climbing, rather than as silence.
+              ~s(lei_stripe_reconciliation{measure="probe_excluded"} #{run.probe_excluded || 0})
             ]
         end
     end

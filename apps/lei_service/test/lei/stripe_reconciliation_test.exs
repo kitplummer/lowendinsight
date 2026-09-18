@@ -342,4 +342,92 @@ defmodule Lei.StripeReconciliationTest do
     assert :ok = LeiService.StripeReconciliationWorker.perform(%Oban.Job{args: %{}})
     assert %{status: "ok"} = StripeReconciliation.latest()
   end
+
+  # -- verification probes (#139, stage F)
+  #
+  # The go-live verification runs real sandbox payments against production --
+  # `probe-e2e` and `probe1789334177083` are two that exist today. They are
+  # money Stripe received that the ledger deliberately never credited, so they
+  # report as `received_not_recorded` forever, and a check that is permanently
+  # red is one nobody reads by the second week.
+  #
+  # They are excluded by an explicit naming convention and **counted**, never
+  # dropped: the exclusion applies only to the "Stripe has it, the ledger does
+  # not" branch, so a probe that did reach the ledger is still checked for
+  # amount, mode and currency like any other purchase.
+
+  defp with_probe_prefix(prefix, fun) do
+    saved = Application.get_env(:lei_service, :reconciliation_probe_prefix)
+    Application.put_env(:lei_service, :reconciliation_probe_prefix, prefix)
+
+    try do
+      fun.()
+    after
+      if saved,
+        do: Application.put_env(:lei_service, :reconciliation_probe_prefix, saved),
+        else: Application.delete_env(:lei_service, :reconciliation_probe_prefix)
+    end
+  end
+
+  test "a probe Stripe received and the ledger never credited is excluded, and counted" do
+    stripe_lists([
+      intent("pi_probe", %{"metadata" => %{"challenge_id" => "probe-e2e", "credits" => "500"}})
+    ])
+
+    assert {:ok, run} = run()
+    assert run.status == "ok"
+    assert run.discrepancy_count == 0
+    assert run.probe_excluded == 1
+  end
+
+  test "a real payment the ledger never credited is still reported beside a probe" do
+    stripe_lists([
+      intent("pi_probe", %{"metadata" => %{"challenge_id" => "probe1789334177083"}}),
+      intent("pi_real", %{"metadata" => %{"challenge_id" => "ch_live_buyer"}})
+    ])
+
+    assert {:ok, run} = run()
+    assert run.status == "discrepancies"
+    assert run.probe_excluded == 1
+
+    assert [%{"kind" => "received_not_recorded", "payment_intent" => "pi_real"}] =
+             run.discrepancies
+  end
+
+  test "a probe that did reach the ledger is checked like any other purchase", %{org: org} do
+    purchase(org, "tempo", "pi_probe_short", cents: 1_500)
+
+    stripe_lists([
+      intent("pi_probe_short", %{
+        "amount_received" => 1_000,
+        "metadata" => %{"challenge_id" => "probe-e2e"}
+      })
+    ])
+
+    assert run() |> kinds() == ["amount_mismatch"]
+    assert %{probe_excluded: 0} = StripeReconciliation.latest()
+  end
+
+  test "with no probe prefix configured, nothing is excluded" do
+    with_probe_prefix("", fn ->
+      stripe_lists([
+        intent("pi_probe", %{"metadata" => %{"challenge_id" => "probe-e2e"}})
+      ])
+
+      assert {:ok, run} = run()
+      assert run.status == "discrepancies"
+      assert run.probe_excluded == 0
+      assert run |> then(&{:ok, &1}) |> kinds() == ["received_not_recorded"]
+    end)
+  end
+
+  test "the probe count is on /metrics, so an exclusion is never invisible" do
+    stripe_lists([
+      intent("pi_probe", %{"metadata" => %{"challenge_id" => "probe-e2e"}})
+    ])
+
+    {:ok, _} = run()
+
+    assert Lei.Metrics.collect() =~ ~s(lei_stripe_reconciliation{measure="probe_excluded"} 1)
+  end
 end
