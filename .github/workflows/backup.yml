@@ -218,3 +218,20 @@ jobs:
         if: always()
         run: |
           if [ -f /tmp/proxy.pid ]; then kill "$(cat /tmp/proxy.pid)" 2>/dev/null || true; fi
+
+      # A backup that stops running is the one failure you discover at the
+      # moment you need it, and a daily scheduled job failing quietly is
+      # indistinguishable from one that is fine. Pages rather than emails, at
+      # priority 4: it is urgent to fix today, but nothing is on fire right
+      # now -- unlike a failed deploy, which is serving.
+      - name: Page on a failed backup
+        if: failure()
+        env:
+          NTFY_TOKEN: ${{ secrets.NTFY_TOKEN }}
+          NTFY_TOPIC: ${{ secrets.NTFY_TOPIC }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          scripts/notify.sh \
+            --title "LEI: backup failed" --priority 4 --tags floppy_disk \
+            --click "$RUN_URL" \
+            "The daily Postgres backup did not complete. Today has no dump; the most recent artifact is whatever the last green run uploaded."
