@@ -32,8 +32,21 @@ defmodule LeiService.PaymentMonitoringWiringTest do
   # the paging step -- the rollback step above it carries its own
   # `if: failure() && ...`. A condition satisfied somewhere else in the file is
   # not the condition on this step.
-  defp step(name, step_name),
-    do: name |> workflow() |> String.split("- name: #{step_name}") |> List.last()
+  # Fails loudly when the step is absent.
+  #
+  # The first version returned List.last of a split on a marker that was not
+  # there -- which is the whole file, so every assertion about the step matched
+  # against unrelated content elsewhere in the workflow and passed. A test that
+  # cannot find its subject must say so, not quietly widen its search.
+  defp step(name, step_name) do
+    marker = "- name: #{step_name}"
+    source = workflow(name)
+
+    assert String.contains?(source, marker),
+           "#{name} has no step named #{inspect(step_name)}"
+
+    source |> String.split(marker) |> List.last()
+  end
 
   describe "the monitor reads the money" do
     test "it fails when the ledger and Stripe disagree" do
@@ -135,8 +148,58 @@ defmodule LeiService.PaymentMonitoringWiringTest do
       assert page =~ "scripts/notify.sh"
     end
 
+    # The monitor was deliberately left off paging when #225 shipped: its smoke
+    # step was going to be red until LEI_SMOKE_API_KEY existed, and a page every
+    # fifteen minutes is how an alarm stops being read. The key is set now.
+    test "a failing monitor pages" do
+      page = step("monitor.yml", "Page on a failed check")
+
+      assert page =~ "if: failure()"
+      assert page =~ "scripts/notify.sh"
+    end
+
+    # It runs every 15 minutes. Paging on every run of an outage is 96 pages a
+    # day for one incident, which is worse than the email it replaces -- the
+    # operator stops reading, which is the failure this whole file is about.
+    # So it pages on the transition into failure, not on the state.
+    test "it pages once per incident, not once per run" do
+      page = step("monitor.yml", "Page on a failed check")
+
+      # Pins the comparison, not the vocabulary. Asserting that the word
+      # "previous" appears passed happily when the mutation compared it
+      # against a value nothing can equal.
+      assert page =~ ~s(if [ "$PREVIOUS" = "failure" ]; then),
+             "the page is not gated on the previous run having failed"
+
+      assert page =~ "exit 0", "a known incident must exit quietly, not page"
+
+      assert page =~ ~r/github\.run_id/,
+             "the previous run cannot be identified without excluding this one"
+    end
+
+    # A page suppressed because we could not tell whether the last run failed
+    # is a page that did not happen. Unknown means send it.
+    test "it pages when the previous run's state cannot be determined" do
+      page = step("monitor.yml", "Page on a failed check")
+
+      # The default matters, not the word: "unknown" also appears in the echo
+      # and the comments, so matching it anywhere proved nothing.
+      assert page =~ ~s(PREVIOUS="${PREVIOUS:-unknown}"),
+             "an empty lookup result must not default to anything that suppresses the page"
+    end
+
+    test "the page names what actually failed" do
+      monitor = monitor()
+
+      # Step ids, so the page can say which check broke rather than "something".
+      for id <- ~w(readiness queue webhooks ledger payments canary smoke) do
+        assert monitor =~ "id: #{id}",
+               "step '#{id}' has no id, so the page cannot name it"
+      end
+    end
+
     test "the paging workflows check out the repository that holds the script" do
-      for name <- ~w(deploy.yml backup.yml) do
+      for name <- ~w(deploy.yml backup.yml monitor.yml) do
         assert workflow(name) =~ "actions/checkout",
                "#{name} calls scripts/notify.sh without checking the repository out"
       end
