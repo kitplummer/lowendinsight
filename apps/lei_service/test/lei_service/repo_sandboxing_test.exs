@@ -42,6 +42,12 @@ defmodule LeiService.RepoSandboxingTest do
             :queried
           rescue
             DBConnection.OwnershipError -> :refused
+          catch
+            # Ownership can be refused by an exit rather than a raise -- the
+            # pool shuts the caller down when the owner has gone. Both mean the
+            # query did not happen, which is the property under test, and only
+            # rescuing made this fail intermittently once the suite grew.
+            :exit, _ -> :refused
           end
         end)
         |> Task.await()
@@ -59,6 +65,12 @@ defmodule LeiService.RepoSandboxingTest do
             :queried
           rescue
             DBConnection.OwnershipError -> :refused
+          catch
+            # Ownership can be refused by an exit rather than a raise -- the
+            # pool shuts the caller down when the owner has gone. Both mean the
+            # query did not happen, which is the property under test, and only
+            # rescuing made this fail intermittently once the suite grew.
+            :exit, _ -> :refused
           end
         end)
         |> Task.await()
