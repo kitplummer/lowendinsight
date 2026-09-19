@@ -2880,6 +2880,15 @@
       "replace": "    {recent_entries, recent_credits} = count_and_sum(unqueued)",
       "guarded_by": "test/lei/unqueued_metric_test.exs",
       "app": "apps/lei_service"
+    },
+    {
+      "id": "test-databases-diverge-from-production",
+      "bug": "Test gave Lei.Repo and LeiService.Repo separate databases while production configures both from one DATABASE_URL. CI could not see anything arising from one shared schema_migrations between two migration directories -- a version collision above all, which records one migration and silently never runs the other.",
+      "file": "config/test.exs",
+      "find": "config :lei_service, Lei.Repo,\n  database: System.get_env(\"LEI_TEST_DB\") || \"lei_service_test\",",
+      "replace": "config :lei_service, Lei.Repo,\n  database: System.get_env(\"LEI_TEST_DB\") || \"lowendinsight_test\",",
+      "guarded_by": "test/lei_service/repo_topology_test.exs",
+      "app": "apps/lei_service"
     }
   ]
 }
