@@ -126,9 +126,57 @@ defmodule Lei.Metrics do
       # operator editing the database directly, still has to be visible.
       "# HELP lei_unbilled_pro_orgs Active pro organisations that cannot be billed",
       "# TYPE lei_unbilled_pro_orgs gauge",
-      unbilled_pro_metrics()
+      unbilled_pro_metrics(),
+      "",
+      # Work charged for at admission that never reached the queue and was
+      # credited back (#217). Counted from the ledger rather than a counter at
+      # the point of failure: a process-local counter resets on boot and can
+      # disagree with what was written, while these entries are the durable
+      # record of exactly this.
+      "# HELP lei_unqueued_credits Credits returned for work that could not be queued",
+      "# TYPE lei_unqueued_credits gauge",
+      unqueued_credit_metrics()
     ]
     |> List.flatten()
+  end
+
+  defp unqueued_credit_metrics do
+    import Ecto.Query
+
+    # 1h is what the monitor fails on: long enough that an incident does not
+    # vanish before anyone looks, short enough that the check clears without
+    # waiting a day. "all" keeps the history for context.
+    since = NaiveDateTime.utc_now() |> NaiveDateTime.add(-3600, :second)
+
+    unqueued = from(e in Lei.CreditEntry, where: e.reason == "adjustment:unqueued")
+
+    {recent_entries, recent_credits} =
+      count_and_sum(from(e in unqueued, where: e.inserted_at >= ^since))
+
+    {all_entries, all_credits} = count_and_sum(unqueued)
+
+    [
+      ~s(lei_unqueued_credits{window="1h",measure="entries"} #{recent_entries}),
+      ~s(lei_unqueued_credits{window="1h",measure="credits"} #{recent_credits}),
+      ~s(lei_unqueued_credits{window="all",measure="entries"} #{all_entries}),
+      ~s(lei_unqueued_credits{window="all",measure="credits"} #{all_credits})
+    ]
+  rescue
+    error ->
+      require Logger
+      Logger.error("Unqueued credit metrics failed: #{inspect(error)}")
+      [~s(lei_unqueued_credits{window="1h",measure="error"} 1)]
+  end
+
+  defp count_and_sum(query) do
+    import Ecto.Query
+
+    {entries, credits} =
+      query
+      |> select([e], {count(e.id), sum(e.delta)})
+      |> Lei.Repo.one()
+
+    {entries || 0, abs(to_int(credits))}
   end
 
   defp unbilled_pro_metrics do
