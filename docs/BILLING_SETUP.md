@@ -256,7 +256,24 @@ Do it in this order. Rolling last is what creates an outage.
    A mismatch logs `STRIPE_WEBHOOK_SECRET is set but does not match the sending
    endpoint`.
 
-4. **Check the counters** once traffic has flowed:
+4. **Check the counters** once traffic has flowed, or prove it in one step:
+
+   ```bash
+   scripts/verify-webhook-secret.sh
+   ```
+
+   It subscribes the endpoint to a harmless event type for the length of one
+   redelivery, redelivers an existing event, reads the counters either side,
+   and puts the subscription back. Nothing is created in Stripe and the handler
+   ignores the type -- the counter it measures is recorded on signature
+   verification, before the handler runs.
+
+   The subscription step is the point. The endpoint is subscribed to exactly
+   the seven types the handler acts on, so "safe to resend" and "will actually
+   be delivered" are disjoint sets: resending an unsubscribed event is accepted
+   by Stripe and delivered to nobody, which looks identical to a broken secret.
+
+   By hand instead:
 
    ```bash
    curl -s https://lowendinsight.dev/metrics | grep lei_stripe_webhook_total
