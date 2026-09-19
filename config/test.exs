@@ -19,11 +19,20 @@ config :lei_service,
   gh_token: System.get_env("LEI_GH_TOKEN") || "",
   use_workers: false
 
+# One database, two repos, as production has it: config/runtime.exs gives both
+# the same DATABASE_URL, so they share a schema_migrations table between two
+# migration directories. Test used to give them separate databases, which made
+# CI blind to anything arising from that -- a version collision between the
+# directories above all (#217, PRODUCTION_READINESS "two migration directories
+# share a single schema_migrations table").
+#
+# LEI_TEST_DB moves both, so scripts/verify-backup-grants.sh can point them at
+# a throwaway database and migrate each one into it.
 config :lei_service, LeiService.Repo,
-  database: "lei_service_test",
-  username: "postgres",
-  password: "postgres",
-  hostname: "localhost",
+  database: System.get_env("LEI_TEST_DB") || "lei_service_test",
+  username: System.get_env("LEI_TEST_DB_USER") || "postgres",
+  password: System.get_env("LEI_TEST_DB_PASS") || "postgres",
+  hostname: System.get_env("LEI_TEST_DB_HOST") || "localhost",
   pool: Ecto.Adapters.SQL.Sandbox,
   pool_size: 5
 
@@ -41,7 +50,7 @@ config :redix,
 # Overridable so the backup-grant check can run migrations as a non-superuser
 # role. Defaults are unchanged for everyone else.
 config :lei_service, Lei.Repo,
-  database: System.get_env("LEI_TEST_DB") || "lowendinsight_test",
+  database: System.get_env("LEI_TEST_DB") || "lei_service_test",
   username: System.get_env("LEI_TEST_DB_USER") || "postgres",
   password: System.get_env("LEI_TEST_DB_PASS") || "postgres",
   hostname: System.get_env("LEI_TEST_DB_HOST") || "localhost",

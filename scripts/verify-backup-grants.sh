@@ -61,6 +61,11 @@ bold "Running migrations as the application role"
 # Migrations run as the app role, exactly as they do in production. This is the
 # part that matters: ALTER DEFAULT PRIVILEGES only covers objects created by the
 # role it names, so running migrations as a superuser here would hide the bug.
+#
+# Both repos, not just Lei.Repo. Production gives them one DATABASE_URL, so
+# oban_jobs is created in the same database the backup role must dump -- and
+# while this migrated only the ledger repo, the check could not have noticed a
+# table LeiService.Repo creates being undumpable.
 (
   cd "$ROOT/apps/lei_service"
   MIX_ENV=test \
@@ -68,7 +73,7 @@ bold "Running migrations as the application role"
   LEI_TEST_DB_USER="$APP_ROLE" \
   LEI_TEST_DB_PASS="$APP_PASS" \
   LEI_TEST_DB_HOST="$PGHOST" \
-    mix ecto.migrate -r Lei.Repo >/dev/null
+    mix ecto.migrate >/dev/null
 )
 
 TABLES=$(as_super -d "$DB" -c \
