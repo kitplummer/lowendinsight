@@ -30,6 +30,11 @@ defmodule LeiService.VerifyGuardsScriptTest do
     # Scripted mix: line N of "script" is the Nth invocation, as "code:output".
     File.write!(Path.join(dir, "bin/mix"), """
     #!/usr/bin/env bash
+    if [ "$1" = "compile" ]; then
+      # No text: the verdict comes from this exit code alone.
+      exit "$(cat "#{dir}/compile_code" 2>/dev/null || echo 0)"
+    fi
+
     n=$(cat "#{dir}/calls" 2>/dev/null || echo 0)
     n=$((n + 1))
     echo "$n" > "#{dir}/calls"
@@ -92,26 +97,13 @@ defmodule LeiService.VerifyGuardsScriptTest do
 
   defp subject(dir), do: File.read!(Path.join(dir, "app/subject.ex"))
 
-  # The simulated compile errors below are the very strings verify-guards.sh
-  # greps for. When one of these tests fails, ExUnit prints the captured
-  # output -- and the *outer* run of verify-guards.sh, the one verifying this
-  # file, reads that as a real compile error and reports INCONCLUSIVE instead
-  # of the guard working. Assertions are made against a scrubbed copy so the
-  # tokens never reach the outer run's view.
-  defp scrub(out) do
-    out
-    |> String.replace("(CompileError)", "(SIMULATED-COMPILE-ERROR)")
-    |> String.replace("(SyntaxError)", "(SIMULATED-SYNTAX-ERROR)")
-  end
-
   describe "a guard that genuinely catches its mutation" do
     test "passes, and exits 0", %{dir: dir} do
       fixture(dir, "def value, do: :correct\n", ":correct", ":wrong")
       # baseline passes, mutated run fails as a test
       mix_returns(dir, ["0:", "1:  1) test the value is correct (FixtureTest)"])
 
-      {raw, code} = run(dir)
-      out = scrub(raw)
+      {out, code} = run(dir)
 
       assert out =~ "PASS:"
       assert out =~ "1 verified, 0 unguarded, 0 stale, 0 broken, 0 inconclusive"
@@ -124,10 +116,9 @@ defmodule LeiService.VerifyGuardsScriptTest do
     # mutation too, and that failure says nothing about the guard.
     test "is BROKEN, not verified", %{dir: dir} do
       fixture(dir, "def value, do: :correct\n", ":correct", ":wrong")
-      mix_returns(dir, ["1:** (SyntaxError) invalid syntax"])
+      mix_returns(dir, ["1:the guard test is already failing"])
 
-      {raw, code} = run(dir)
-      out = scrub(raw)
+      {out, code} = run(dir)
 
       assert out =~ "BROKEN:"
       refute out =~ "PASS:"
@@ -151,10 +142,10 @@ defmodule LeiService.VerifyGuardsScriptTest do
     # as proof. Nothing was demonstrated, so it is inconclusive.
     test "is INCONCLUSIVE, not verified", %{dir: dir} do
       fixture(dir, "def value, do: :correct\n", ":correct", ":wrong")
-      mix_returns(dir, ["0:", "1:** (CompileError) lib/subject.ex:1: undefined"])
+      mix_returns(dir, ["0:", "1:a test failure nobody should reach"])
+      File.write!(Path.join(dir, "compile_code"), "1")
 
-      {raw, code} = run(dir)
-      out = scrub(raw)
+      {out, code} = run(dir)
 
       assert out =~ "INCONCLUSIVE:"
       refute out =~ "PASS:"
@@ -168,13 +159,9 @@ defmodule LeiService.VerifyGuardsScriptTest do
       # directory restore -- as inconclusive.
       fixture(dir, "def value, do: :correct\n", ":correct", ":wrong")
 
-      mix_returns(dir, [
-        "0:",
-        "1:** (File.Error) could not get current working directory: no such file or directory"
-      ])
+      mix_returns(dir, ["0:", "1:** (File.Error) could not get cwd: no such file or directory"])
 
-      {raw, code} = run(dir)
-      out = scrub(raw)
+      {out, code} = run(dir)
 
       assert out =~ "PASS:"
       refute out =~ "INCONCLUSIVE"
@@ -187,8 +174,7 @@ defmodule LeiService.VerifyGuardsScriptTest do
       fixture(dir, "def value, do: :correct\n", ":correct", ":wrong")
       mix_returns(dir, ["0:", "0:"])
 
-      {raw, code} = run(dir)
-      out = scrub(raw)
+      {out, code} = run(dir)
 
       assert out =~ "FAIL:"
       assert out =~ "0 verified, 1 unguarded"
@@ -205,8 +191,7 @@ defmodule LeiService.VerifyGuardsScriptTest do
       fixture(dir, original, ":correct", ":wrong")
       mix_returns(dir, ["0:", "1:"])
 
-      {raw, code} = run(dir)
-      out = scrub(raw)
+      {out, code} = run(dir)
 
       assert out =~ "STALE:"
       assert out =~ "0 verified"
@@ -220,15 +205,27 @@ defmodule LeiService.VerifyGuardsScriptTest do
     test "the mutated file is restored", %{dir: dir} do
       original = "def value, do: :correct\n"
 
-      for results <- [["0:", "1:failed"], ["0:", "0:"], ["0:", "1:** (CompileError) x"]] do
+      # Labelled rather than inspected, so fixture data never reaches a failure
+      # message. It mattered when the script classified by grepping test
+      # output: a fixture printed here was read back by the outer run as a
+      # real compile error, and the same guard reported INCONCLUSIVE on one
+      # run and PASS on the next. The script now compiles separately and reads
+      # an exit code, so no output can change a verdict -- and keeping fixture
+      # data out of messages costs nothing either way.
+      scenarios = [
+        {"a test failure", ["0:", "1:failed"]},
+        {"a passing test", ["0:", "0:"]},
+        {"a test failure after a clean compile", ["0:", "1:boom"]}
+      ]
+
+      for {label, results} <- scenarios do
         fixture(dir, original, ":correct", ":wrong")
         File.rm(Path.join(dir, "calls"))
         mix_returns(dir, results)
 
         run(dir)
 
-        assert subject(dir) == original,
-               "left the subject mutated after #{inspect(results)}"
+        assert subject(dir) == original, "left the subject mutated after #{label}"
       end
     end
   end

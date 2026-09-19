@@ -71,16 +71,6 @@ backup_file() {
   cp "$f" "$BACKUP_DIR/$f"
 }
 
-# A run that never got as far as executing tests. Distinguished from a test
-# that ran and failed, because only the second says anything about a guard.
-compile_error() {
-  # Deliberately narrow. An earlier version also matched "no such file or
-  # directory", which caught a *runtime* File.Error from a mutation that
-  # removed a working-directory restore -- the test had run and had caught
-  # exactly the bug, and this reported it as inconclusive.
-  grep -qE "\(CompileError\)|\(SyntaxError\)|\(TokenMissingError\)|MismatchedDelimiterError|Compilation failed|error: undefined function" "$1"
-}
-
 PASS=0
 FAIL=0
 STALE=0
@@ -327,28 +317,38 @@ open(m['file'], 'w').write(src.replace(m['find'], m['replace'], 1))
 
   force_recompile "$FILE"
 
-  # Run only the guarding test. It must fail -- and it must fail *as a test*.
-  (cd "$APP" && MIX_ENV=test mix test "$GUARDED_BY" >/tmp/guard.out 2>&1)
-  MUTATED_RC=$?
+  # Does it still build? Asked with a compile of its own, and answered by an
+  # exit code.
+  #
+  # This used to be inferred by grepping the test output for compile-error
+  # text, which made the verdict depend on what happened to be printed --
+  # including, three times, fixture strings from the tests of this very
+  # script leaking into ExUnit's failure output and being read back as a real
+  # compile error. A test's output is not a reliable input to the tool testing
+  # it. An exit code is.
+  if ! (cd "$APP" && MIX_ENV=test mix compile >/tmp/guard-compile.out 2>&1); then
+    red "  INCONCLUSIVE: the mutation stopped $APP compiling, so the test never ran."
+    red "                Nothing was proved about this guard. Rewrite the mutation"
+    red "                so the code still compiles with the bug in it."
+    tail -3 /tmp/guard-compile.out | sed 's/^/                /'
+    INCONCLUSIVE=$((INCONCLUSIVE + 1))
+    cp "$BACKUP_DIR/$FILE" "$FILE"
+    force_recompile "$FILE"
+    echo ""
+    continue
+  fi
 
-  if [ $MUTATED_RC -eq 0 ]; then
+  # Run only the guarding test. It must fail.
+  if (cd "$APP" && MIX_ENV=test mix test "$GUARDED_BY" >/tmp/guard.out 2>&1); then
     red "  FAIL: $GUARDED_BY still PASSED with the bug reintroduced."
     red "        This test does not actually guard against it."
     tail -5 /tmp/guard.out | sed 's/^/        /'
     FAIL=$((FAIL + 1))
-  elif compile_error /tmp/guard.out; then
-    # A mutation that stops the app compiling exits non-zero without running a
-    # single test, which this script used to count as proof. It is not: the
-    # guard never executed, so nothing was demonstrated about it.
-    red "  INCONCLUSIVE: the mutation stopped $APP compiling, so the test never ran."
-    red "                Nothing was proved about this guard. Rewrite the mutation"
-    red "                so the code still compiles with the bug in it."
-    grep -m 2 -E "error:|\*\* \(" /tmp/guard.out | sed 's/^/                /'
-    INCONCLUSIVE=$((INCONCLUSIVE + 1))
   else
     green "  PASS: $GUARDED_BY caught the reintroduced bug"
     PASS=$((PASS + 1))
   fi
+
 
   cp "$BACKUP_DIR/$FILE" "$FILE"
   force_recompile "$FILE"
