@@ -68,9 +68,22 @@ backup_file() {
   cp "$f" "$BACKUP_DIR/$f"
 }
 
+# A run that never got as far as executing tests. Distinguished from a test
+# that ran and failed, because only the second says anything about a guard.
+compile_error() {
+  # Deliberately narrow. An earlier version also matched "no such file or
+  # directory", which caught a *runtime* File.Error from a mutation that
+  # removed a working-directory restore -- the test had run and had caught
+  # exactly the bug, and this reported it as inconclusive.
+  grep -qE "\(CompileError\)|\(SyntaxError\)|\(TokenMissingError\)|MismatchedDelimiterError|Compilation failed|error: undefined function" "$1"
+}
+
 PASS=0
 FAIL=0
 STALE=0
+BROKEN=0
+INCONCLUSIVE=0
+declare -A BASELINE_CACHE
 
 # Mix recompiles a source only if its size changed, or its mtime is newer
 # than the build manifest *and* its digest changed -- mtimes at one-second
@@ -257,6 +270,34 @@ for k in ('file', 'guarded_by', 'app', 'bug'):
   bold "$id"
   echo "  guards against: $BUG"
 
+  # The negative control needs its own control. A test that is already failing
+  # -- or that cannot compile, or names a file that does not exist -- fails
+  # after the mutation too, and this script counted that as proof for as long
+  # as it has existed. Four guards were "verified" that way on 2026-09-18,
+  # against a test file with a syntax error.
+  #
+  # Cached per test file: many mutations share one guard, and the baseline
+  # only has to be established once per run.
+  baseline_key="$APP|$GUARDED_BY"
+
+  if [ -z "${BASELINE_CACHE[$baseline_key]:-}" ]; then
+    if (cd "$APP" && MIX_ENV=test mix test "$GUARDED_BY" >/tmp/baseline.out 2>&1); then
+      BASELINE_CACHE[$baseline_key]=ok
+    else
+      BASELINE_CACHE[$baseline_key]=broken
+    fi
+  fi
+
+  if [ "${BASELINE_CACHE[$baseline_key]}" = "broken" ]; then
+    red "  BROKEN: $GUARDED_BY does not pass before the mutation is applied."
+    red "          Its failure afterwards would prove nothing, so this guard is"
+    red "          not verified. Fix the test first."
+    tail -4 /tmp/baseline.out | sed 's/^/          /'
+    BROKEN=$((BROKEN + 1))
+    echo ""
+    continue
+  fi
+
   # Apply the mutation. A find string that no longer matches means the guarded
   # code changed -- report that distinctly from a guard failure, because the
   # two need different responses.
@@ -283,12 +324,24 @@ open(m['file'], 'w').write(src.replace(m['find'], m['replace'], 1))
 
   force_recompile "$FILE"
 
-  # Run only the guarding test. It must fail.
-  if (cd "$APP" && MIX_ENV=test mix test "$GUARDED_BY" >/tmp/guard.out 2>&1); then
+  # Run only the guarding test. It must fail -- and it must fail *as a test*.
+  (cd "$APP" && MIX_ENV=test mix test "$GUARDED_BY" >/tmp/guard.out 2>&1)
+  MUTATED_RC=$?
+
+  if [ $MUTATED_RC -eq 0 ]; then
     red "  FAIL: $GUARDED_BY still PASSED with the bug reintroduced."
     red "        This test does not actually guard against it."
     tail -5 /tmp/guard.out | sed 's/^/        /'
     FAIL=$((FAIL + 1))
+  elif compile_error /tmp/guard.out; then
+    # A mutation that stops the app compiling exits non-zero without running a
+    # single test, which this script used to count as proof. It is not: the
+    # guard never executed, so nothing was demonstrated about it.
+    red "  INCONCLUSIVE: the mutation stopped $APP compiling, so the test never ran."
+    red "                Nothing was proved about this guard. Rewrite the mutation"
+    red "                so the code still compiles with the bug in it."
+    grep -m 2 -E "error:|\*\* \(" /tmp/guard.out | sed 's/^/                /'
+    INCONCLUSIVE=$((INCONCLUSIVE + 1))
   else
     green "  PASS: $GUARDED_BY caught the reintroduced bug"
     PASS=$((PASS + 1))
@@ -301,9 +354,12 @@ done
 
 restore
 
-bold "=== $PASS verified, $FAIL unguarded, $STALE stale${SELECTED_NOTE} ==="
+bold "=== $PASS verified, $FAIL unguarded, $STALE stale, $BROKEN broken, $INCONCLUSIVE inconclusive${SELECTED_NOTE} ==="
 
-if [ "$FAIL" -gt 0 ] || [ "$STALE" -gt 0 ]; then
+# BROKEN and INCONCLUSIVE fail too. Both mean a guard was not verified, and a
+# guard that was not verified is indistinguishable from one that does not work
+# -- which is the whole reason this script exists.
+if [ "$FAIL" -gt 0 ] || [ "$STALE" -gt 0 ] || [ "$BROKEN" -gt 0 ] || [ "$INCONCLUSIVE" -gt 0 ]; then
   exit 1
 fi
 
