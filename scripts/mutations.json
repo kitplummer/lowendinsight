@@ -2853,6 +2853,33 @@
       "replace": "          reraise error, __STACKTRACE__",
       "guarded_by": "test/lei_service/analyze_unqueued_credit_test.exs",
       "app": "apps/lei_service"
+    },
+    {
+      "id": "unqueued-work-uncounted",
+      "bug": "Work charged for that never reached the queue was credited back and reported nowhere, so a rising rate -- Oban schema drift, a database refusing the insert -- was visible only to someone reading the ledger.",
+      "file": "apps/lei_service/lib/lei/metrics.ex",
+      "find": "      ~s(lei_unqueued_credits{window=\"1h\",measure=\"entries\"} #{recent_entries}),",
+      "replace": "      ~s(lei_unqueued_credits{window=\"1h\",measure=\"entries\"} 0),",
+      "guarded_by": "test/lei/unqueued_metric_test.exs",
+      "app": "apps/lei_service"
+    },
+    {
+      "id": "monitor-ignores-unqueued-work",
+      "bug": "The monitor read the unqueued-work gauge and never compared it, so the queue refusing work failed nothing.",
+      "file": ".github/workflows/monitor.yml",
+      "find": "          if [ \"${UNQUEUED:-0}\" -gt 0 ]; then",
+      "replace": "          if [ \"${UNQUEUED:-0}\" -gt 99999 ]; then",
+      "guarded_by": "test/lei/unqueued_metric_test.exs",
+      "app": "apps/lei_service"
+    },
+    {
+      "id": "unqueued-window-never-expires",
+      "bug": "The one-hour window counted every entry ever written, so a single past incident kept the monitor red forever and the check stopped meaning anything.",
+      "file": "apps/lei_service/lib/lei/metrics.ex",
+      "find": "    {recent_entries, recent_credits} =\n      count_and_sum(from(e in unqueued, where: e.inserted_at >= ^since))",
+      "replace": "    {recent_entries, recent_credits} = count_and_sum(unqueued)",
+      "guarded_by": "test/lei/unqueued_metric_test.exs",
+      "app": "apps/lei_service"
     }
   ]
 }

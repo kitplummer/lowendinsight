@@ -221,7 +221,8 @@ jobs:
           # whole step green. So the families are asserted present before
           # anything reads a value out of them.
           for family in lei_payment_switch_enabled lei_payment_held \
-                        lei_stripe_reversal_events_total lei_payment_outcomes; do
+                        lei_stripe_reversal_events_total lei_payment_outcomes \
+                        lei_unqueued_credits; do
             if ! echo "$METRICS" | grep -q "^${family}"; then
               echo "::error::/metrics is not publishing ${family}. The check that reads it cannot run, and an absent counter reads exactly like a clean one."
               FAILED=1
@@ -272,6 +273,22 @@ jobs:
           UNMATCHED=$(gauge 'lei_stripe_reversal_events_total{result="unmatched"}')
           if [ "${UNMATCHED:-0}" -gt 0 ]; then
             echo "::error::${UNMATCHED} refund/dispute event(s) matched no credit purchase. Credits were not taken back for money that was."
+            FAILED=1
+          fi
+
+          # -- work charged for that never reached the queue (#217)
+          #
+          # The credits were given back, so no customer is out of pocket -- but
+          # something stopped the queue accepting work, and the usual cause is
+          # Oban schema drift, which nothing else reports until analyses stop
+          # happening. A one-hour window rather than a day: long enough not to
+          # vanish before anyone looks, short enough to clear on its own.
+          UNQUEUED=$(gauge 'lei_unqueued_credits{window="1h",measure="entries"}')
+          UNQUEUED_ALL=$(gauge 'lei_unqueued_credits{window="all",measure="entries"}')
+          echo "unqueued — last hour: ${UNQUEUED:-unknown}  all time: ${UNQUEUED_ALL:-unknown}"
+
+          if [ "${UNQUEUED:-0}" -gt 0 ]; then
+            echo "::error::${UNQUEUED} request(s) were charged for work that could not be queued in the last hour, and credited back. Check the Oban schema (ObanSchemaVersionTest) and the database."
             FAILED=1
           fi
 
