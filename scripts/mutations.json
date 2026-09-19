@@ -1020,10 +1020,10 @@
     },
     {
       "id": "session-secret-read-at-build-time",
-      "bug": "The session secret is not read at boot, so production signs session cookies with the development default committed to this repository (security, 2026-09-14).",
+      "bug": "The session secret is not read at boot, so production signs session cookies with the development default committed to this repository (security, 2026-09-14). Deleting the key left a dangling comma in the keyword list, so the app did not compile and the guard never ran. Setting a literal expresses the same bug -- a value fixed at build time rather than read at boot -- and still compiles.",
       "file": "config/runtime.exs",
-      "find": "    session_secret_key_base: session_secret\n",
-      "replace": "",
+      "find": "    session_secret_key_base: session_secret",
+      "replace": "    session_secret_key_base: \"compiled-in-default\"",
       "guarded_by": "test/runtime_secrets_config_test.exs",
       "app": "apps/lei_service"
     },
@@ -1677,10 +1677,10 @@
     },
     {
       "id": "oban-no-pruner",
-      "bug": "Without Pruner, completed and discarded jobs accumulate in oban_jobs indefinitely.",
+      "bug": "Without Pruner, completed and discarded jobs accumulate in oban_jobs indefinitely. Deleting the line left a dangling comma in the keyword list. Oban takes false to disable a plugin, which is the same absence and compiles.",
       "file": "config/config.exs",
-      "find": "  pruner: [max_age: {7, :days}]\n",
-      "replace": "",
+      "find": "  pruner: [max_age: {7, :days}]",
+      "replace": "  pruner: false",
       "guarded_by": "test/lei_service/oban_production_config_test.exs",
       "app": "apps/lei_service"
     },
@@ -1947,10 +1947,10 @@
     },
     {
       "id": "api-verifies-signature-only",
-      "bug": "The API endpoint verifying only the signature accepts an expired operator token even though Lei.OperatorToken exists.",
-      "file": "apps/lei_service/lib/lei_service/auth.ex",
-      "find": "    case Lei.OperatorToken.verify(jwt) do",
-      "replace": "    case Joken.verify(jwt, signer()) do",
+      "bug": "The API endpoint verifying only the signature accepts an expired operator token even though Lei.OperatorToken exists. Called signer/0 in LeiService.Auth, where it does not exist, so compilation failed and the guard never ran. Dropping the expiry check inside Lei.OperatorToken is the same bug -- signature verified, claims not -- and compiles.",
+      "file": "apps/lei_service/lib/lei/operator_token.ex",
+      "find": "    with {:ok, claims} <- Joken.verify(jwt, signer()),\n         {:ok, exp} <- fetch_exp(claims),\n         :ok <- check_expiry(exp) do\n      {:ok, claims}\n    end",
+      "replace": "    Joken.verify(jwt, signer())",
       "guarded_by": "test/lei/operator_token_expiry_test.exs",
       "app": "apps/lei_service"
     },
