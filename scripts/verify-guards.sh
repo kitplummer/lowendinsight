@@ -31,7 +31,10 @@
 
 set -uo pipefail
 
-MANIFEST="$(dirname "$0")/../scripts/mutations.json"
+# Overridable so this script can be run against a fixture manifest, which is
+# how it is itself tested -- see test/lei_service/verify_guards_script_test.exs.
+# Nothing in normal use sets it.
+MANIFEST="${GUARD_MANIFEST:-$(dirname "$0")/../scripts/mutations.json}"
 ONLY=""
 SINCE=""
 case "${1:-}" in
