@@ -2889,6 +2889,42 @@
       "replace": "config :lei_service, Lei.Repo,\n  database: System.get_env(\"LEI_TEST_DB\") || \"lowendinsight_test\",",
       "guarded_by": "test/lei_service/repo_topology_test.exs",
       "app": "apps/lei_service"
+    },
+    {
+      "id": "guard-verifier-accepts-a-broken-guard",
+      "bug": "verify-guards.sh accepted a guarding test that was already failing. Its failure after the mutation proved nothing, and four guards were verified that way on 2026-09-18 against a test file with a syntax error.",
+      "file": "scripts/verify-guards.sh",
+      "find": "  if [ \"${BASELINE_CACHE[$baseline_key]}\" = \"broken\" ]; then",
+      "replace": "  if [ \"${BASELINE_CACHE[$baseline_key]}\" = \"never-matches\" ]; then",
+      "guarded_by": "test/lei_service/verify_guards_script_test.exs",
+      "app": "apps/lei_service"
+    },
+    {
+      "id": "guard-verifier-counts-a-compile-error-as-proof",
+      "bug": "A mutation that stopped the app compiling exited non-zero without running a test, and verify-guards.sh counted that as the guard catching the bug.",
+      "file": "scripts/verify-guards.sh",
+      "find": "  grep -qE \"\\(CompileError\\)|\\(SyntaxError\\)|\\(TokenMissingError\\)|MismatchedDelimiterError|Compilation failed|error: undefined function\" \"$1\"",
+      "replace": "  grep -qE \"a-pattern-that-never-matches-anything\" \"$1\"",
+      "guarded_by": "test/lei_service/verify_guards_script_test.exs",
+      "app": "apps/lei_service"
+    },
+    {
+      "id": "webhook-verifier-does-not-restore",
+      "bug": "verify-webhook-secret.sh subscribes the endpoint to an extra event type to force a delivery. Without the restore, the endpoint is left subscribed to something nobody asked for.",
+      "file": "scripts/verify-webhook-secret.sh",
+      "find": "trap restore EXIT",
+      "replace": "true",
+      "guarded_by": "test/lei_service/verify_webhook_script_test.exs",
+      "app": "apps/lei_service"
+    },
+    {
+      "id": "webhook-verifier-treats-silence-as-success",
+      "bug": "A delivery that never arrived was reported as a verified secret. It is the opposite: nothing was proved, and the cause is reachability rather than the secret.",
+      "file": "scripts/verify-webhook-secret.sh",
+      "find": "  red \"NOTHING ARRIVED: no counter moved, so the delivery never reached the application.\"",
+      "replace": "  green \"VERIFIED: no counter moved, which we will assume is fine.\"",
+      "guarded_by": "test/lei_service/verify_webhook_script_test.exs",
+      "app": "apps/lei_service"
     }
   ]
 }
