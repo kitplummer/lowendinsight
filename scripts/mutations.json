@@ -1947,10 +1947,10 @@
     },
     {
       "id": "api-verifies-signature-only",
-      "bug": "The API endpoint verifying only the signature accepts an expired operator token even though Lei.OperatorToken exists. Called signer/0 in LeiService.Auth, where it does not exist, so compilation failed and the guard never ran. Dropping the expiry check inside Lei.OperatorToken is the same bug -- signature verified, claims not -- and compiles.",
+      "bug": "The API endpoint verifying only the signature accepts an expired operator token. Two earlier forms of this mutation never ran: one called signer/0 where it does not exist, and one dropped the whole expiry check, orphaning two private functions -- harmless locally, a compile failure under the warnings-as-errors CI uses. This moves the comparison instead, so nothing is left unused.",
       "file": "apps/lei_service/lib/lei/operator_token.ex",
-      "find": "    with {:ok, claims} <- Joken.verify(jwt, signer()),\n         {:ok, exp} <- fetch_exp(claims),\n         :ok <- check_expiry(exp) do\n      {:ok, claims}\n    end",
-      "replace": "    Joken.verify(jwt, signer())",
+      "find": "      exp <= now -> {:error, :expired}",
+      "replace": "      exp <= now - 999_999_999 -> {:error, :expired}",
       "guarded_by": "test/lei/operator_token_expiry_test.exs",
       "app": "apps/lei_service"
     },
@@ -2901,10 +2901,10 @@
     },
     {
       "id": "guard-verifier-counts-a-compile-error-as-proof",
-      "bug": "A mutation that stopped the app compiling exited non-zero without running a test, and verify-guards.sh counted that as the guard catching the bug.",
+      "bug": "A mutation that stopped the app compiling exited non-zero without running a test, and verify-guards.sh counted that as the guard catching the bug. It was later inferred by grepping the test output, which made the verdict depend on what was printed -- fixture strings from this script's own tests were read back as real compile errors three times. It is now a compile of its own, answered by an exit code.",
       "file": "scripts/verify-guards.sh",
-      "find": "  grep -qE \"\\(CompileError\\)|\\(SyntaxError\\)|\\(TokenMissingError\\)|MismatchedDelimiterError|Compilation failed|error: undefined function\" \"$1\"",
-      "replace": "  grep -qE \"a-pattern-that-never-matches-anything\" \"$1\"",
+      "find": "  if ! (cd \"$APP\" && MIX_ENV=test mix compile >/tmp/guard-compile.out 2>&1); then",
+      "replace": "  if false; then",
       "guarded_by": "test/lei_service/verify_guards_script_test.exs",
       "app": "apps/lei_service"
     },
