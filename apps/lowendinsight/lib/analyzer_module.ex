@@ -414,13 +414,51 @@ defmodule AnalyzerModule do
   """
   @spec determine_risk_counts(RepoReport.t()) :: map
   def determine_risk_counts(report) do
+    repos = report[:report][:repos] || []
+
     count_map =
-      report[:report][:repos]
-      |> Enum.map(fn repo -> repo.data.risk end)
+      repos
+      |> Enum.map(&repo_field(&1, :risk))
       |> Enum.reduce(%{}, fn x, acc -> Map.update(acc, x, 1, &(&1 + 1)) end)
 
-    metadata = Map.put_new(report[:metadata], :risk_counts, count_map)
+    metadata =
+      report[:metadata]
+      |> Map.put_new(:risk_counts, count_map)
+      |> Map.put(:ranking, ranking(repos))
+
     report |> Map.put(:metadata, metadata)
+  end
+
+  # Worst first, so "what do I look at" is the top of a list rather than a
+  # parse of every entry. A tree half of which reads `critical` cannot be acted
+  # on by severity alone, which is what risk_rank orders through (#247).
+  #
+  # A repository whose shape cannot be read still appears, ranked last. Dropping
+  # it would quietly shorten the list a customer is using to decide what to fix.
+  defp ranking(repos) do
+    repos
+    |> Enum.map(fn repo ->
+      %{
+        repo: repo_field(repo, :repo),
+        risk: repo_field(repo, :risk),
+        rank: repo_field(repo, :risk_rank) || -1,
+        profile: repo_field(repo, :risk_profile)
+      }
+    end)
+    |> Enum.sort_by(& &1.rank, :desc)
+  end
+
+  # Repo reports arrive as structs from a fresh analysis and as string-keyed
+  # maps when decoded from the cache, sometimes in the same report.
+  defp repo_field(repo, key) do
+    data =
+      cond do
+        is_map(repo) and is_map(Map.get(repo, :data)) -> Map.get(repo, :data)
+        is_map(repo) and is_map(Map.get(repo, "data")) -> Map.get(repo, "data")
+        true -> %{}
+      end
+
+    Map.get(data, key) || Map.get(data, to_string(key))
   end
 
   @doc """
@@ -446,7 +484,14 @@ defmodule AnalyzerModule do
     # maximum, so one critical metric and three read the same; this keeps the
     # difference without adding a level the enum's consumers would have to
     # learn.
-    data = Map.put(data, :risk_profile, Lei.RiskProfile.of(report[:data][:results]))
+    profile = Lei.RiskProfile.of(report[:data][:results])
+
+    data =
+      data
+      |> Map.put(:risk_profile, profile)
+      # A sort key beside the verdict, so a consumer holding hundreds of
+      # repositories can order them without reopening each one (#247).
+      |> Map.put(:risk_rank, Lei.RiskProfile.rank(profile))
 
     report |> Map.put(:header, report[:header]) |> Map.put(:data, data)
   end

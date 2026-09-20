@@ -269,6 +269,11 @@ defmodule LeiService.CacheCurrencyFreshnessTest do
              "the profile still describes the repository as it was analysed"
 
       assert out["data"]["risk_profile"]["elevated"] == ["commit_currency_risk"]
+
+      # The rank is derived from the same counts and is the field a customer
+      # sorts by, so it going stale would be the same defect on the field that
+      # decides what they look at first.
+      assert out["data"]["risk_rank"] == 10_000
     end
 
     test "a report predating the profile does not acquire one" do
