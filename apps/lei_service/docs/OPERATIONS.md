@@ -828,6 +828,79 @@ settlement would, with the path still off and after the challenge has expired.
 Stripe records a stablecoin payment only once asked to verify it, so a held
 payment can be refunded only after it is released.
 
+### Stripe places the account on hold
+
+**Nothing here will tell you.** `/readyz` reports `stripe: ok` throughout:
+`Lei.Stripe.ObjectCheck` validates the secret key and the price IDs, and a
+held account answers both perfectly well. It does not read account state --
+nothing in this codebase does. A hold is therefore invisible to every health
+check we have, which is the failure this repository keeps meeting and the
+reason this section exists.
+
+What a hold actually stops depends on which one it is, and the two are
+independent:
+
+| | effect | what you see here |
+|---|---|---|
+| `charges_enabled: false` | no new money can be taken | rails refuse; `lei_payment_outcomes{outcome="refused"}` climbs with the Stripe reason |
+| `payouts_enabled: false` | money still arrives, none reaches the bank | **nothing at all** -- every metric here is about charges, not payouts |
+
+The second is the dangerous one. Revenue looks healthy, the ledger reconciles,
+and the only symptom is money not arriving in the bank -- which no check in
+this repository looks at.
+
+**Confirm it, rather than inferring it from failures:**
+
+```bash
+stripe get /v1/account | jq '{charges_enabled, payouts_enabled,
+  disabled_reason: .requirements.disabled_reason,
+  currently_due: .requirements.currently_due,
+  past_due: .requirements.past_due}'
+```
+
+Healthy looks like `charges_enabled: true`, `payouts_enabled: true`,
+`disabled_reason: null`, both requirement lists empty.
+
+**If charges are disabled.** Every rail is taking payment requests it cannot
+settle, and an agent presenting a credential gets a refusal after its money has
+already moved on chain for the stablecoin rail. Switch the affected paths off
+so callers are told the rail is unavailable rather than failing at the wallet:
+
+```bash
+scripts/payments.sh switch-off tempo --reason "stripe account hold" --actor "$USER"
+scripts/payments.sh switch-off mpp   --reason "stripe account hold" --actor "$USER"
+scripts/payments.sh switch-off acp   --reason "stripe account hold" --actor "$USER"
+```
+
+Then `scripts/payments.sh held` and release anything stranded once charges are
+restored. A switched-off rail is counted on `lei_payment_switch_enabled` and
+the monitor fails on it, so this will not be forgotten silently.
+
+**If only payouts are paused**, change nothing. Charges still work, the ledger
+is still correct, and switching rails off would refuse money you can accept.
+
+**Restoring.** Stripe lists what it wants under `requirements.currently_due`
+and `past_due`; satisfy those in the Dashboard. Re-check with the command
+above and switch the rails back on individually, confirming each:
+
+```bash
+scripts/payments.sh switch-on tempo --reason "hold cleared" --actor "$USER"
+scripts/payments.sh status
+```
+
+**Afterwards**, run the reconciliation rather than assuming the gap closed
+itself -- a hold that began mid-payment can leave money received and never
+credited:
+
+```bash
+scripts/payments.sh reconciliation
+```
+
+**Known gap.** Because nothing reads account state, the first sign of a hold
+will be refusals on `/metrics` or a customer telling you. Adding an account
+check to `ObjectCheck` would surface it directly; it is not built, and `payouts_enabled`
+would still need somewhere to report to, since no existing gauge covers payouts.
+
 ### `scripts/payments.sh`
 
 The command-line interface to these operations (`Lei.Operations`, over `rpc`):
