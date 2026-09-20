@@ -63,6 +63,18 @@ defmodule Lei.ReportFreshness do
         |> Map.put("results", revised)
         |> Map.put("risk", toplevel_risk(revised))
 
+      # The profile is derived from the same verdicts, so leaving it behind
+      # would reintroduce exactly the defect this module exists to remove: a
+      # value frozen at analysis time, served as though it were current. Only
+      # refreshed on a report that already carries one, for the same reason
+      # the metrics are.
+      data =
+        if Map.has_key?(data, "risk_profile") do
+          Map.put(data, "risk_profile", Lei.RiskProfile.of(revised))
+        else
+          data
+        end
+
       Map.put(report, "data", data)
     end
   end

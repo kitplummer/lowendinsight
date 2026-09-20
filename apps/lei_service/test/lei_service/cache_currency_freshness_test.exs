@@ -247,6 +247,37 @@ defmodule LeiService.CacheCurrencyFreshnessTest do
     end
   end
 
+  describe "the risk profile follows the metrics it summarises (#247)" do
+    # It is derived from the same verdicts, so freezing it in the cache would
+    # be the identical defect to the one this module exists to remove -- and
+    # that one was wrong on one cached report in seven.
+    test "is recomputed when a metric moves" do
+      u = url()
+
+      report =
+        cached_report(stored_weeks: 25, stored_risk: "low", last_commit_weeks_ago: 120)
+        |> put_in(["data", "risk_profile"], %{
+          "counts" => %{"low" => 4, "medium" => 0, "high" => 0, "critical" => 0},
+          "elevated" => []
+        })
+
+      {:ok, _} = Datastore.write_to_cache(u, report)
+      {:ok, json, :hit} = Datastore.get_from_cache(u, 28)
+      out = Poison.decode!(json)
+
+      assert out["data"]["risk_profile"]["counts"]["critical"] == 1,
+             "the profile still describes the repository as it was analysed"
+
+      assert out["data"]["risk_profile"]["elevated"] == ["commit_currency_risk"]
+    end
+
+    test "a report predating the profile does not acquire one" do
+      report = put_and_read(stored_weeks: 25, stored_risk: "low", last_commit_weeks_ago: 120)
+
+      refute Map.has_key?(report["data"], "risk_profile")
+    end
+  end
+
   describe "the path with no age limit at all" do
     # `cache_mode=stale` and `full_report/2` read through here, where an entry
     # can be arbitrarily old. It is the worse offender, not the lesser one.

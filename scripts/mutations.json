@@ -3015,6 +3015,24 @@
       "replace": "    critical = level(:critical_functional_currency_level, 52)",
       "guarded_by": "test/lei/functional_currency_thresholds_test.exs",
       "app": "apps/lowendinsight"
+    },
+    {
+      "id": "risk-profile-elevated-is-unsorted",
+      "bug": "Map iteration order is not guaranteed, so an unsorted elevated list makes two reports of the same unchanged repository compare unequal.",
+      "file": "apps/lowendinsight/lib/lei/risk_profile.ex",
+      "find": "        |> Enum.sort()",
+      "replace": "        |> Enum.reverse()",
+      "guarded_by": "test/lei/risk_profile_test.exs",
+      "app": "apps/lowendinsight"
+    },
+    {
+      "id": "cached-risk-profile-is-served-frozen",
+      "bug": "The profile is derived from the same verdicts the refresh recomputes. Leaving it as stored reintroduces exactly the defect #242 fixed -- a value frozen at analysis time served as though current -- on the field a customer would use to rank what to look at first.",
+      "file": "apps/lowendinsight/lib/lei/report_freshness.ex",
+      "find": "          Map.put(data, \"risk_profile\", Lei.RiskProfile.of(revised))",
+      "replace": "          data",
+      "guarded_by": "test/lei_service/cache_currency_freshness_test.exs",
+      "app": "apps/lei_service"
     }
   ]
 }
