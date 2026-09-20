@@ -120,7 +120,7 @@ defmodule AnalyzerModule do
         case GitModule.get_last_substantive_commit_date(repo) do
           {:ok, sub_date, window} ->
             sub_weeks = TimeHelper.get_commit_delta(sub_date) |> TimeHelper.sec_to_weeks()
-            {:ok, sub_risk} = RiskLogic.commit_currency_risk(sub_weeks)
+            {:ok, sub_risk} = RiskLogic.functional_commit_currency_risk(sub_weeks)
             {sub_date, sub_weeks, sub_risk, window}
 
           {:error, _} ->

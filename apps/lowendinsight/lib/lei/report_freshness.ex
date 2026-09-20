@@ -50,7 +50,8 @@ defmodule Lei.ReportFreshness do
       |> recompute(
         git["last_substantive_commit_date"],
         "functional_commit_currency_weeks",
-        "functional_commit_currency_risk"
+        "functional_commit_currency_risk",
+        &RiskLogic.functional_commit_currency_risk/1
       )
 
     if revised == results do
@@ -72,12 +73,12 @@ defmodule Lei.ReportFreshness do
   # never carried the metric does not gain it here: only a pair already present
   # is revised, so an older entry keeps exactly the shape it was stored with
   # rather than acquiring a field the analysis that produced it never computed.
-  defp recompute(results, date, weeks_key, risk_key) do
+  defp recompute(results, date, weeks_key, risk_key, scorer \\ &RiskLogic.commit_currency_risk/1) do
     with true <- Map.has_key?(results, risk_key),
          true <- is_binary(date),
          seconds when is_integer(seconds) <- TimeHelper.get_commit_delta(date),
          weeks = TimeHelper.sec_to_weeks(seconds),
-         {:ok, risk} <- RiskLogic.commit_currency_risk(weeks) do
+         {:ok, risk} <- scorer.(weeks) do
       results
       |> Map.put(weeks_key, weeks)
       |> Map.put(risk_key, risk)

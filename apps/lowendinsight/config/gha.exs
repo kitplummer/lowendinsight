@@ -25,6 +25,17 @@ config :lowendinsight,
     String.to_integer(System.get_env("LEI_CRITICAL_CURRENCY_LEVEL") || "104"),
   high_currency_level: String.to_integer(System.get_env("LEI_HIGH_CURRENCY_LEVEL") || "52"),
   medium_currency_level: String.to_integer(System.get_env("LEI_MEDIUM_CURRENCY_LEVEL") || "26"),
+  ## Functional commit currency (#244): time since the last commit that carried
+  ## information -- not a bot bump, not a README fix. Configured apart from the
+  ## plain currency levels above because the substantive date is always at or
+  ## before the plain one, so shared thresholds would let this metric shadow it
+  ## entirely and make tuning either one move both.
+  critical_functional_currency_level:
+    String.to_integer(System.get_env("LEI_CRITICAL_FUNCTIONAL_CURRENCY_LEVEL") || "104"),
+  high_functional_currency_level:
+    String.to_integer(System.get_env("LEI_HIGH_FUNCTIONAL_CURRENCY_LEVEL") || "52"),
+  medium_functional_currency_level:
+    String.to_integer(System.get_env("LEI_MEDIUM_FUNCTIONAL_CURRENCY_LEVEL") || "26"),
 
   ## Percentage of changes to repo in recent commit - is the codebase
   ## volatile in terms of quantity of source being changed

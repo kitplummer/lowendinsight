@@ -87,6 +87,46 @@ defmodule RiskLogic do
   end
 
   @doc """
+  functional_commit_currency_risk/1: the risk from time since the last commit
+  that carried information (#244).
+
+  Configured separately from `commit_currency_risk/1` on purpose. The last
+  substantive commit is always at or before the last commit of any kind, so
+  under shared thresholds this metric could only ever be the worse of the two
+  -- and since the report's verdict is a maximum, the plain metric could never
+  be the one that decides. Tuning one would silently move the other. These are
+  the levels that actually govern the verdict; `commit_currency_*` is kept as
+  it was so the two remain comparable in a report.
+
+  The fallbacks below are deliberately distinct from each other. Where
+  `commit_currency_risk/1` falls back to 52 for both its high and critical
+  levels -- making `"high"` unreachable for a library consumer who configures
+  nothing -- every level here is reachable without configuration.
+  """
+  @spec functional_commit_currency_risk(non_neg_integer) :: {:ok, String.t()}
+  def functional_commit_currency_risk(delta_in_weeks) do
+    medium = level(:medium_functional_currency_level, 26)
+    high = level(:high_functional_currency_level, 52)
+    critical = level(:critical_functional_currency_level, 104)
+
+    cond do
+      delta_in_weeks < medium -> {:ok, "low"}
+      delta_in_weeks < high -> {:ok, "medium"}
+      delta_in_weeks < critical -> {:ok, "high"}
+      true -> {:ok, "critical"}
+    end
+  end
+
+  defp level(key, default) do
+    case Application.fetch_env(:lowendinsight, key) do
+      :error -> default
+      {:ok, value} when is_integer(value) -> value
+      {:ok, value} when is_binary(value) -> String.to_integer(value)
+      _ -> default
+    end
+  end
+
+  @doc """
   last_commit_size_risk/1: returns a text enumeration for the risk based on the size of the last commit
   """
   @spec commit_change_size_risk(non_neg_integer) :: {:ok, String.t()}
