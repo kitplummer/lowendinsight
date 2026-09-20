@@ -38,7 +38,12 @@ defmodule LeiService.ReportDetailPageTest do
       },
       "data" => %{
         "repo" => url,
-        "risk" => "high",
+        # The top-level risk is the worst of `results`, so a critical
+        # functional-contributors verdict forces it. It read "high" here until
+        # #242 began recomputing the rollup on a cache read and caught the
+        # disagreement: `determine_toplevel_risk/1` is a maximum, so no real
+        # analysis could have produced the report this fixture described.
+        "risk" => "critical",
         "repo_size" => 2048,
         "git" => %{
           "default_branch" => "refs/remotes/origin/main",
@@ -139,7 +144,7 @@ defmodule LeiService.ReportDetailPageTest do
     body = detail_page(report(url()))
 
     # scripts/canary.sh greps the page for these.
-    assert body =~ ~s("risk":"high")
+    assert body =~ ~s("risk":"critical")
     assert body =~ ~s("contributor_count":2)
     assert body =~ ~s(<script type="application/json" id="report-data">)
   end
