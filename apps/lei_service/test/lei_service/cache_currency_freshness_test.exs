@@ -161,6 +161,92 @@ defmodule LeiService.CacheCurrencyFreshnessTest do
     end
   end
 
+  describe "functional commit currency (#244)" do
+    # The metric measured from the last commit that carried information is
+    # time-dependent in exactly the same way, and goes stale in the cache for
+    # exactly the same reason.
+    defp put_and_read_functional(opts) do
+      u = url()
+      base = cached_report(stored_weeks: 1, stored_risk: "low", last_commit_weeks_ago: 1)
+
+      results =
+        base["data"]["results"]
+        |> Map.put("functional_commit_currency_weeks", Keyword.fetch!(opts, :stored_weeks))
+        |> Map.put("functional_commit_currency_risk", Keyword.fetch!(opts, :stored_risk))
+
+      git =
+        case Keyword.fetch(opts, :substantive_weeks_ago) do
+          {:ok, n} -> Map.put(base["data"]["git"], "last_substantive_commit_date", weeks_ago(n))
+          :error -> base["data"]["git"]
+        end
+
+      report =
+        put_in(base, ["data", "results"], results)
+        |> put_in(["data", "git"], git)
+
+      {:ok, _} = Datastore.write_to_cache(u, report)
+      {:ok, json, :hit} = Datastore.get_from_cache(u, 28)
+      Poison.decode!(json)
+    end
+
+    test "is recomputed from the stored substantive date" do
+      report =
+        put_and_read_functional(stored_weeks: 25, stored_risk: "low", substantive_weeks_ago: 60)
+
+      assert results(report)["functional_commit_currency_weeks"] == 60
+      assert results(report)["functional_commit_currency_risk"] == "high"
+    end
+
+    test "drags the repository verdict up with it" do
+      report =
+        put_and_read_functional(stored_weeks: 25, stored_risk: "low", substantive_weeks_ago: 120)
+
+      assert report["data"]["risk"] == "critical",
+             "a project nobody has meaningfully touched in two years still reads as healthy"
+    end
+
+    test "a report predating the metric does not acquire it" do
+      # An entry cached before #244 has no functional currency at all. Inventing
+      # one here would publish a verdict from an analysis that never computed it.
+      report = put_and_read(stored_weeks: 25, stored_risk: "low", last_commit_weeks_ago: 30)
+
+      refute Map.has_key?(results(report), "functional_commit_currency_risk")
+      refute Map.has_key?(results(report), "functional_commit_currency_weeks")
+    end
+
+    test "a stored substantive date is not enough to conjure the metric" do
+      # The case that actually exercises the guard. With the date absent the
+      # refresh stops for want of an input, so a report missing both proves
+      # nothing; a report holding the date but not the metric is the only
+      # shape that distinguishes "recompute what is there" from "compute
+      # whatever the inputs allow".
+      u = url()
+
+      report =
+        cached_report(stored_weeks: 25, stored_risk: "low", last_commit_weeks_ago: 30)
+        |> put_in(["data", "git", "last_substantive_commit_date"], weeks_ago(120))
+
+      {:ok, _} = Datastore.write_to_cache(u, report)
+      {:ok, json, :hit} = Datastore.get_from_cache(u, 28)
+      out = Poison.decode!(json)
+
+      refute Map.has_key?(results(out), "functional_commit_currency_risk"),
+             "the refresh computed a metric the analysis that produced this report never had"
+
+      refute Map.has_key?(results(out), "functional_commit_currency_weeks")
+
+      # And the verdict must not move on the strength of the invented metric.
+      assert out["data"]["risk"] == "medium"
+    end
+
+    test "the metric without its date is left alone rather than guessed at" do
+      report = put_and_read_functional(stored_weeks: 80, stored_risk: "critical")
+
+      assert results(report)["functional_commit_currency_weeks"] == 80
+      assert results(report)["functional_commit_currency_risk"] == "critical"
+    end
+  end
+
   describe "the path with no age limit at all" do
     # `cache_mode=stale` and `full_report/2` read through here, where an entry
     # can be arbitrarily old. It is the worse offender, not the lesser one.

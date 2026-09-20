@@ -113,6 +113,20 @@ defmodule AnalyzerModule do
       # Get risk rating for last commit
       {:ok, delta_risk} = RiskLogic.commit_currency_risk(weeks)
 
+      # The same clock, started at the last commit that carried information
+      # rather than the last commit of any kind (#244). A bot bump or a README
+      # fix resets `weeks` above while saying nothing about maintenance.
+      {substantive_date, substantive_weeks, substantive_risk, substantive_window} =
+        case GitModule.get_last_substantive_commit_date(repo) do
+          {:ok, sub_date, window} ->
+            sub_weeks = TimeHelper.get_commit_delta(sub_date) |> TimeHelper.sec_to_weeks()
+            {:ok, sub_risk} = RiskLogic.commit_currency_risk(sub_weeks)
+            {sub_date, sub_weeks, sub_risk, window}
+
+          {:error, _} ->
+            {nil, nil, nil, :no_commits}
+        end
+
       # Get risk rating for size of last commit
       {:ok, lines_percent, _file_percent} = GitModule.get_recent_changes(repo)
       {:ok, changes_risk} = RiskLogic.commit_change_size_risk(lines_percent)
@@ -191,6 +205,11 @@ defmodule AnalyzerModule do
             hash: git_hash,
             default_branch: default_branch,
             last_commit_date: last_commit,
+            last_substantive_commit_date: substantive_date,
+            # :found, :window_exhausted, or :no_commits. `:window_exhausted`
+            # means the date above is the oldest commit examined rather than a
+            # substantive one, so the age derived from it is a lower bound.
+            last_substantive_commit_source: substantive_window,
             total_commits_on_default_branch: total_commits
           },
           project_types: project_types_identified,
@@ -200,6 +219,8 @@ defmodule AnalyzerModule do
             contributor_risk: count_risk,
             commit_currency_weeks: weeks,
             commit_currency_risk: delta_risk,
+            functional_commit_currency_weeks: substantive_weeks,
+            functional_commit_currency_risk: substantive_risk,
             large_recent_commit_risk: changes_risk,
             recent_commit_size_in_percent_of_codebase: lines_percent,
             functional_contributors_risk: filtered_contributors_risk,
