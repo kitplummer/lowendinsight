@@ -187,11 +187,24 @@ defmodule Lei.GitTest do
       assert Map.has_key?(env, "GIT_ASKPASS")
     end
 
-    test "is actually passed to the command", %{repo: repo} do
-      # GIT_TERMINAL_PROMPT is not readable back out of git, so this checks the
-      # weaker thing that can be checked: the env reaches the child at all.
-      assert {:ok, out} = Git.run(repo, ["var", "GIT_EDITOR"])
-      assert is_binary(out)
+    test "is passed on every invocation, not just one branch" do
+      # An earlier version of this ran `git var GIT_EDITOR` and asserted it
+      # succeeded, which proved nothing about the environment -- a default
+      # editor is not evidence that GIT_TERMINAL_PROMPT arrived -- and failed
+      # in CI, where no editor is configured. git does not echo its
+      # environment back, so the call site is asserted instead: both branches
+      # of the options must carry it, or a repository-scoped command silently
+      # runs interactive.
+      source = File.read!(Path.expand("../../lib/lei/git.ex", __DIR__))
+
+      occurrences =
+        source
+        |> String.split("env: @env")
+        |> length()
+        |> Kernel.-(1)
+
+      assert occurrences == 2,
+             "expected both cmd_opts branches to pass env: @env, found #{occurrences}"
     end
   end
 end

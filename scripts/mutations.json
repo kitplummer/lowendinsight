@@ -3087,6 +3087,15 @@
       "replace": "    {\"GIT_TERMINAL_PROMPT\", \"1\"},",
       "guarded_by": "test/lei/git_test.exs",
       "app": "apps/lowendinsight"
+    },
+    {
+      "id": "git-runs-without-its-environment",
+      "bug": "Dropping env from the options for repository-scoped commands leaves them running interactive, so a command that would prompt hangs instead of failing. The constant being correct says nothing about it reaching the child.",
+      "file": "apps/lowendinsight/lib/lei/git.ex",
+      "find": "        %Repository{path: path} -> [env: @env, cd: path, stderr_to_stdout: capture]",
+      "replace": "        %Repository{path: path} -> [cd: path, stderr_to_stdout: capture]",
+      "guarded_by": "test/lei/git_test.exs",
+      "app": "apps/lowendinsight"
     }
   ]
 }
