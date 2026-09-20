@@ -117,6 +117,40 @@ defmodule LeiService.Datastore do
   end
 
   @doc """
+  Caches a report only if it is the result of an analysis (#255).
+
+  `AnalyzerModule.analyze/3` returns `{:ok, report}` for a repository it could
+  not clone, with the reason inside `data.error`. Caching that turned a
+  transient failure into a thirty-day answer: the requester paid a cache miss
+  at 50 credits for a report containing nothing, every later request was served
+  the same nothing at 5 credits, and no retry ever happened because the cache
+  had an entry.
+
+  Those reports cannot be repaired later either. They carry no `data.git`, so
+  the currency refresh has nothing to recompute.
+
+  Returns `{:ok, res}` when written and `{:ok, :not_determined}` when not, so a
+  caller can tell the difference without inspecting the report again. Not
+  caching is a normal outcome here, not an error: the analysis genuinely ran
+  and genuinely failed, and the right response is to let the next request try
+  again rather than to fail this one.
+
+  The URL is deliberately absent from the log line. Production does not emit
+  debug, and an info or warning naming a repository sits in the log beside a
+  ledger timestamp, which is enough to put a paying wallet next to what it
+  analysed (#149).
+  """
+  def write_to_cache_if_determined(url, report) do
+    if AnalyzerModule.determined?(report) do
+      write_to_cache(url, report)
+    else
+      Logger.warning("analysis determined nothing; not caching, so the next request retries")
+
+      {:ok, :not_determined}
+    end
+  end
+
+  @doc """
   Removes a cached report, so the next request for it does the real work.
 
   Exists for the deploy canary. A canary that analyses the same repository

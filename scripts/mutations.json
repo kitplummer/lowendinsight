@@ -3033,6 +3033,33 @@
       "replace": "          data",
       "guarded_by": "test/lei_service/cache_currency_freshness_test.exs",
       "app": "apps/lei_service"
+    },
+    {
+      "id": "failed-analysis-is-cached",
+      "bug": "A report recording a failed clone was cached like a real one, turning a transient failure into a thirty-day answer: the requester paid a 50-credit miss for nothing, later requests were served that nothing at 5 credits, and no retry happened because the cache had an entry.",
+      "file": "apps/lei_service/lib/lei_service/datastore.ex",
+      "find": "    if AnalyzerModule.determined?(report) do",
+      "replace": "    if true do",
+      "guarded_by": "test/lei_service/failed_analysis_not_cached_test.exs",
+      "app": "apps/lei_service"
+    },
+    {
+      "id": "analysis-path-caches-unconditionally",
+      "bug": "Swapping the guarded write back for the bare one restores the defect at the call site while every unit test still passes, because reaching it at runtime needs a live clone failure.",
+      "file": "apps/lei_service/lib/lei_service/analysis.ex",
+      "find": "        LeiService.Datastore.write_to_cache_if_determined(url, rep)",
+      "replace": "        LeiService.Datastore.write_to_cache(url, rep)",
+      "guarded_by": "test/lei_service/failed_analysis_not_cached_test.exs",
+      "app": "apps/lei_service"
+    },
+    {
+      "id": "non-report-counts-as-determined",
+      "bug": "Absence of an error is not evidence of an analysis. Treating anything that is not a report as determined lets an empty or malformed value be cached as a real result.",
+      "file": "apps/lowendinsight/lib/analyzer_module.ex",
+      "find": "  def determined?(_), do: false",
+      "replace": "  def determined?(_), do: true",
+      "guarded_by": "test/lei_service/failed_analysis_not_cached_test.exs",
+      "app": "apps/lei_service"
     }
   ]
 }

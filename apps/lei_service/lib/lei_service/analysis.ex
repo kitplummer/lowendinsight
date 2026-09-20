@@ -33,7 +33,7 @@ defmodule LeiService.Analysis do
       {:error, msg, _cache_status} ->
         Logger.info("No cache: #{msg}")
         {:ok, rep} = AnalyzerModule.analyze(url, source, options)
-        LeiService.Datastore.write_to_cache(url, rep)
+        LeiService.Datastore.write_to_cache_if_determined(url, rep)
         {:ok, rep, :miss}
     end
   end
