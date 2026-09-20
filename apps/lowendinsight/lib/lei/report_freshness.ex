@@ -70,7 +70,11 @@ defmodule Lei.ReportFreshness do
       # the metrics are.
       data =
         if Map.has_key?(data, "risk_profile") do
-          Map.put(data, "risk_profile", Lei.RiskProfile.of(revised))
+          profile = Lei.RiskProfile.of(revised)
+
+          data
+          |> Map.put("risk_profile", profile)
+          |> Map.put("risk_rank", Lei.RiskProfile.rank(profile))
         else
           data
         end

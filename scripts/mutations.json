@@ -3029,7 +3029,7 @@
       "id": "cached-risk-profile-is-served-frozen",
       "bug": "The profile is derived from the same verdicts the refresh recomputes. Leaving it as stored reintroduces exactly the defect #242 fixed -- a value frozen at analysis time served as though current -- on the field a customer would use to rank what to look at first.",
       "file": "apps/lowendinsight/lib/lei/report_freshness.ex",
-      "find": "          Map.put(data, \"risk_profile\", Lei.RiskProfile.of(revised))",
+      "find": "          data\n          |> Map.put(\"risk_profile\", profile)\n          |> Map.put(\"risk_rank\", Lei.RiskProfile.rank(profile))",
       "replace": "          data",
       "guarded_by": "test/lei_service/cache_currency_freshness_test.exs",
       "app": "apps/lei_service"
@@ -3095,6 +3095,33 @@
       "find": "        %Repository{path: path} -> [env: @env, cd: path, stderr_to_stdout: capture]",
       "replace": "        %Repository{path: path} -> [cd: path, stderr_to_stdout: capture]",
       "guarded_by": "test/lei/git_test.exs",
+      "app": "apps/lowendinsight"
+    },
+    {
+      "id": "rank-lets-highs-outrank-a-critical",
+      "bug": "A base of 10 lets ten highs carry into the critical place, so a repository with no critical metric outranks one that has one. Reports carry more than nine metrics, so the carry is reachable.",
+      "file": "apps/lowendinsight/lib/lei/risk_profile.ex",
+      "find": "    Map.get(counts, \"critical\", 0) * 10_000 +\n      Map.get(counts, \"high\", 0) * 100 +",
+      "replace": "    Map.get(counts, \"critical\", 0) * 100 +\n      Map.get(counts, \"high\", 0) * 10 +",
+      "guarded_by": "test/lei/risk_ranking_test.exs",
+      "app": "apps/lowendinsight"
+    },
+    {
+      "id": "ranking-drops-unreadable-repositories",
+      "bug": "A repository whose shape cannot be read is silently dropped from the ranking. A shorter list reads as less to fix, which is the failure mode of examining nothing and reporting success.",
+      "file": "apps/lowendinsight/lib/analyzer_module.ex",
+      "find": "        rank: repo_field(repo, :risk_rank) || -1,",
+      "replace": "        rank: repo_field(repo, :risk_rank) || throw(:unreadable),",
+      "guarded_by": "test/lei/risk_ranking_test.exs",
+      "app": "apps/lowendinsight"
+    },
+    {
+      "id": "ranking-is-best-first",
+      "bug": "Sorting ascending puts the healthiest repositories at the top of a list whose entire purpose is answering what to look at first.",
+      "file": "apps/lowendinsight/lib/analyzer_module.ex",
+      "find": "    |> Enum.sort_by(& &1.rank, :desc)",
+      "replace": "    |> Enum.sort_by(& &1.rank, :asc)",
+      "guarded_by": "test/lei/risk_ranking_test.exs",
       "app": "apps/lowendinsight"
     }
   ]
