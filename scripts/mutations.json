@@ -950,7 +950,7 @@
       "id": "trailers-read-every-commit-body",
       "bug": "Agentic detection reads every commit body in history into memory, though only commits mentioning a co-author can match (#158).",
       "file": "apps/lowendinsight/lib/git_module.ex",
-      "find": "\"-i\", \"-F\", \"--grep=Co-Authored-By:\", ",
+      "find": "        \"-i\",\n        \"-F\",\n        \"--grep=Co-Authored-By:\",\n",
       "replace": "",
       "guarded_by": "test/analysis_memory_test.exs",
       "app": "apps/lowendinsight"
@@ -3060,6 +3060,33 @@
       "replace": "  def determined?(_), do: true",
       "guarded_by": "test/lei_service/failed_analysis_not_cached_test.exs",
       "app": "apps/lei_service"
+    },
+    {
+      "id": "git-failure-returns-empty-output",
+      "bug": "System.cmd returns {output, status}, so treating a non-zero exit as output turns a failed git command into an empty string -- and an empty string into an analysis that examined nothing and reported low risk. This is the defect this codebase produces most often.",
+      "file": "apps/lowendinsight/lib/lei/git.ex",
+      "find": "      {:error, status, _out} ->\n        raise Error,",
+      "replace": "      {:error, _status, out} ->\n        throw(out)\n\n      {:error, status, _out} ->\n        raise Error,",
+      "guarded_by": "test/lei/git_test.exs",
+      "app": "apps/lowendinsight"
+    },
+    {
+      "id": "clone-stderr-reaches-the-console",
+      "bug": "Clone is the only git command that names the remote, and a failure prints the URL. Left on the parent's stream it reaches production logs, where a repository URL beside a ledger timestamp puts a paying wallet next to what it analysed (#149).",
+      "file": "apps/lowendinsight/lib/lei/git.ex",
+      "find": "    case run(nil, [\"clone\", \"--quiet\", \"--\", url, path], capture_stderr: true) do",
+      "replace": "    case run(nil, [\"clone\", \"--quiet\", \"--\", url, path], capture_stderr: false) do",
+      "guarded_by": "test/lei/git_test.exs",
+      "app": "apps/lowendinsight"
+    },
+    {
+      "id": "git-may-prompt-for-credentials",
+      "bug": "Without GIT_TERMINAL_PROMPT=0 a clone of a private or renamed repository waits for credentials instead of failing, which presents as a hang rather than an error.",
+      "file": "apps/lowendinsight/lib/lei/git.ex",
+      "find": "    {\"GIT_TERMINAL_PROMPT\", \"0\"},",
+      "replace": "    {\"GIT_TERMINAL_PROMPT\", \"1\"},",
+      "guarded_by": "test/lei/git_test.exs",
+      "app": "apps/lowendinsight"
     }
   ]
 }
