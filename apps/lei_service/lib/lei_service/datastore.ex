@@ -165,7 +165,7 @@ defmodule LeiService.Datastore do
 
             case too_old?(r, age) do
               true -> {:error, "current report not found", :stale}
-              false -> {:ok, res, :hit}
+              false -> {:ok, Lei.ReportFreshness.refresh_json(res), :hit}
             end
         end
 
@@ -192,7 +192,7 @@ defmodule LeiService.Datastore do
             {:error, "report not found", :miss}
 
           _ ->
-            {:ok, res, :stale}
+            {:ok, Lei.ReportFreshness.refresh_json(res), :stale}
         end
 
       {:error, reason} ->

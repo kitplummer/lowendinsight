@@ -2925,6 +2925,33 @@
       "replace": "  green \"VERIFIED: no counter moved, which we will assume is fine.\"",
       "guarded_by": "test/lei_service/verify_webhook_script_test.exs",
       "app": "apps/lei_service"
+    },
+    {
+      "id": "cache-serves-frozen-commit-currency",
+      "bug": "A cached report's commit currency was served as it was computed, so a repository that had gone quiet since the analysis kept the risk level it held before it went quiet. The one signal this product exists to raise was the one the cache suppressed.",
+      "file": "apps/lei_service/lib/lei_service/datastore.ex",
+      "find": "              false -> {:ok, Lei.ReportFreshness.refresh_json(res), :hit}",
+      "replace": "              false -> {:ok, res, :hit}",
+      "guarded_by": "test/lei_service/cache_currency_freshness_test.exs",
+      "app": "apps/lei_service"
+    },
+    {
+      "id": "any-age-cache-serves-frozen-commit-currency",
+      "bug": "The unbounded cache path -- cache_mode=stale and full_report/2 -- served a frozen commit currency. It is the worse offender of the two, because the entry it reads has no age limit at all.",
+      "file": "apps/lei_service/lib/lei_service/datastore.ex",
+      "find": "            {:ok, Lei.ReportFreshness.refresh_json(res), :stale}",
+      "replace": "            {:ok, res, :stale}",
+      "guarded_by": "test/lei_service/cache_currency_freshness_test.exs",
+      "app": "apps/lei_service"
+    },
+    {
+      "id": "missing-commit-date-recomputed-as-zero-weeks",
+      "bug": "A report with no stored last_commit_date must be left as it was found. Treating the missing date as a value to compute from turns an absent input into a confident 'low' verdict, which is the defect the refresh exists to remove.",
+      "file": "apps/lowendinsight/lib/lei/report_freshness.ex",
+      "find": "    with date when is_binary(date) <- get_in(report, [\"data\", \"git\", \"last_commit_date\"]),",
+      "replace": "    with date <- get_in(report, [\"data\", \"git\", \"last_commit_date\"]) || \"1970-01-01T00:00:00Z\",",
+      "guarded_by": "test/lei_service/cache_currency_freshness_test.exs",
+      "app": "apps/lei_service"
     }
   ]
 }
