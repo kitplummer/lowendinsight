@@ -2997,6 +2997,24 @@
       "replace": "    with true <- true,",
       "guarded_by": "test/lei_service/cache_currency_freshness_test.exs",
       "app": "apps/lei_service"
+    },
+    {
+      "id": "functional-currency-shares-the-plain-levels",
+      "bug": "Reading the plain currency levels re-couples the two metrics. Since the substantive date is always at or before the plain one, shared thresholds make functional currency shadow plain currency entirely, and tuning the metric that governs the verdict silently moves the one that does not.",
+      "file": "apps/lowendinsight/lib/risk_logic.ex",
+      "find": "    medium = level(:medium_functional_currency_level, 26)",
+      "replace": "    medium = level(:medium_currency_level, 26)",
+      "guarded_by": "test/lei/functional_currency_thresholds_test.exs",
+      "app": "apps/lowendinsight"
+    },
+    {
+      "id": "functional-currency-high-level-unreachable",
+      "bug": "Giving the high and critical levels the same fallback makes 'high' unreachable with no configuration -- a whole severity silently absent. This is the existing shape of commit_currency_risk/1, which this metric must not inherit.",
+      "file": "apps/lowendinsight/lib/risk_logic.ex",
+      "find": "    critical = level(:critical_functional_currency_level, 104)",
+      "replace": "    critical = level(:critical_functional_currency_level, 52)",
+      "guarded_by": "test/lei/functional_currency_thresholds_test.exs",
+      "app": "apps/lowendinsight"
     }
   ]
 }
