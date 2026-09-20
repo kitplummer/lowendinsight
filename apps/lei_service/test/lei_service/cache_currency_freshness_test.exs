@@ -190,10 +190,13 @@ defmodule LeiService.CacheCurrencyFreshnessTest do
     end
 
     test "is recomputed from the stored substantive date" do
+      # 30 weeks against the functional levels of 13/26/52: "high". The plain
+      # metric would call the same age "medium" on 26/52/104, which is the
+      # separation these thresholds exist to allow.
       report =
-        put_and_read_functional(stored_weeks: 25, stored_risk: "low", substantive_weeks_ago: 60)
+        put_and_read_functional(stored_weeks: 5, stored_risk: "low", substantive_weeks_ago: 30)
 
-      assert results(report)["functional_commit_currency_weeks"] == 60
+      assert results(report)["functional_commit_currency_weeks"] == 30
       assert results(report)["functional_commit_currency_risk"] == "high"
     end
 

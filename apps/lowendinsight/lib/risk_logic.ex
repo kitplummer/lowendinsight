@@ -105,9 +105,9 @@ defmodule RiskLogic do
   """
   @spec functional_commit_currency_risk(non_neg_integer) :: {:ok, String.t()}
   def functional_commit_currency_risk(delta_in_weeks) do
-    medium = level(:medium_functional_currency_level, 26)
-    high = level(:high_functional_currency_level, 52)
-    critical = level(:critical_functional_currency_level, 104)
+    medium = level(:medium_functional_currency_level, 13)
+    high = level(:high_functional_currency_level, 26)
+    critical = level(:critical_functional_currency_level, 52)
 
     cond do
       delta_in_weeks < medium -> {:ok, "low"}

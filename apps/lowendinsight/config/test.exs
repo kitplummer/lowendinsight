@@ -30,12 +30,21 @@ config :lowendinsight,
   ## plain currency levels above because the substantive date is always at or
   ## before the plain one, so shared thresholds would let this metric shadow it
   ## entirely and make tuning either one move both.
+  ##
+  ## Tighter than the plain levels (13/26/52 against 26/52/104) because it
+  ## measures something stronger. "Nothing in 26 weeks" is weak evidence when a
+  ## Dependabot bump resets it; "no human, non-documentation commit in 13 weeks"
+  ## is a quarter in which nobody worked on the project. A year of that is
+  ## critical for something you depend on -- not because the code has rotted,
+  ## but because nobody has demonstrated they would answer if it needed fixing.
+  ## Capacity to respond is the thing being measured, and silence is all we can
+  ## see of it.
   critical_functional_currency_level:
-    String.to_integer(System.get_env("LEI_CRITICAL_FUNCTIONAL_CURRENCY_LEVEL") || "104"),
+    String.to_integer(System.get_env("LEI_CRITICAL_FUNCTIONAL_CURRENCY_LEVEL") || "52"),
   high_functional_currency_level:
-    String.to_integer(System.get_env("LEI_HIGH_FUNCTIONAL_CURRENCY_LEVEL") || "52"),
+    String.to_integer(System.get_env("LEI_HIGH_FUNCTIONAL_CURRENCY_LEVEL") || "26"),
   medium_functional_currency_level:
-    String.to_integer(System.get_env("LEI_MEDIUM_FUNCTIONAL_CURRENCY_LEVEL") || "26"),
+    String.to_integer(System.get_env("LEI_MEDIUM_FUNCTIONAL_CURRENCY_LEVEL") || "13"),
 
   ## Percentage of changes to repo in recent commit - is the codebase
   ## volatile in terms of quantity of source being changed

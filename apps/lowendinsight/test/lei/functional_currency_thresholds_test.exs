@@ -89,11 +89,38 @@ defmodule Lei.FunctionalCurrencyThresholdsTest do
 
     test "every severity is still reachable" do
       levels =
-        [1, 30, 60, 200]
+        [5, 20, 40, 100]
         |> Enum.map(&functional/1)
 
       assert levels == ["low", "medium", "high", "critical"],
              "a severity is unreachable on the built-in fallbacks: got #{inspect(levels)}"
+    end
+  end
+
+  describe "the shipped levels" do
+    # Pinned so the numbers are a decision with a reason rather than a value
+    # nobody would notice changing. 13/26/52 against the plain metric's
+    # 26/52/104: this measures something stronger, because a quarter with no
+    # human, non-documentation commit is a quarter in which nobody worked on
+    # the project, where the plain metric's silence can be broken by a bot.
+    test "are 13 / 26 / 52 weeks as configured" do
+      assert functional(12) == "low"
+      assert functional(13) == "medium"
+      assert functional(25) == "medium"
+      assert functional(26) == "high"
+      assert functional(51) == "high"
+      assert functional(52) == "critical"
+    end
+
+    test "are tighter than the plain currency levels at every boundary" do
+      # The plain metric is informational now; if it were ever the stricter of
+      # the two it would start deciding verdicts again, silently.
+      for weeks <- [13, 26, 52] do
+        severity = fn r -> Enum.find_index(["low", "medium", "high", "critical"], &(&1 == r)) end
+
+        assert severity.(functional(weeks)) >= severity.(plain(weeks)),
+               "plain currency is stricter than functional at #{weeks}w"
+      end
     end
   end
 
