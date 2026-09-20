@@ -2948,8 +2948,53 @@
       "id": "missing-commit-date-recomputed-as-zero-weeks",
       "bug": "A report with no stored last_commit_date must be left as it was found. Treating the missing date as a value to compute from turns an absent input into a confident 'low' verdict, which is the defect the refresh exists to remove.",
       "file": "apps/lowendinsight/lib/lei/report_freshness.ex",
-      "find": "    with date when is_binary(date) <- get_in(report, [\"data\", \"git\", \"last_commit_date\"]),",
-      "replace": "    with date <- get_in(report, [\"data\", \"git\", \"last_commit_date\"]) || \"1970-01-01T00:00:00Z\",",
+      "find": "         true <- is_binary(date),",
+      "replace": "         true <- true,",
+      "guarded_by": "test/lei_service/cache_currency_freshness_test.exs",
+      "app": "apps/lei_service"
+    },
+    {
+      "id": "bot-commits-count-as-attention",
+      "bug": "A commit authored by Dependabot or Renovate reset the commit currency clock, so a repository nobody had touched in a year reported as actively maintained on the strength of automation alone.",
+      "file": "apps/lowendinsight/lib/lei/commit_substance.ex",
+      "find": "      :bot -> false",
+      "replace": "      :bot -> true",
+      "guarded_by": "test/lei/commit_substance_test.exs",
+      "app": "apps/lowendinsight"
+    },
+    {
+      "id": "documentation-only-commits-count-as-attention",
+      "bug": "A README typo or a license year bump reset the commit currency clock. Neither says anything about whether the code is being maintained.",
+      "file": "apps/lowendinsight/lib/lei/commit_substance.ex",
+      "find": "      _ -> not Enum.all?(files, &documentation?/1)",
+      "replace": "      _ -> true",
+      "guarded_by": "test/lei/commit_substance_test.exs",
+      "app": "apps/lowendinsight"
+    },
+    {
+      "id": "empty-commit-counts-as-attention",
+      "bug": "A commit that changed no path carries no evidence of maintenance. Enum.all?/2 over an empty list is true, so this must be decided rather than left to a vacuous truth.",
+      "file": "apps/lowendinsight/lib/lei/commit_substance.ex",
+      "find": "  def substantive?(%{files: files}) when files == [], do: false",
+      "replace": "  def substantive?(%{files: files}) when files == [], do: true",
+      "guarded_by": "test/lei/commit_substance_test.exs",
+      "app": "apps/lowendinsight"
+    },
+    {
+      "id": "substantive-date-is-just-the-last-commit",
+      "bug": "Taking the most recent commit rather than the most recent substantive one is the original defect: the metric becomes resettable by any commit at all, which is what made it possible for an abandoned project to report low risk.",
+      "file": "apps/lowendinsight/lib/git_module.ex",
+      "find": "    case Enum.find(commits, &Lei.CommitSubstance.substantive?/1) do",
+      "replace": "    case List.first(commits) do",
+      "guarded_by": "test/lei/substantive_commit_date_test.exs",
+      "app": "apps/lowendinsight"
+    },
+    {
+      "id": "refresh-invents-a-metric-the-analysis-never-computed",
+      "bug": "A report cached before functional commit currency existed must not acquire the field on a cache read. Publishing a verdict derived from an analysis that never computed it is inventing data, not refreshing it.",
+      "file": "apps/lowendinsight/lib/lei/report_freshness.ex",
+      "find": "    with true <- Map.has_key?(results, risk_key),",
+      "replace": "    with true <- true,",
       "guarded_by": "test/lei_service/cache_currency_freshness_test.exs",
       "app": "apps/lei_service"
     }

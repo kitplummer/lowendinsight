@@ -41,6 +41,50 @@ defmodule GitModule do
   end
 
   @doc """
+  get_last_substantive_commit_date/2: the date of the most recent commit that
+  says something about the project being maintained (#244).
+
+  Bots and documentation-only commits reset the plain commit clock without
+  representing any attention, so currency measured from them can report a
+  healthy project that nobody has touched in a year. `Lei.CommitSubstance`
+  holds the definition; this walks the log newest-first and stops at the first
+  commit that meets it.
+
+  Returns `{:ok, date, :found}`, or `{:ok, date, :window_exhausted}` when none
+  of the `limit` most recent commits was substantive. In that case `date` is
+  the oldest commit examined: the true answer is older still, so the age
+  derived from it is a lower bound. Understating staleness is the safe
+  direction to be wrong in, and it beats inventing a figure we cannot see.
+
+  `{:error, :no_commits}` when the log yields nothing parseable.
+  """
+  @spec get_last_substantive_commit_date(Git.Repository.t(), pos_integer) ::
+          {:ok, String.t(), :found | :window_exhausted} | {:error, :no_commits}
+  def get_last_substantive_commit_date(repo, limit \\ 150) do
+    commits =
+      repo
+      |> Git.log!([
+        "--no-merges",
+        "-n",
+        Integer.to_string(limit),
+        "--name-only",
+        "--pretty=format:%x1e%H%x1f%cI%x1f%an%x1f%ae"
+      ])
+      |> Lei.CommitSubstance.parse_log()
+
+    case Enum.find(commits, &Lei.CommitSubstance.substantive?/1) do
+      %{date: date} ->
+        {:ok, date, :found}
+
+      nil ->
+        case List.last(commits) do
+          %{date: oldest} -> {:ok, oldest, :window_exhausted}
+          nil -> {:error, :no_commits}
+        end
+    end
+  end
+
+  @doc """
   get_contributors_count/1: returns the number of contributors for
   a given Git repo
   """

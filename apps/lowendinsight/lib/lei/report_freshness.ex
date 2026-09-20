@@ -42,15 +42,20 @@ defmodule Lei.ReportFreshness do
   """
   @spec refresh(map) :: map
   def refresh(%{"data" => %{"results" => results}} = report) when is_map(results) do
-    with date when is_binary(date) <- get_in(report, ["data", "git", "last_commit_date"]),
-         seconds when is_integer(seconds) <- TimeHelper.get_commit_delta(date),
-         weeks = TimeHelper.sec_to_weeks(seconds),
-         {:ok, risk} <- RiskLogic.commit_currency_risk(weeks) do
-      revised =
-        results
-        |> Map.put("commit_currency_weeks", weeks)
-        |> Map.put("commit_currency_risk", risk)
+    git = get_in(report, ["data", "git"]) || %{}
 
+    revised =
+      results
+      |> recompute(git["last_commit_date"], "commit_currency_weeks", "commit_currency_risk")
+      |> recompute(
+        git["last_substantive_commit_date"],
+        "functional_commit_currency_weeks",
+        "functional_commit_currency_risk"
+      )
+
+    if revised == results do
+      report
+    else
       data =
         report
         |> Map.fetch!("data")
@@ -58,12 +63,28 @@ defmodule Lei.ReportFreshness do
         |> Map.put("risk", toplevel_risk(revised))
 
       Map.put(report, "data", data)
-    else
-      _ -> report
     end
   end
 
   def refresh(report), do: report
+
+  # Rewrites one currency pair from the date it was derived from. A report that
+  # never carried the metric does not gain it here: only a pair already present
+  # is revised, so an older entry keeps exactly the shape it was stored with
+  # rather than acquiring a field the analysis that produced it never computed.
+  defp recompute(results, date, weeks_key, risk_key) do
+    with true <- Map.has_key?(results, risk_key),
+         true <- is_binary(date),
+         seconds when is_integer(seconds) <- TimeHelper.get_commit_delta(date),
+         weeks = TimeHelper.sec_to_weeks(seconds),
+         {:ok, risk} <- RiskLogic.commit_currency_risk(weeks) do
+      results
+      |> Map.put(weeks_key, weeks)
+      |> Map.put(risk_key, risk)
+    else
+      _ -> results
+    end
+  end
 
   @doc """
   Decodes, refreshes and re-encodes a stored report.
