@@ -58,7 +58,7 @@ defmodule Lei.SubstantiveCommitDateTest do
       )
     end
 
-    %Git.Repository{path: dir}
+    Lei.Git.new(dir)
   end
 
   defp days_since(iso) do

@@ -368,8 +368,13 @@ defmodule GitModuleTest do
   @tag network: false
   @tag long: false
   test "error on not a valid local path repo" do
+    # Returns a string, as @spec and GitModule.Behaviour both declare. It used
+    # to return a %Git.Error{} struct, which this test asserted against and
+    # neither contract allowed (#250).
     {:error, msg} = GitModule.get_repo("/tmp")
-    assert 128 == msg.code
+    assert is_binary(msg)
+    assert msg =~ "128"
+    assert msg =~ "git repository"
   end
 
   test "get repo size", %{repo: repo} do
