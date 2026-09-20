@@ -378,6 +378,34 @@ defmodule AnalyzerModule do
   end
 
   @doc """
+  Whether a report is an analysis, or a record of one that could not be performed.
+
+  `analyze/3` rescues a failed clone and returns `{:ok, report}` carrying
+  `risk: "undetermined"` and the reason in `data.error`. The rescue is right --
+  one unreachable repository must not fail a batch of two hundred -- but the
+  result is shaped exactly like a success, so every caller matching `{:ok, _}`
+  proceeds as though an analysis happened. This is how they are told apart
+  (#255).
+
+  Decided by the presence of `data.error`, which is set on exactly those
+  rescue paths, rather than by `risk == "undetermined"`, which other code also
+  produces as a default for a missing value.
+
+  Anything that does not positively look like a report is **not** determined.
+  Absence of an error is not evidence of an analysis, and defaulting the other
+  way would let a malformed or empty value through as a real result.
+  """
+  @spec determined?(any) :: boolean
+  def determined?(%{} = report) do
+    case report[:data] || report["data"] do
+      %{} = data -> is_nil(data[:error] || data["error"])
+      _ -> false
+    end
+  end
+
+  def determined?(_), do: false
+
+  @doc """
   determine_risk_counts/1: takes in a full report of n-repo reports, and calculates
   the number or risk ratings, given the number of repos.  It returns a new report
   with the risk_counts object populated with the count table.  Have to accommodate
