@@ -413,6 +413,13 @@ defmodule AnalyzerModule do
 
     data = report[:data]
     data = Map.put_new(data, :risk, risk)
+
+    # The distribution the verdict above was collapsed from (#247). `risk` is a
+    # maximum, so one critical metric and three read the same; this keeps the
+    # difference without adding a level the enum's consumers would have to
+    # learn.
+    data = Map.put(data, :risk_profile, Lei.RiskProfile.of(report[:data][:results]))
+
     report |> Map.put(:header, report[:header]) |> Map.put(:data, data)
   end
 end
