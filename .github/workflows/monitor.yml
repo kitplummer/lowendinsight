@@ -329,6 +329,61 @@ jobs:
       # for. Not strict here: without an admin key the analysis check can be
       # satisfied by a cached report, and the canary says so rather than
       # quietly reporting a weaker result as a pass.
+      # A deploy that declined and shipped nothing produces no failure
+      # anywhere: the gate is satisfied, CI is green, and the run concludes
+      # success (#259). Production simply stays on an older commit, and every
+      # other check here passes, because everything they test is fine.
+      #
+      # This is the only check that would notice. scripts/ops/deploy-status.sh
+      # reads the `Deploy and verify` job rather than the run conclusion, which
+      # is the distinction the whole thing turns on.
+      - name: Check the tip of main is deployed
+        id: deployed
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          TIP=$(gh api "repos/${GITHUB_REPOSITORY}/commits/main" --jq .sha)
+
+          if [ -z "$TIP" ]; then
+            echo "::error::Could not read the tip of main, so whether it is deployed is unknown."
+            exit 1
+          fi
+
+          # A deploy in flight is a legitimate divergence. CI takes minutes and
+          # the deploy takes minutes more, so a commit merged moments ago is
+          # expected not to be live yet. Only a tip that has had time to ship
+          # and has not is worth waking someone for.
+          COMMITTED=$(gh api "repos/${GITHUB_REPOSITORY}/commits/main" --jq .commit.committer.date)
+          AGE=$(( $(date -u +%s) - $(date -u -d "$COMMITTED" +%s) ))
+          GRACE=$(( 30 * 60 ))
+
+          echo "tip ${TIP:0:7}, committed ${COMMITTED} (${AGE}s ago)"
+
+          set +e
+          scripts/ops/deploy-status.sh "$TIP"
+          RESULT=$?
+          set -e
+
+          case "$RESULT" in
+            0)
+              echo "The tip of main is live."
+              ;;
+            1)
+              if [ "$AGE" -lt "$GRACE" ]; then
+                echo "::notice::${TIP:0:7} is not deployed yet, but was committed ${AGE}s ago; within the ${GRACE}s grace."
+              else
+                echo "::error::${TIP:0:7} has been the tip of main for ${AGE}s and is not deployed. A deploy run that declines ships nothing and still reports success, so nothing else will tell you."
+                exit 1
+              fi
+              ;;
+            *)
+              # Consistent with the rest of this workflow: an answer we could
+              # not get is not a reassuring one.
+              echo "::error::Could not determine whether ${TIP:0:7} is deployed."
+              exit 1
+              ;;
+          esac
+
       - name: Canary the web UI
         id: canary
         env:
@@ -387,12 +442,14 @@ jobs:
           PAYMENTS: ${{ steps.payments.outcome }}
           CANARY: ${{ steps.canary.outcome }}
           SMOKE: ${{ steps.smoke.outcome }}
+          DEPLOYED: ${{ steps.deployed.outcome }}
         run: |
           # Which checks failed, by name, so the page says what is wrong rather
           # than that something is.
           FAILED=""
           for pair in "readiness:$READINESS" "queue:$QUEUE" "webhooks:$WEBHOOKS" \
-                      "ledger:$LEDGER" "payments:$PAYMENTS" "canary:$CANARY" "smoke:$SMOKE"; do
+                      "ledger:$LEDGER" "payments:$PAYMENTS" "canary:$CANARY" "smoke:$SMOKE" \
+                      "deployed:$DEPLOYED"; do
             name="${pair%%:*}"
             outcome="${pair#*:}"
             [ "$outcome" = "failure" ] && FAILED="${FAILED}${FAILED:+, }${name}"

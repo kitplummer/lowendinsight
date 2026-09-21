@@ -185,6 +185,66 @@ defmodule LeiService.DeployReportingTest do
     end
   end
 
+  describe "the monitor notices an undeployed tip" do
+    # A deploy that declined ships nothing and fails nowhere: the gate is
+    # satisfied, CI is green, the run concludes success, and every other check
+    # in the monitor passes because everything they test is fine. This is the
+    # only thing that would notice (#259).
+    @monitor Path.expand("../../../../.github/workflows/monitor.yml", __DIR__)
+
+    test "the monitor checks whether the tip of main is live" do
+      monitor = File.read!(@monitor)
+
+      assert monitor =~ "Check the tip of main is deployed",
+             "nothing notices a deploy that declined and shipped nothing"
+
+      assert monitor =~ "scripts/ops/deploy-status.sh",
+             "the monitor does not use the tool that reads the job rather than the run"
+    end
+
+    test "it fails rather than notes, once past the grace" do
+      # A ::notice:: is not a page. An undeployed tip after the grace has to
+      # fail the check or nothing wakes anyone.
+      monitor = File.read!(@monitor)
+
+      # Pinned to ::error:: specifically. Asserting the message text alone
+      # passes when the severity is downgraded to ::notice::, which is the
+      # difference between paging and not.
+      assert monitor =~ "::error::${TIP:0:7} has been the tip of main",
+             "an undeployed tip does not produce an error, so nothing pages"
+    end
+
+    test "a deploy in flight is not paged for" do
+      # CI takes minutes and the deploy takes minutes more. Paging on a commit
+      # merged moments ago would be noise, and noise gets ignored.
+      monitor = File.read!(@monitor)
+
+      # The value, not the variable: GRACE=0 satisfies "GRACE=" and pages on
+      # every merge.
+      assert monitor =~ "GRACE=$(( 30 * 60 ))",
+             "the grace period is not a real duration, so every merge pages until it ships"
+    end
+
+    test "an answer it could not get is not a reassuring one" do
+      monitor = File.read!(@monitor)
+
+      assert monitor =~ "Could not determine whether",
+             "an unreadable deploy state passes silently"
+    end
+
+    test "a failure names itself in the page" do
+      # The aggregation lists failed checks by name. A step missing from it
+      # pages as "unidentified", which says something is wrong and not what.
+      monitor = File.read!(@monitor)
+
+      assert monitor =~ "DEPLOYED: ${{ steps.deployed.outcome }}",
+             "the deployed check is not collected for the page"
+
+      assert monitor =~ ~s("deployed:$DEPLOYED"),
+             "the deployed check is not named in the failure list"
+    end
+  end
+
   describe "it is written down" do
     test "OPERATIONS.md says a green run does not mean a deploy" do
       ops = File.read!(@operations)
