@@ -110,6 +110,21 @@ holding `jason` costs nothing extra to watch — we are already watching it. The
 shared cache ADR-001 identified as the core asset becomes the margin rather
 than a discount we hand back.
 
+### A position is identified by its commit
+
+Not by its name. A position is the answer at a resolved commit, and the URL is
+how the customer happened to refer to it.
+
+We resolve a URL to a commit on every request anyway, so if an org already
+holds a position at that commit, they hold it — whatever URL it arrived under.
+Renames, host moves and mirrors are handled by that alone, because **the commit
+is the answer's identity**. Two names for one commit are one answer, and
+charging twice for it would be indefensible.
+
+This also removes a defect that exists today: the cache key is derived from the
+URL, so a renamed repository silently creates a second entry for byte-identical
+content.
+
 ### What goes away
 
 - **Cache-tiered pricing.** The price no longer depends on our internal state.
@@ -222,9 +237,11 @@ trusted.
 ### Negative
 
 - **The subscription must carry refresh cost.** At 44% monthly churn, a
-  1,500-position holder implies ~660 re-analyses a month. Dedupe makes this
-  affordable across customers, but a single customer holding a large private
-  tree with no overlap is the adverse case, and it is not modelled.
+  1,500-position holder implies ~660 re-analyses a month. Measured since this
+  was written: the adverse case named here -- one customer, a large private
+  tree, no overlap -- costs the same as the ordinary one, because the work is
+  a probe and a clone rather than anything that scales with exclusivity. The
+  risk was overstated.
 - **We now carry churn risk.** Under per-analysis pricing, upstream activity
   raised revenue; now it raises cost.
 - **The ACP `lei-credits-29000` SKU and the credit ledger have live code behind
@@ -257,8 +274,6 @@ trusted.
    pay per interaction and may not have a durable identity to hold positions
    against. Per ADR-002 and existing practice, an agent purchase credits the
    ledger and never sets `tier: pro`; whatever replaces it must preserve that.
-4. **Does a position survive a package moving hosts or being renamed?** The
-   cache key is derived from the URL, so today it would not.
 
 ## References
 
