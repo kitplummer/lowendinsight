@@ -3,7 +3,18 @@
 # the BSD 3-Clause license. See the LICENSE file for details.
 
 defmodule LeiService.EndpointTest do
-  use ExUnit.Case, async: true
+  # async: false is required, not preferred. This test puts the sandbox into
+  # shared mode so the processes the endpoint spawns can reach the connection,
+  # and shared mode hands that connection to *every* process on the node. Run
+  # concurrently, another async test checks out the shared connection and
+  # checks it in, and whichever finishes first pulls the rug:
+  #
+  #   EndpointTest "returns 422 with an invalid json payload"
+  #     checked in the connection owned by
+  #   ObanSchemaVersionTest "the migrated Oban schema matches the installed Oban"
+  #
+  # Guarded by sandbox_mode_test.exs so it cannot drift back.
+  use ExUnit.Case, async: false
 
   setup do
     :ok = Ecto.Adapters.SQL.Sandbox.checkout(LeiService.Repo)
