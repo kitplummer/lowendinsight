@@ -1778,7 +1778,7 @@
       "id": "batch-misses-not-queued",
       "bug": "The batch endpoint charged for cache misses and queued nothing: the caller got a job id naming no work, and the analysis never ran (ADR-004 step 4).",
       "file": "apps/lei_service/lib/lei/web/router.ex",
-      "find": "[schedule: scheduler()] ++ opts",
+      "find": "[schedule: scheduler(org_id)] ++ opts",
       "replace": "opts",
       "guarded_by": "test/lei_service/batch_enqueue_test.exs",
       "app": "apps/lei_service"
@@ -3167,6 +3167,33 @@
       "find": "    |> Path.wildcard()",
       "replace": "    |> Path.wildcard()\n    |> Enum.take(0)",
       "guarded_by": "test/lei_service/sandbox_mode_test.exs",
+      "app": "apps/lei_service"
+    },
+    {
+      "id": "batch-caches-undetermined-analysis",
+      "bug": "The batch path has its own cache and kept the defect #256 fixed on the other one: an analysis that determined nothing was cached, so a transient failure became a day-long answer and no retry ever happened.",
+      "file": "apps/lei_service/lib/lei_service/batch_dependency_worker.ex",
+      "find": "        if AnalyzerModule.determined?(report) do",
+      "replace": "        if true do",
+      "guarded_by": "test/lei_service/undetermined_refund_test.exs",
+      "app": "apps/lei_service"
+    },
+    {
+      "id": "undetermined-analysis-is-not-refunded",
+      "bug": "Admission charges a cache miss before any analysis runs, so an analysis that determines nothing leaves the requester paying for a report whose every metric is nil. Not crediting it back keeps the money.",
+      "file": "apps/lei_service/lib/lei_service/batch_dependency_worker.ex",
+      "find": "        Lei.Credits.credit_undetermined(id, credits, %{",
+      "replace": "        _ = id\n        Lei.Credits.credit_undetermined(nil, credits, %{",
+      "guarded_by": "test/lei_service/undetermined_refund_test.exs",
+      "app": "apps/lei_service"
+    },
+    {
+      "id": "dependency-job-drops-the-org",
+      "bug": "Without org_id in the job args the worker has nobody to credit, and every refund silently becomes the no-org branch: the money is kept and a warning is logged.",
+      "file": "apps/lei_service/lib/lei/web/router.ex",
+      "find": "      \"org_id\" => org_id\n    }",
+      "replace": "    }",
+      "guarded_by": "test/lei_service/undetermined_refund_test.exs",
       "app": "apps/lei_service"
     }
   ]

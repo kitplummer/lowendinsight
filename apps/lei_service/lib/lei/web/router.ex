@@ -376,7 +376,8 @@ defmodule Lei.Web.Router do
           # billing block reports.
           {:ok, conn, {org_id, _api_key_id, tier}} ->
             # The library has no queue: it schedules through this (ADR-004).
-            result = Lei.BatchAnalyzer.analyze(dependencies, [schedule: scheduler()] ++ opts)
+            result =
+              Lei.BatchAnalyzer.analyze(dependencies, [schedule: scheduler(org_id)] ++ opts)
 
             cost = Lei.UsageTracker.calculate_cost(hits, misses)
 
@@ -840,8 +841,13 @@ defmodule Lei.Web.Router do
   # Overridable so a failure to enqueue can be exercised without breaking Oban
   # itself. The queue belongs to the caller of the library (ADR-004), and this
   # is that caller.
-  defp scheduler do
-    Application.get_env(:lei_service, :batch_scheduler) || (&enqueue_dependency/1)
+  # The scheduler carries the org so the worker can credit back an analysis
+  # that determines nothing (#258). Admission charged for it before any
+  # analysis ran, and the outcome is only known later, so the refund needs to
+  # reach whoever paid.
+  defp scheduler(org_id) do
+    Application.get_env(:lei_service, :batch_scheduler) ||
+      fn dep -> enqueue_dependency(dep, org_id) end
   end
 
   # Credits back what was charged for and never queued (#217). The shared
@@ -857,11 +863,12 @@ defmodule Lei.Web.Router do
     end
   end
 
-  defp enqueue_dependency(dep) do
+  defp enqueue_dependency(dep, org_id) do
     %{
       "ecosystem" => dep["ecosystem"],
       "package" => dep["package"],
-      "version" => dep["version"]
+      "version" => dep["version"],
+      "org_id" => org_id
     }
     |> LeiService.BatchDependencyWorker.new()
     |> Oban.insert()

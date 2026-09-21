@@ -135,7 +135,15 @@ defmodule Lei.Metrics do
       # record of exactly this.
       "# HELP lei_unqueued_credits Credits returned for work that could not be queued",
       "# TYPE lei_unqueued_credits gauge",
-      unqueued_credit_metrics()
+      unqueued_credit_metrics(),
+
+      # The other half: work that started, ran, and determined nothing (#258).
+      # Counted the same way and for the same reason -- and a rising rate here
+      # means something systemic, an SCM outage or an exhausted token, rather
+      # than one unreachable repository.
+      "# HELP lei_undetermined_credits Credits returned for analyses that determined nothing",
+      "# TYPE lei_undetermined_credits gauge",
+      undetermined_credit_metrics()
     ]
     |> List.flatten()
   end
@@ -166,6 +174,31 @@ defmodule Lei.Metrics do
       require Logger
       Logger.error("Unqueued credit metrics failed: #{inspect(error)}")
       [~s(lei_unqueued_credits{window="1h",measure="error"} 1)]
+  end
+
+  defp undetermined_credit_metrics do
+    import Ecto.Query
+
+    since = NaiveDateTime.utc_now() |> NaiveDateTime.add(-3600, :second)
+
+    undetermined = from(e in Lei.CreditEntry, where: e.reason == "adjustment:undetermined")
+
+    {recent_entries, recent_credits} =
+      count_and_sum(from(e in undetermined, where: e.inserted_at >= ^since))
+
+    {all_entries, all_credits} = count_and_sum(undetermined)
+
+    [
+      ~s(lei_undetermined_credits{window="1h",measure="entries"} #{recent_entries}),
+      ~s(lei_undetermined_credits{window="1h",measure="credits"} #{recent_credits}),
+      ~s(lei_undetermined_credits{window="all",measure="entries"} #{all_entries}),
+      ~s(lei_undetermined_credits{window="all",measure="credits"} #{all_credits})
+    ]
+  rescue
+    error ->
+      require Logger
+      Logger.error("Undetermined credit metrics failed: #{inspect(error)}")
+      [~s(lei_undetermined_credits{window="1h",measure="error"} 1)]
   end
 
   defp count_and_sum(query) do

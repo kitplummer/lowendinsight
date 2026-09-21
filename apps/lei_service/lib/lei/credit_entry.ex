@@ -34,6 +34,7 @@ defmodule Lei.CreditEntry do
     reinstatement:tempo
     adjustment:manual
     adjustment:unqueued
+    adjustment:undetermined
     expiry
   )
 
