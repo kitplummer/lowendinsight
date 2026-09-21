@@ -162,6 +162,50 @@ way that a one-off scan is not: the decision to take a dependency is made once,
 but it does not stay correct, and nothing else a customer owns is watching
 somebody else's repository on their behalf.
 
+## What the service promises
+
+Two constraints on behaviour, both of which follow from selling answers rather
+than access.
+
+### Currency is disclosed, never promised
+
+There is always a window between the last analysis and now, so nothing we
+serve is guaranteed current and claiming otherwise would be false. Every
+answer carries what it describes and when: the commit it was computed from and
+the date it was computed.
+
+Because a probe is cheap, drift is stated as a fact rather than repaired
+silently — *this answer describes `abc123`; upstream is now at `def456`* —
+without claiming to have analysed the newer commit. The consumer decides
+whether the difference matters to them.
+
+This is why the validity-window question (ADR-001, and revisited here) has no
+answer: there is no duration after which an answer becomes false, only a
+growing chance that the repository has moved. That chance is observable, so we
+report it instead of guessing at a shelf life.
+
+### Facts, not comparisons
+
+The service states what is true about a repository. It does not compare
+packages, rank alternatives, or recommend one over another. No endpoint takes
+two identifiers and returns a preference, and no response carries a suggested
+replacement.
+
+The consumer — increasingly an agent — has a decision process of its own, with
+context we do not have: what the dependency is for, what else is in the tree,
+what the team can maintain, what the licence terms need to be. Supplying facts
+into that process is a different product from making the choice, and only one
+of them is defensible when it turns out wrong.
+
+A fact we got wrong is a data problem with a correction. A recommendation we
+got wrong is a different kind of conversation.
+
+Note that `risk_rank` and `metadata.ranking` (#247, #262) order *within* one
+consumer's own manifest by how many metrics are elevated. That is a
+description of their tree, not a comparison between candidates, and it
+deliberately carries `elevated` so the ordering can be checked rather than
+trusted.
+
 ## Consequences
 
 ### Positive
