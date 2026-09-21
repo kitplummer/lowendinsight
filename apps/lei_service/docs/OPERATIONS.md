@@ -235,6 +235,38 @@ curl -H "Authorization: Bearer $LEI_ADMIN_TOKEN" https://lowendinsight.dev/admin
 open "https://lowendinsight.dev/admin?token=$LEI_ADMIN_TOKEN"
 ```
 
+### A green deploy run does not mean a deploy happened
+
+The `deploy` workflow concludes `success` when it **deliberately ships
+nothing**. Two merges landing close together finish CI in either order, and
+the gate refuses to deploy a commit main has already moved past -- correctly,
+since deploying the older one would put production back a version. A workflow
+cannot choose its own conclusion, so declining and shipping are identical in
+the run list:
+
+```
+run 35567530799  657755e  success   <- Deploy and verify: SKIPPED, nothing shipped
+run 35552617402  657755e  success   <- Deploy and verify: success, this one shipped
+```
+
+The answer is the **`Deploy and verify` job's** conclusion, not the run's:
+
+```bash
+scripts/ops/deploy-status.sh            # origin/main
+scripts/ops/deploy-status.sh <sha>
+```
+
+Exit codes: `0` deployed, `1` not deployed, `2` could not tell. Could not tell
+is never reported as deployed.
+
+The run page itself now says which happened, in the job summary -- `SHIPPING`,
+`SHIPPED` or `DECLINED` with the reason -- and `run-name` carries the commit
+the run was about. Neither changes the run conclusion, which GitHub does not
+let a workflow set.
+
+Reading the run conclusion as "deployed" produced two wrong answers in one
+sitting on 2026-09-20 before this was written down.
+
 ### Deploy canary
 
 `scripts/canary.sh` exercises the journeys the site exists for -- the analyze

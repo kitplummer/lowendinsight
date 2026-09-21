@@ -3357,6 +3357,24 @@
       "replace": "Send `/v1/analyze/batch` your dependencies.",
       "guarded_by": "test/lei_service/agent_guide_test.exs",
       "app": "apps/lei_service"
+    },
+    {
+      "id": "deploy-gate-hides-that-it-declined",
+      "bug": "A deploy run that deliberately ships nothing concludes success, so declining and shipping are identical in the run list. Without the job summary saying which happened, the run page carries no way to tell -- which produced two wrong answers in one sitting.",
+      "file": ".github/workflows/deploy.yml",
+      "find": "              echo \"### DECLINED \u2014 nothing was shipped by this run\"",
+      "replace": "              echo \"### Deploy\"",
+      "guarded_by": "test/lei_service/deploy_reporting_test.exs",
+      "app": "apps/lei_service"
+    },
+    {
+      "id": "deploy-status-calls-a-skipped-job-deployed",
+      "bug": "A skipped Deploy and verify job means the gate declined and nothing shipped. Treating it as success reports a commit as live when production is still on the previous version.",
+      "file": "scripts/ops/deploy-status.sh",
+      "find": "    success)\n",
+      "replace": "    success | skipped)\n",
+      "guarded_by": "test/lei_service/deploy_reporting_test.exs",
+      "app": "apps/lei_service"
     }
   ]
 }
