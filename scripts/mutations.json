@@ -3258,6 +3258,51 @@
       "replace": "    case :ok do\n      :ok -> analyze_remote(url, source, options)",
       "guarded_by": "test/lei_service/refused_url_batch_test.exs",
       "app": "apps/lei_service"
+    },
+    {
+      "id": "batch-ranking-is-best-first",
+      "bug": "Sorting ascending puts the healthiest dependencies at the top of a list whose whole purpose is answering what to look at first, on the path where a manifest of hundreds actually arrives.",
+      "file": "apps/lowendinsight/lib/lei/batch_analyzer.ex",
+      "find": "      |> Enum.sort_by(&{is_nil(&1.rank), -(&1.rank || 0)})",
+      "replace": "      |> Enum.sort_by(&{is_nil(&1.rank), &1.rank || 0})",
+      "guarded_by": "test/lei/batch_ranking_test.exs",
+      "app": "apps/lowendinsight"
+    },
+    {
+      "id": "unanalysed-dependency-ranks-as-clean",
+      "bug": "Giving an entry with no analysis a rank of zero sorts it alongside a repository examined and found healthy. A first scan is mostly pending, so most of a manifest would read as fine.",
+      "file": "apps/lowendinsight/lib/lei/batch_analyzer.ex",
+      "find": "        Map.put(result, :risk_rank, nil)",
+      "replace": "        Map.put(result, :risk_rank, 0)",
+      "guarded_by": "test/lei/batch_ranking_test.exs",
+      "app": "apps/lowendinsight"
+    },
+    {
+      "id": "batch-ranking-drops-unanalysed",
+      "bug": "Leaving entries with no analysis out of the ranking shortens the list a customer reads to decide what to fix, and a shorter list reads as less to do.",
+      "file": "apps/lowendinsight/lib/lei/batch_analyzer.ex",
+      "find": "      all_results\n      |> Enum.map(fn r ->",
+      "replace": "      all_results\n      |> Enum.filter(&Map.get(&1, :risk_rank))\n      |> Enum.map(fn r ->",
+      "guarded_by": "test/lei/batch_ranking_test.exs",
+      "app": "apps/lowendinsight"
+    },
+    {
+      "id": "unsupported-ecosystem-declares-nothing",
+      "bug": "Answering an ecosystem we cannot parse with an empty list makes 'declares nothing' and 'we did not look' read alike. A package whose edges cannot be seen appears to have none, and sorts as peripheral -- the failure the ordering exists to avoid.",
+      "file": "apps/lowendinsight/lib/lei/package_repository.ex",
+      "find": "  defp declared(_ecosystem, _body), do: nil",
+      "replace": "  defp declared(_ecosystem, _body), do: []",
+      "guarded_by": "test/lei/package_dependencies_test.exs",
+      "app": "apps/lowendinsight"
+    },
+    {
+      "id": "npm-dependencies-read-from-any-version",
+      "bug": "Reading dependencies from an arbitrary published version rather than the current one describes a tree the customer does not have.",
+      "file": "apps/lowendinsight/lib/lei/package_repository.ex",
+      "find": "    latest = get_in(body, [\"dist-tags\", \"latest\"])\n    version = get_in(body, [\"versions\", latest]) || %{}",
+      "replace": "    version = (get_in(body, [\"versions\"]) || %{}) |> Map.values() |> List.first() || %{}",
+      "guarded_by": "test/lei/package_dependencies_test.exs",
+      "app": "apps/lowendinsight"
     }
   ]
 }

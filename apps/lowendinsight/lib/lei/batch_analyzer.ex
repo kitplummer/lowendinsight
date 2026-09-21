@@ -58,6 +58,23 @@ defmodule Lei.BatchAnalyzer do
     all_results = results ++ pending_results ++ uncached_results ++ failed_results
     risk_breakdown = compute_risk_breakdown(results)
 
+    # Worst first, and entries with no rank last rather than absent: a shorter
+    # list reads as less to fix, and a first scan is mostly pending.
+    ranking =
+      all_results
+      |> Enum.map(fn r ->
+        %{
+          ecosystem: r.ecosystem,
+          package: r.package,
+          version: r.version,
+          status: r.status,
+          risk: Map.get(r, :risk),
+          rank: Map.get(r, :risk_rank),
+          profile: Map.get(r, :risk_profile)
+        }
+      end)
+      |> Enum.sort_by(&{is_nil(&1.rank), -(&1.rank || 0)})
+
     %{
       analyzed_at: DateTime.utc_now() |> DateTime.to_iso8601(),
       elapsed_ms: elapsed,
@@ -70,6 +87,7 @@ defmodule Lei.BatchAnalyzer do
         risk_breakdown: risk_breakdown
       },
       results: all_results,
+      ranking: ranking,
       pending_jobs: Enum.map(pending_jobs, fn {_dep, job_id} -> job_id end)
     }
   end
@@ -149,14 +167,39 @@ defmodule Lei.BatchAnalyzer do
     result =
       if analysis && status == "cached" do
         risk = extract_risk(analysis)
-        Map.merge(result, %{risk: risk, analysis: analysis})
+
+        # The distribution the verdict was collapsed from, and a key to order
+        # by (#262, #263). A manifest is where "I have four hundred criticals,
+        # what do I open first" is actually asked, and until now the ranking
+        # existed only on the URL-list path.
+        profile = Lei.RiskProfile.of(results_of(analysis))
+
+        Map.merge(result, %{
+          risk: risk,
+          analysis: analysis,
+          risk_profile: profile,
+          risk_rank: Lei.RiskProfile.rank(profile)
+        })
       else
-        result
+        # Pending, uncached and failed entries have no analysis, so they have
+        # no rank. They are not given zero: zero is what a clean repository
+        # scores, and an unexamined dependency must not sort as a healthy one.
+        Map.put(result, :risk_rank, nil)
       end
 
     result = if job_id, do: Map.put(result, :job_id, job_id), else: result
     if error, do: Map.put(result, :error, inspect(error)), else: result
   end
+
+  # A cached analysis arrives as the stored report, atom- or string-keyed
+  # depending on how it was decoded. RiskProfile reads the values rather than
+  # the keys, but it has to be handed the results map either way.
+  defp results_of(analysis) when is_map(analysis) do
+    data = Map.get(analysis, :data) || Map.get(analysis, "data") || %{}
+    Map.get(data, :results) || Map.get(data, "results") || %{}
+  end
+
+  defp results_of(_), do: %{}
 
   defp extract_risk(analysis) when is_map(analysis) do
     cond do

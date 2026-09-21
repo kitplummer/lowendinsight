@@ -39,6 +39,57 @@ defmodule Lei.PackageRepository do
     end
   end
 
+  @doc """
+  The packages this one declares a dependency on, from the same registry
+  response `resolve/3` already fetches (#263).
+
+  Blast radius is not health: a dead dependency in a test helper and a dead
+  dependency on the request path score identically by metric counts, and only
+  the second is worth waking up for. In-degree within a customer's own manifest
+  is a proxy for that, and it needs these edges.
+
+  The request carries none — `valid_dependency?/1` accepts only ecosystem,
+  package and version — so the graph has to come from somewhere. It comes from
+  a field we were already receiving and discarding, which is the same shape as
+  `github_trending` reading `size` and throwing away `pushed_at`.
+
+  `{:ok, [names]}` or `{:error, reason}`. An ecosystem whose registry shape is
+  not handled returns `{:error, :unsupported}` rather than an empty list:
+  "declares nothing" and "we did not look" must not read alike, or a package
+  whose edges we cannot see appears to have none and sorts as peripheral.
+  """
+  @spec dependencies(String.t(), String.t(), keyword()) ::
+          {:ok, [String.t()]} | {:error, term()}
+  def dependencies(ecosystem, package, opts \\ []) do
+    with {:ok, url, _extract} <- registry(ecosystem, package),
+         {:ok, body} <- fetch(url, opts) do
+      case declared(ecosystem, body) do
+        nil -> {:error, :unsupported}
+        names -> {:ok, names}
+      end
+    end
+  end
+
+  # npm publishes every version; the dependencies wanted are the current one's.
+  defp declared("npm", body) do
+    latest = get_in(body, ["dist-tags", "latest"])
+    version = get_in(body, ["versions", latest]) || %{}
+    Map.keys(get_in(version, ["dependencies"]) || %{})
+  end
+
+  # hex answers with the latest release inline on the package document.
+  defp declared("hex", body) do
+    requirements =
+      get_in(body, ["releases"]) |> List.wrap() |> List.first() |> Kernel.||(%{})
+
+    case get_in(requirements, ["requirements"]) do
+      %{} = reqs -> Map.keys(reqs)
+      _ -> Map.keys(get_in(body, ["meta", "requirements"]) || %{})
+    end
+  end
+
+  defp declared(_ecosystem, _body), do: nil
+
   defp registry("npm", package) do
     {:ok, "https://registry.npmjs.org/" <> URI.encode(package),
      fn body -> get_in(body, ["repository", "url"]) end}
