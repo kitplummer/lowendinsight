@@ -99,6 +99,48 @@ defmodule Lei.Credits do
   end
 
   @doc """
+  Credits back an analysis that ran and determined nothing (#258).
+
+  Billing is settled at admission, from the cache split, before any analysis
+  runs — ADR-002 puts refusal before the work rather than after it. So an
+  outcome discovered later has to be given back rather than never charged.
+
+  A repository that cannot be cloned produces a report whose every metric is
+  nil and whose `data.error` says why (#255). The requester paid a cache miss
+  for it. `adjustment:unqueued` does not describe this: that work never
+  started, while this ran and failed, and the two are worth telling apart when
+  reading the ledger.
+
+  Counting from these entries also gives the rate for free, the way
+  `lei_unqueued_credits` counts from `adjustment:unqueued` (#217) — a durable
+  record of exactly the thing being counted, which cannot drift from it the
+  way a process counter can.
+  """
+  def credit_undetermined(org_id, credits, metadata \\ %{})
+
+  def credit_undetermined(_org_id, credits, _metadata) when credits <= 0, do: {:ok, :nothing}
+
+  def credit_undetermined(org_id, credits, metadata) do
+    case grant(org_id, credits, "adjustment:undetermined",
+           external_ref: "undetermined:" <> Ecto.UUID.generate(),
+           metadata: metadata
+         ) do
+      {:ok, entry} ->
+        {:ok, entry}
+
+      {:error, reason} ->
+        require Logger
+
+        Logger.error(
+          "charged org #{org_id} #{credits} credits for an analysis that determined " <>
+            "nothing, and could not credit it back: #{inspect(reason)}"
+        )
+
+        {:error, reason}
+    end
+  end
+
+  @doc """
   Remove credits. `credits` must be positive; the entry is written negative.
 
   A debit is allowed to take the balance below zero. The alternative is

@@ -26,10 +26,12 @@ defmodule LeiService.BatchDependencyWorker do
   def timeout(_job), do: :timer.minutes(20)
 
   @impl Oban.Worker
-  def perform(%Oban.Job{args: %{"ecosystem" => eco, "package" => package, "version" => version}}) do
+  def perform(%Oban.Job{
+        args: %{"ecosystem" => eco, "package" => package, "version" => version} = args
+      }) do
     case resolve().(eco, package, []) do
       {:ok, url} ->
-        analyse(eco, package, version, url)
+        analyse(eco, package, version, url, args["org_id"])
 
       # Nothing about a retry changes these answers.
       {:error, reason} when reason in [:no_repository, :not_found] ->
@@ -43,15 +45,55 @@ defmodule LeiService.BatchDependencyWorker do
     end
   end
 
-  defp analyse(eco, package, version, url) do
+  defp analyse(eco, package, version, url, org_id) do
     case analyze().(url) do
       {:ok, report} ->
-        Lei.BatchCache.put(eco, package, version, report)
-        Logger.info("batch dependency analysed: #{eco}/#{package}@#{version}")
-        :ok
+        if AnalyzerModule.determined?(report) do
+          Lei.BatchCache.put(eco, package, version, report)
+          Logger.info("batch dependency analysed: #{eco}/#{package}@#{version}")
+          :ok
+        else
+          undetermined(eco, package, org_id)
+        end
 
       other ->
         {:error, "#{eco}/#{package}: analysis returned #{inspect(other)}"}
+    end
+  end
+
+  # An analysis that ran and determined nothing. Two things follow, and #256
+  # only did the first of them on the other analysis path -- this cache has
+  # its own `put` and kept the defect.
+  #
+  # It is not cached, so a transient failure does not become a day-long answer
+  # and the next request is a real attempt. And the requester is credited back:
+  # admission charged a cache miss for this before any analysis ran (#258), and
+  # they received a report whose every metric is nil.
+  #
+  # The job succeeds. One unanalysable dependency in a manifest of two hundred
+  # must not retry forever or fail the rest, and nothing about a retry would
+  # change the answer.
+  defp undetermined(eco, package, org_id) do
+    Logger.warning("batch dependency determined nothing: #{eco}/#{package}; not caching")
+
+    credits = Lei.Credits.cost_in_credits(0, 1)
+
+    case org_id do
+      nil ->
+        # Enqueued before org_id was carried, or by a path that has no org.
+        # Nothing to credit, and pretending otherwise would write an entry
+        # against nobody.
+        Logger.warning("batch dependency determined nothing with no org to credit")
+        :ok
+
+      id ->
+        Lei.Credits.credit_undetermined(id, credits, %{
+          "undetermined" => 1,
+          "ecosystem" => eco,
+          "package" => package
+        })
+
+        :ok
     end
   end
 
