@@ -198,6 +198,86 @@ The SBOM parser extracts git URLs from:
 
 ---
 
+### Dependency Batch Analysis
+
+#### `POST /v1/analyze/batch`
+
+Analyse a list of packages — a lockfile's resolved dependencies — by ecosystem,
+package and version.
+
+**Request Body:**
+```json
+{
+  "dependencies": [
+    {"ecosystem": "hex", "package": "jason", "version": "1.4.1"},
+    {"ecosystem": "npm", "package": "express", "version": "4.18.2"}
+  ],
+  "cache_mode": "stale"
+}
+```
+
+**Parameters:**
+| Parameter | Type | Default | Description |
+|-----------|------|---------|-------------|
+| `dependencies` | array | required | Non-empty; each entry needs `ecosystem`, `package`, `version` |
+| `cache_mode` | string | `"stale"` | How to handle cache misses |
+
+**Send the complete resolved set.**
+
+This endpoint expects the whole transitive closure as the lockfile resolved it,
+not a hand-picked subset. Anything derived from the shape of the set —
+relationships between packages, and which of them you chose rather than
+inherited — is computed on that assumption and is **wrong, silently, for a
+partial list**. A subset with its roots omitted looks exactly like a set of
+deliberate choices, and nothing in the response marks the difference.
+
+Counts and per-package risk are unaffected: those are properties of each
+package on its own.
+
+**Response (200 OK):**
+```json
+{
+  "analyzed_at": "2026-09-21T10:00:00Z",
+  "elapsed_ms": 412,
+  "summary": {
+    "total": 2, "cached": 1, "pending": 1,
+    "uncached": 0, "failed": 0,
+    "risk_breakdown": { "critical": 1 }
+  },
+  "results": [
+    {
+      "ecosystem": "hex", "package": "jason", "version": "1.4.1",
+      "status": "cached", "risk": "critical",
+      "risk_rank": 20100,
+      "risk_profile": {
+        "counts": {"low": 3, "medium": 0, "high": 1, "critical": 2},
+        "elevated": ["functional_contributors_risk"]
+      },
+      "analysis": { ... }
+    }
+  ],
+  "ranking": [ ... ],
+  "pending_jobs": ["job-id"],
+  "billing": { "cache_hits": 1, "cache_misses": 1, "cost_cents": 0.055 }
+}
+```
+
+**`ranking`** repeats the results worst first, carrying `rank`, `risk` and
+`profile`. It answers "what do I look at first" without parsing every entry,
+which matters on a manifest of hundreds where severity alone does not
+discriminate.
+
+`rank` is a sort key, comparable **within one response** and meaningless
+across them: it counts how many metrics are elevated, so a report with fewer
+metrics computed scores lower for that reason alone.
+
+**`rank` is `null` for anything not yet analysed** — `pending`, `uncached` or
+`failed`. Null is not zero: zero is what a clean repository scores, and an
+unexamined dependency must not sort beside one examined and found healthy.
+Those entries sort last and are always present; the list is never shortened.
+
+---
+
 ### Cache Management
 
 #### `GET /v1/cache/stats`

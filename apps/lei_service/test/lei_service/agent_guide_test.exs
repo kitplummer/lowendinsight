@@ -178,6 +178,39 @@ defmodule LeiService.AgentGuideTest do
       assert conn.resp_body =~ "WWW-Authenticate: Payment"
     end
 
+    test "the batch route tells callers to send the whole resolved set" do
+      # Directness and anything else derived from the shape of the set is
+      # wrong, silently, for a partial list: a subset with its roots omitted
+      # looks exactly like a set of deliberate choices, and nothing in the
+      # response marks the difference (#263). A caller cannot avoid that
+      # unless the documentation says so, and agents read llms.txt.
+      body = llms().resp_body
+
+      assert body =~ "complete resolved dependency set",
+             "llms.txt does not state the completeness the batch route assumes"
+
+      assert body =~ "partial list is wrong silently",
+             "llms.txt does not say what a partial list costs"
+    end
+
+    test "the API reference states the same contract" do
+      api = File.read!(Path.expand("../../docs/API.md", __DIR__))
+
+      assert api =~ "**Send the complete resolved set.**",
+             "API.md does not state the completeness the batch route assumes"
+
+      assert api =~ "wrong, silently, for a\npartial list",
+             "API.md does not say what a partial list costs"
+    end
+
+    test "rank is documented as null rather than zero for unanalysed entries" do
+      # Zero is what a clean repository scores. A consumer sorting by rank
+      # would otherwise read "nobody has looked" as "nothing is wrong".
+      api = File.read!(Path.expand("../../docs/API.md", __DIR__))
+
+      assert api =~ "Null is not zero"
+    end
+
     test "no example suggests analysis is free without paying or a key" do
       # The page's first example was an unauthenticated curl presented as if it
       # returned a report; since #148 it returns a 402.

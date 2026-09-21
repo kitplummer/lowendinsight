@@ -3339,6 +3339,24 @@
       "replace": "        case extract.(body) do\n          nil ->\n            throw(:no_repository)",
       "guarded_by": "test/lei/package_dependencies_test.exs",
       "app": "apps/lowendinsight"
+    },
+    {
+      "id": "batch-docs-omit-the-completeness-contract",
+      "bug": "Directness and any other property derived from the shape of the dependency set is wrong, silently, for a partial list -- a subset with its roots omitted looks exactly like a set of deliberate choices. Callers cannot avoid that unless the documentation says to send the whole tree.",
+      "file": "apps/lei_service/docs/API.md",
+      "find": "**Send the complete resolved set.**",
+      "replace": "**Dependencies.**",
+      "guarded_by": "test/lei_service/agent_guide_test.exs",
+      "app": "apps/lei_service"
+    },
+    {
+      "id": "llms-txt-omits-the-completeness-contract",
+      "bug": "Agents read llms.txt rather than the API reference. Without the completeness contract there, an agent sends whatever subset it has and receives derived properties that are wrong with nothing marking them.",
+      "file": "apps/lei_service/priv/templates/llms.txt.eex",
+      "find": "Send `/v1/analyze/batch` the complete resolved dependency set, not a subset.",
+      "replace": "Send `/v1/analyze/batch` your dependencies.",
+      "guarded_by": "test/lei_service/agent_guide_test.exs",
+      "app": "apps/lei_service"
     }
   ]
 }
