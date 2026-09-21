@@ -18,6 +18,10 @@ Operated by (r)evolve (https://revolveteam.com). Source: https://github.com/kitp
 
 Other paid routes, same flow: `POST /v1/analyze/sbom` (a CycloneDX or SPDX SBOM; priced per repository it names) and `POST /v1/analyze/batch` (dependencies). `GET /v1/analyze/{uuid}` fetches a job's result. Full schema: https://lowendinsight.dev/openapi.json
 
+Send `/v1/analyze/batch` the complete resolved dependency set, not a subset. Anything derived from the shape of the set -- how packages relate, which were chosen rather than inherited -- assumes the whole tree, and a partial list is wrong silently: nothing in the response marks it. Per-package risk is unaffected.
+
+Batch responses carry `ranking`, worst first, so you need not read every entry. `rank` compares only within one response. It is `null` for anything not yet analysed, which is not zero -- zero is a clean repository, null is one nobody has looked at yet.
+
 A request is priced before it runs, from which repositories already have cached reports. It is charged when accepted, whether it completes in the request or runs asynchronously. A balance smaller than the request is asked to top up by at least the difference.
 
 ## Pricing

@@ -40,6 +40,40 @@ defmodule Lei.PackageRepository do
   end
 
   @doc """
+  The repository URL and the declared dependencies, from **one** fetch.
+
+  `resolve/3` and `dependencies/3` each request the same registry document.
+  Calling both costs two round trips per package, which for a 400-package
+  manifest is 800 requests where 400 would do (#263).
+
+  Either field is `nil` when that part could not be read: a package with no
+  repository link still has dependencies worth knowing, and an ecosystem whose
+  dependency shape is unhandled still has a repository to analyse. Returning a
+  pair rather than failing on the first missing half keeps them independent.
+  """
+  @spec describe(String.t(), String.t(), keyword()) ::
+          {:ok, %{repository: String.t() | nil, dependencies: [String.t()] | nil}}
+          | {:error, term()}
+  def describe(ecosystem, package, opts \\ []) do
+    with {:ok, url, extract} <- registry(ecosystem, package),
+         {:ok, body} <- fetch(url, opts) do
+      repository =
+        case extract.(body) do
+          nil ->
+            nil
+
+          found ->
+            case normalize(found) do
+              {:ok, normalized} -> normalized
+              _ -> nil
+            end
+        end
+
+      {:ok, %{repository: repository, dependencies: declared(ecosystem, body)}}
+    end
+  end
+
+  @doc """
   The packages this one declares a dependency on, from the same registry
   response `resolve/3` already fetches (#263).
 
