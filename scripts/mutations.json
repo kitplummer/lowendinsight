@@ -3150,6 +3150,24 @@
       "replace": "        note:\n          \"Repository is too large to analyse: #{size_kb} KB against a limit of #{limit_kb} KB.\",",
       "guarded_by": "test/lei_service/repo_size_limit_test.exs",
       "app": "apps/lei_service"
+    },
+    {
+      "id": "async-test-shares-the-sandbox",
+      "bug": "Shared mode hands one connection to every process on the node, so an async test using it has its connection checked in by whichever concurrent test finishes first. This reached main on 2026-09-21 from a documentation-only merge -- the tell that it was a race rather than a change.",
+      "file": "apps/lei_service/test/lei_service/endpoint_test.exs",
+      "find": "  use ExUnit.Case, async: false",
+      "replace": "  use ExUnit.Case, async: true",
+      "guarded_by": "test/lei_service/sandbox_mode_test.exs",
+      "app": "apps/lei_service"
+    },
+    {
+      "id": "sandbox-check-sweeps-nothing",
+      "bug": "A sweep over no files makes every assertion vacuously true. The check would report the suite clean while examining nothing, which is the shape of check this codebase produces most often.",
+      "file": "apps/lei_service/test/lei_service/sandbox_mode_test.exs",
+      "find": "    |> Path.wildcard()",
+      "replace": "    |> Path.wildcard()\n    |> Enum.take(0)",
+      "guarded_by": "test/lei_service/sandbox_mode_test.exs",
+      "app": "apps/lei_service"
     }
   ]
 }
