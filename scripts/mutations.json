@@ -3249,6 +3249,15 @@
       "replace": "        note: \"Not analysed: #{inspect(reason)}\",",
       "guarded_by": "test/lei_service/refused_url_batch_test.exs",
       "app": "apps/lei_service"
+    },
+    {
+      "id": "worker-check-admits-a-rebound-host",
+      "bug": "analyze/3 re-checks RemoteUrl.validate deliberately, so the rule on what may be cloned holds even when the route's answer has gone stale -- a name resolving to a private address after admission. Skipping the re-check lets the worker clone what the guard exists to refuse.",
+      "file": "apps/lei_service/lib/lei_service/analysis.ex",
+      "find": "    case LeiService.RemoteUrl.validate(url) do\n      :ok -> analyze_remote(url, source, options)",
+      "replace": "    case :ok do\n      :ok -> analyze_remote(url, source, options)",
+      "guarded_by": "test/lei_service/refused_url_batch_test.exs",
+      "app": "apps/lei_service"
     }
   ]
 }

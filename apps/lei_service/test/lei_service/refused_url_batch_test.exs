@@ -97,6 +97,97 @@ defmodule LeiService.RefusedUrlBatchTest do
     end
   end
 
+  describe "the case this actually guards: the two checks disagreeing" do
+    # The reproduction that matters. "not-a-url" above exercises the clause but
+    # the route would reject it too, so it never reaches a worker in practice.
+    #
+    # This is a URL the route admits and the worker refuses -- the window
+    # RemoteUrl's own moduledoc names, where a name answers differently between
+    # two lookups. analyze/3 calls validate/1 with no opts, so the resolver is
+    # driven through configuration.
+    setup do
+      original = Application.fetch_env(:lei_service, :remote_url_resolver)
+
+      on_exit(fn ->
+        case original do
+          {:ok, v} -> Application.put_env(:lei_service, :remote_url_resolver, v)
+          :error -> Application.delete_env(:lei_service, :remote_url_resolver)
+        end
+      end)
+
+      :ok
+    end
+
+    @admitted "https://github.com/kitplummer/lowendinsight"
+
+    defp public_resolver, do: fn _host -> {:ok, [{140, 82, 121, 3}]} end
+    defp rebound_resolver, do: fn _host -> {:ok, [{127, 0, 0, 1}]} end
+
+    test "the route would admit this URL" do
+      # Establishes the premise: without it, the test below is just another
+      # invalid URL and proves nothing about the disagreement.
+      assert :ok =
+               LeiService.RemoteUrl.validate(@admitted, resolve: public_resolver())
+    end
+
+    test "and the worker refuses it, without failing the batch" do
+      Application.put_env(:lei_service, :remote_url_resolver, rebound_resolver())
+
+      assert :ok != LeiService.RemoteUrl.validate(@admitted),
+             "the premise is broken: the worker-time check now admits it too"
+
+      assert {:ok, report} = Analysis.process(uuid(), [@admitted], DateTime.utc_now())
+
+      assert statuses(report) == ["refused"]
+      assert length(repos(report)) == 1
+      refute AnalyzerModule.determined?(hd(repos(report)))
+    end
+
+    test "the rest of the batch still gets answers" do
+      # The actual damage the crash did: one refusal took every other
+      # repository in the job with it.
+      #
+      # The surviving URL is seeded into the cache so this is a hit rather than
+      # a clone. Without that it passed locally in 0.06s off a warm Redis and
+      # would have made a real network request in CI -- slow, and flaky for
+      # reasons having nothing to do with what is being tested.
+      good = "https://github.com/lei-test/survivor-#{System.unique_integer([:positive])}"
+
+      {:ok, _} =
+        LeiService.Datastore.write_to_cache(good, %{
+          "header" => %{
+            "repo" => good,
+            "uuid" => "u",
+            "end_time" => DateTime.utc_now() |> DateTime.to_iso8601()
+          },
+          "data" => %{
+            "repo" => good,
+            "git" => %{"hash" => "abc", "last_commit_date" => "2026-09-01T00:00:00Z"},
+            "results" => %{"contributor_risk" => "low"},
+            "risk" => "low"
+          }
+        })
+
+      on_exit(fn -> LeiService.Datastore.delete_from_cache(good) end)
+
+      Application.put_env(:lei_service, :remote_url_resolver, fn
+        "private.example.com" -> {:ok, [{10, 0, 0, 1}]}
+        _ -> {:ok, [{140, 82, 121, 3}]}
+      end)
+
+      urls = ["https://private.example.com/a/b", good]
+
+      assert {:ok, report} = Analysis.process(uuid(), urls, DateTime.utc_now())
+
+      assert length(repos(report)) == 2
+
+      assert statuses(report) == ["refused", "hit"],
+             "the surviving URL was not answered, so the batch was not really processed"
+
+      assert report[:metadata][:cache_status][:hits] == 1
+    end
+  end
+
   describe "a batch with nothing wrong" do
     @tag :network
     test "is unaffected" do

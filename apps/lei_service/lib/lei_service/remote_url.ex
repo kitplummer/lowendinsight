@@ -26,7 +26,14 @@ defmodule LeiService.RemoteUrl do
   def validate(url, opts \\ [])
 
   def validate(url, opts) when is_binary(url) do
-    resolve = Keyword.get(opts, :resolve, &resolve/1)
+    # opts wins, then configuration, then real DNS. The configured hook exists
+    # so the worker-time check can be driven in a test: `analyze/3` calls
+    # validate/1 with no opts, and the case worth reproducing is precisely the
+    # one where this check and the route's disagree (#257).
+    resolve =
+      Keyword.get(opts, :resolve) ||
+        Application.get_env(:lei_service, :remote_url_resolver) ||
+        (&resolve/1)
 
     with {:ok, uri} <- parse(url),
          :ok <- https(uri),
