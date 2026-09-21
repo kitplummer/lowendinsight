@@ -397,8 +397,12 @@ defmodule AnalyzerModule do
   """
   @spec determined?(any) :: boolean
   def determined?(%{} = report) do
-    case report[:data] || report["data"] do
-      %{} = data -> is_nil(data[:error] || data["error"])
+    # Map.get rather than Access: a report decoded from the cache is a
+    # %RepoReport{} struct, and structs do not implement Access, so `report[:data]`
+    # raises UndefinedFunctionError on exactly the reports this is asked about
+    # most (#258).
+    case Map.get(report, :data) || Map.get(report, "data") do
+      %{} = data -> is_nil(Map.get(data, :error) || Map.get(data, "error"))
       _ -> false
     end
   end

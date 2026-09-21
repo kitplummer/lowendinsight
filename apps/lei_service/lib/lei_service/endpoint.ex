@@ -311,7 +311,14 @@ defmodule LeiService.Endpoint do
           )
 
         if cache_mode in @valid_cache_modes do
-          opts = %{cache_mode: cache_mode, cache_timeout: cache_timeout}
+          # The org travels with the work so the worker can credit back an
+          # analysis that determines nothing: admission charged for it before
+          # the work ran, and the outcome is only known later (#258).
+          opts = %{
+            cache_mode: cache_mode,
+            cache_timeout: cache_timeout,
+            org_id: billing_org(billing)
+          }
 
           case LeiService.Analysis.process_urls(urls, uuid, start_time, opts) do
             {:ok, result} ->
@@ -725,6 +732,12 @@ defmodule LeiService.Endpoint do
   # Logged against the org the gate billed -- the key's, or the one a payment
   # on this request identified. Keyed on the API key alone, a paying agent's
   # first request was logged with no org, its URLs and all (#149).
+  # Gate.admit/2 answers {:ok, conn, {org_id, api_key_id, tier}}. Anything else
+  # is a path with no org -- an unauthenticated free analysis -- and crediting
+  # nobody is correct there rather than an error.
+  defp billing_org({org_id, _api_key_id, _tier}), do: org_id
+  defp billing_org(_), do: nil
+
   defp log_analyze_request(conn, {org_id, key_id, _tier}, urls, result) when is_binary(result) do
     org =
       case conn.assigns[:current_api_key] do
