@@ -3123,6 +3123,33 @@
       "replace": "    |> Enum.sort_by(& &1.rank, :asc)",
       "guarded_by": "test/lei/risk_ranking_test.exs",
       "app": "apps/lowendinsight"
+    },
+    {
+      "id": "oversized-repo-is-cloned-anyway",
+      "bug": "Without the size check the customer path clones a repository of any size into the root filesystem, beside up to four others. The 250MB guard that exists protects trending, which is the path we drive rather than the one strangers drive.",
+      "file": "apps/lei_service/lib/lei_service/analysis.ex",
+      "find": "          {:too_large, size_kb, limit_kb} ->\n            Lei.RepoSize.log_refusal(size_kb, limit_kb)\n            {:ok, Lei.RepoSize.refusal(url, size_kb, limit_kb), :miss}",
+      "replace": "          {:too_large, _size_kb, _limit_kb} ->\n            {:ok, rep} = AnalyzerModule.analyze(url, source, options)\n            {:ok, rep, :miss}",
+      "guarded_by": "test/lei_service/repo_size_limit_test.exs",
+      "app": "apps/lei_service"
+    },
+    {
+      "id": "unmeasurable-repo-is-refused",
+      "bug": "Refusing a repository whose size cannot be read would break every host without a size API -- GitLab and anything self-hosted. Trending refuses the unmeasurable because it picks its own candidates; a customer naming one is asking a fair question.",
+      "file": "apps/lei_service/lib/lei/repo_size.ex",
+      "find": "      _ ->\n        :unknown",
+      "replace": "      _ ->\n        {:too_large, 0, 0}",
+      "guarded_by": "test/lei_service/repo_size_limit_test.exs",
+      "app": "apps/lei_service"
+    },
+    {
+      "id": "size-refusal-reads-as-an-analysis",
+      "bug": "A refusal without data.error passes AnalyzerModule.determined?/1, so it is cached for thirty days and billed as an analysis. The requester pays for a report saying only that we would not look.",
+      "file": "apps/lei_service/lib/lei/repo_size.ex",
+      "find": "        error:\n          \"Repository is too large to analyse: #{size_kb} KB against a limit of #{limit_kb} KB.\",",
+      "replace": "        note:\n          \"Repository is too large to analyse: #{size_kb} KB against a limit of #{limit_kb} KB.\",",
+      "guarded_by": "test/lei_service/repo_size_limit_test.exs",
+      "app": "apps/lei_service"
     }
   ]
 }

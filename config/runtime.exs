@@ -50,6 +50,11 @@ if config_env() == :prod do
     cache_ttl: String.to_integer(System.get_env("LEI_CACHE_TTL") || "30"),
     cache_clean_enable: String.to_atom(System.get_env("LEI_CACHE_CLEAN_ENABLE") || "true"),
     check_repo_size?: String.to_atom(System.get_env("LEI_CHECK_REPO_SIZE") || "true"),
+    # The customer analysis path (#265). Separate from trending's cap on
+    # purpose: trending chooses its own candidates and refuses what it cannot
+    # measure, while a customer naming a repository we cannot size is asking a
+    # fair question. Sharing one dial would mean tuning either moved both.
+    max_repo_size_kb: String.to_integer(System.get_env("LEI_MAX_REPO_SIZE_KB") || "250000"),
     wait_time: String.to_integer(System.get_env("LEI_WAIT_TIME") || "7200000"),
     num_of_repos: String.to_integer(System.get_env("LEI_NUM_OF_REPOS") || "10"),
     gh_token: System.get_env("LEI_GH_TOKEN") || "",
@@ -94,10 +99,8 @@ if config_env() == :prod do
     medium_contributor_level: System.get_env("LEI_CRITICAL_CONTRIBUTOR_LEVEL") || 5,
     critical_currency_level:
       String.to_integer(System.get_env("LEI_CRITICAL_CURRENCY_LEVEL") || "104"),
-    high_currency_level:
-      String.to_integer(System.get_env("LEI_HIGH_CURRENCY_LEVEL") || "52"),
-    medium_currency_level:
-      String.to_integer(System.get_env("LEI_MEDIUM_CURRENCY_LEVEL") || "26"),
+    high_currency_level: String.to_integer(System.get_env("LEI_HIGH_CURRENCY_LEVEL") || "52"),
+    medium_currency_level: String.to_integer(System.get_env("LEI_MEDIUM_CURRENCY_LEVEL") || "26"),
     ## Functional commit currency (#244): time since the last commit that carried
     ## information -- not a bot bump, not a README fix. Configured apart from the
     ## plain currency levels above because the substantive date is always at or
@@ -116,19 +119,12 @@ if config_env() == :prod do
     medium_large_commit_level:
       String.to_float(System.get_env("LEI_MEDIUM_LARGE_COMMIT_LEVEL") || "0.05"),
     critical_functional_contributors_level:
-      String.to_integer(
-        System.get_env("LEI_CRITICAL_FUNCTIONAL_CONTRIBUTORS_LEVEL") || "2"
-      ),
+      String.to_integer(System.get_env("LEI_CRITICAL_FUNCTIONAL_CONTRIBUTORS_LEVEL") || "2"),
     high_functional_contributors_level:
-      String.to_integer(
-        System.get_env("LEI_HIGH_FUNCTIONAL_CONTRIBUTORS_LEVEL") || "3"
-      ),
+      String.to_integer(System.get_env("LEI_HIGH_FUNCTIONAL_CONTRIBUTORS_LEVEL") || "3"),
     medium_functional_contributors_level:
-      String.to_integer(
-        System.get_env("LEI_MEDIUM_FUNCTIONAL_CONTRIBUTORS_LEVEL") || "5"
-      ),
-    jobs_per_core_max:
-      String.to_integer(System.get_env("LEI_JOBS_PER_CORE_MAX") || "2"),
+      String.to_integer(System.get_env("LEI_MEDIUM_FUNCTIONAL_CONTRIBUTORS_LEVEL") || "5"),
+    jobs_per_core_max: String.to_integer(System.get_env("LEI_JOBS_PER_CORE_MAX") || "2"),
     base_temp_dir: System.get_env("LEI_BASE_TEMP_DIR") || "/tmp"
 
   # Database
@@ -190,10 +186,8 @@ if config_env() == :prod do
 
   # Usage billing rates (ADR-001)
   config :lei_service,
-    cache_hit_cost_cents:
-      String.to_float(System.get_env("LEI_CACHE_HIT_COST_CENTS") || "0.5"),
-    cache_miss_cost_cents:
-      String.to_float(System.get_env("LEI_CACHE_MISS_COST_CENTS") || "5.0"),
+    cache_hit_cost_cents: String.to_float(System.get_env("LEI_CACHE_HIT_COST_CENTS") || "0.5"),
+    cache_miss_cost_cents: String.to_float(System.get_env("LEI_CACHE_MISS_COST_CENTS") || "5.0"),
     free_tier_monthly_limit:
       String.to_integer(System.get_env("LEI_FREE_TIER_MONTHLY_LIMIT") || "200"),
     pro_tier_credit_cents:

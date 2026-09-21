@@ -32,9 +32,20 @@ defmodule LeiService.Analysis do
 
       {:error, msg, _cache_status} ->
         Logger.info("No cache: #{msg}")
-        {:ok, rep} = AnalyzerModule.analyze(url, source, options)
-        LeiService.Datastore.write_to_cache_if_determined(url, rep)
-        {:ok, rep, :miss}
+
+        # Asked before cloning, because the cost being avoided is the clone
+        # itself: LEI_BASE_TEMP_DIR is the root filesystem and five of these
+        # can be in flight at once (#265).
+        case Lei.RepoSize.check(url) do
+          {:too_large, size_kb, limit_kb} ->
+            Lei.RepoSize.log_refusal(size_kb, limit_kb)
+            {:ok, Lei.RepoSize.refusal(url, size_kb, limit_kb), :miss}
+
+          _ ->
+            {:ok, rep} = AnalyzerModule.analyze(url, source, options)
+            LeiService.Datastore.write_to_cache_if_determined(url, rep)
+            {:ok, rep, :miss}
+        end
     end
   end
 
