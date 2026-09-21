@@ -1823,8 +1823,8 @@
       "id": "refresh-spawned-not-queued",
       "bug": "A cached report's background refresh spawned in a task is lost on restart, so the cache keeps serving a stale report and nothing reports it.",
       "file": "apps/lei_service/lib/lei_service/analysis.ex",
-      "find": "      LeiService.AnalysisSupervisor.enqueue(uuid, urls, start_time)",
-      "replace": "      Task.start(fn -> LeiService.AnalysisSupervisor.enqueue(uuid, urls, start_time) end)",
+      "find": "      LeiService.AnalysisSupervisor.enqueue(uuid, urls, start_time, org_id)",
+      "replace": "      Task.start(fn -> LeiService.AnalysisSupervisor.enqueue(uuid, urls, start_time, org_id) end)",
       "guarded_by": "test/lei_service/durable_work_test.exs",
       "app": "apps/lei_service"
     },
@@ -1832,8 +1832,8 @@
       "id": "refresh-waits-for-analysis",
       "bug": "Refreshing through perform_analysis/3 runs the analysis inline wherever workers are disabled, blocking a response that was already answered from cache.",
       "file": "apps/lei_service/lib/lei_service/analysis.ex",
-      "find": "      LeiService.AnalysisSupervisor.enqueue(uuid, urls, start_time)\n",
-      "replace": "      LeiService.AnalysisSupervisor.perform_analysis(uuid, urls, start_time)\n",
+      "find": "      LeiService.AnalysisSupervisor.enqueue(uuid, urls, start_time, org_id)\n",
+      "replace": "      LeiService.AnalysisSupervisor.perform_analysis(uuid, urls, start_time, org_id)\n",
       "guarded_by": "test/lei_service/durable_work_test.exs",
       "app": "apps/lei_service"
     },
@@ -3194,6 +3194,33 @@
       "find": "      \"org_id\" => org_id\n    }",
       "replace": "    }",
       "guarded_by": "test/lei_service/undetermined_refund_test.exs",
+      "app": "apps/lei_service"
+    },
+    {
+      "id": "analysis-worker-keeps-the-money",
+      "bug": "analyze_remote returns an undetermined report and admission already charged a cache miss for it. Not crediting it back leaves the requester paying for a report whose every metric is nil -- the gap #268 left open on this path.",
+      "file": "apps/lei_service/lib/lei_service/analysis_worker.ex",
+      "find": "    refund_undetermined(report, args[\"org_id\"])",
+      "replace": "    _ = report",
+      "guarded_by": "test/lei_service/analysis_worker_refund_test.exs",
+      "app": "apps/lei_service"
+    },
+    {
+      "id": "determined-uses-access-on-structs",
+      "bug": "A report decoded from the cache is a %RepoReport{} struct, and structs do not implement Access, so report[:data] raises UndefinedFunctionError on exactly the reports determined?/1 is asked about most.",
+      "file": "apps/lowendinsight/lib/analyzer_module.ex",
+      "find": "    case Map.get(report, :data) || Map.get(report, \"data\") do\n      %{} = data -> is_nil(Map.get(data, :error) || Map.get(data, \"error\"))",
+      "replace": "    case report[:data] || report[\"data\"] do\n      %{} = data -> is_nil(data[:error] || data[\"error\"])",
+      "guarded_by": "test/lei_service/analysis_worker_refund_test.exs",
+      "app": "apps/lei_service"
+    },
+    {
+      "id": "analysis-job-drops-the-org",
+      "bug": "Without org_id in the analysis job args the worker has nobody to credit, and every refund silently becomes the no-org branch: the money is kept and a warning is logged.",
+      "file": "apps/lei_service/lib/lei_service/analysis_supervisor.ex",
+      "find": "          org_id: org_id\n        }",
+      "replace": "        }",
+      "guarded_by": "test/lei_service/analysis_worker_refund_test.exs",
       "app": "apps/lei_service"
     }
   ]

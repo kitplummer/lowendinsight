@@ -118,7 +118,7 @@ defmodule LeiService.Analysis do
 
       case cache_mode do
         "stale" ->
-          process_urls_stale(urls, uuid, start_time)
+          process_urls_stale(urls, uuid, start_time, Map.get(opts, :org_id))
 
         "blocking" ->
           timeout =
@@ -128,11 +128,11 @@ defmodule LeiService.Analysis do
               Application.get_env(:lei_service, :default_cache_timeout, 30_000)
             )
 
-          process_urls_blocking(urls, uuid, start_time, timeout)
+          process_urls_blocking(urls, uuid, start_time, timeout, Map.get(opts, :org_id))
 
         _ ->
           # "async" — original behavior
-          process_urls_async(urls, uuid, start_time)
+          process_urls_async(urls, uuid, start_time, Map.get(opts, :org_id))
       end
     else
       {:error, "invalid URLs list"}
@@ -140,7 +140,7 @@ defmodule LeiService.Analysis do
   end
 
   # Original process_urls logic extracted into async path
-  defp process_urls_async(urls, uuid, start_time) do
+  defp process_urls_async(urls, uuid, start_time, org_id) do
     Logger.debug("started #{uuid} at #{start_time}")
 
     empty = AnalyzerModule.create_empty_report(uuid, urls, start_time)
@@ -193,7 +193,7 @@ defmodule LeiService.Analysis do
 
       # perform_analysis/3 raises when it cannot queue or start the work.
       {:ok, task} =
-        LeiService.AnalysisSupervisor.perform_analysis(uuid, uncached_urls, start_time)
+        LeiService.AnalysisSupervisor.perform_analysis(uuid, uncached_urls, start_time, org_id)
 
       Logger.info(task)
       {:ok, Poison.encode!(partial_report)}
@@ -201,7 +201,7 @@ defmodule LeiService.Analysis do
   end
 
   # Blocking path: queue analysis then poll until complete or timeout
-  defp process_urls_blocking(urls, uuid, start_time, timeout) do
+  defp process_urls_blocking(urls, uuid, start_time, timeout, org_id) do
     Logger.debug("blocking mode: started #{uuid} at #{start_time}")
 
     empty = AnalyzerModule.create_empty_report(uuid, urls, start_time)
@@ -253,7 +253,7 @@ defmodule LeiService.Analysis do
       LeiService.Datastore.write_job(uuid, partial_report)
 
       {:ok, _task} =
-        LeiService.AnalysisSupervisor.perform_analysis(uuid, uncached_urls, start_time)
+        LeiService.AnalysisSupervisor.perform_analysis(uuid, uncached_urls, start_time, org_id)
 
       case poll_job(uuid, timeout) do
         {:ok, report_json} ->
@@ -300,7 +300,7 @@ defmodule LeiService.Analysis do
   end
 
   # Stale path: return stale cached data if available, trigger background refresh
-  defp process_urls_stale(urls, uuid, start_time) do
+  defp process_urls_stale(urls, uuid, start_time, org_id) do
     Logger.debug("stale mode: started #{uuid} at #{start_time}")
 
     # Try to get stale cache for each URL
@@ -342,12 +342,12 @@ defmodule LeiService.Analysis do
       # Queue the refresh rather than spawning it, so a restart between this
       # response and the refresh does not lose it (ADR-004). enqueue/3 never
       # waits for the analysis.
-      LeiService.AnalysisSupervisor.enqueue(uuid, urls, start_time)
+      LeiService.AnalysisSupervisor.enqueue(uuid, urls, start_time, org_id)
 
       {:ok, Poison.encode!(report)}
     else
       # Some URLs have no cache at all, fall back to async behavior
-      process_urls_async(urls, uuid, start_time)
+      process_urls_async(urls, uuid, start_time, org_id)
     end
   end
 

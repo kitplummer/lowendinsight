@@ -16,14 +16,22 @@ defmodule LeiService.AnalysisSupervisor do
   TODO: what to do if the process bonks?  need to track and restart job if process
   fails at any point, in a hard-way (not just an input error or handled error.)
   """
-  def perform_analysis(uuid, urls, start_time) do
+  def perform_analysis(uuid, urls, start_time, org_id \\ nil) do
     opts = [restart: :transient]
     ## Only if use_workers is true
     if Application.get_env(:lei_service, :use_workers) do
       Logger.debug("queueing analysis job for #{uuid}")
 
       changeset =
-        %{uuid: uuid, urls: urls, start_time: DateTime.to_iso8601(start_time)}
+        %{
+          uuid: uuid,
+          urls: urls,
+          start_time: DateTime.to_iso8601(start_time),
+          # Carried so the worker can credit back an analysis that determines
+          # nothing: admission charged for it before the work ran, and the
+          # outcome is only known here (#258).
+          org_id: org_id
+        }
         |> LeiService.AnalysisWorker.new()
 
       # Both shapes the insert fails in, as one named error the routes can
@@ -75,8 +83,8 @@ defmodule LeiService.AnalysisSupervisor do
   of an already-answered request must not block it, and must survive a
   restart, so it is always a job (ADR-004).
   """
-  def enqueue(uuid, urls, start_time) do
-    %{uuid: uuid, urls: urls, start_time: DateTime.to_iso8601(start_time)}
+  def enqueue(uuid, urls, start_time, org_id \\ nil) do
+    %{uuid: uuid, urls: urls, start_time: DateTime.to_iso8601(start_time), org_id: org_id}
     |> LeiService.AnalysisWorker.new()
     |> Oban.insert()
     |> case do
