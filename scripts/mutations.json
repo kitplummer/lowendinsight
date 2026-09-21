@@ -3303,6 +3303,42 @@
       "replace": "    version = (get_in(body, [\"versions\"]) || %{}) |> Map.values() |> List.first() || %{}",
       "guarded_by": "test/lei/package_dependencies_test.exs",
       "app": "apps/lowendinsight"
+    },
+    {
+      "id": "unknown-directness-reads-as-transitive",
+      "bug": "A package whose edges could not be read is marked transitive rather than unknown, quietly demoting exactly the packages we know least about -- a consumer filtering for critical and direct would never see them.",
+      "file": "apps/lowendinsight/lib/lei/manifest_graph.ex",
+      "find": "          not edges_complete? -> %{direct: nil, in_degree: nil}",
+      "replace": "          not edges_complete? -> %{direct: false, in_degree: 0}",
+      "guarded_by": "test/lei/manifest_graph_test.exs",
+      "app": "apps/lowendinsight"
+    },
+    {
+      "id": "no-edges-makes-everything-direct",
+      "bug": "A scan where no registry answered would report every dependency as a deliberate choice the customer made, which is a confident answer derived from having looked at nothing.",
+      "file": "apps/lowendinsight/lib/lei/manifest_graph.ex",
+      "find": "      Enum.all?(packages, fn p -> is_list(Map.get(edges, p)) end)",
+      "replace": "      true",
+      "guarded_by": "test/lei/manifest_graph_test.exs",
+      "app": "apps/lowendinsight"
+    },
+    {
+      "id": "describe-fetches-twice",
+      "bug": "Fetching the registry document once per fact costs two round trips per package -- 800 requests for a 400-package manifest where 400 would do. describe/3 exists to make one fetch serve both.",
+      "file": "apps/lowendinsight/lib/lei/package_repository.ex",
+      "find": "      {:ok, %{repository: repository, dependencies: declared(ecosystem, body)}}",
+      "replace": "      {:ok, body2} = fetch(url, opts)\n      {:ok, %{repository: repository, dependencies: declared(ecosystem, body2)}}",
+      "guarded_by": "test/lei/package_dependencies_test.exs",
+      "app": "apps/lowendinsight"
+    },
+    {
+      "id": "describe-drops-dependencies-without-a-repository",
+      "bug": "A package with no repository link still has dependencies worth knowing. Failing the whole description on one missing half makes the graph incomplete for a reason unrelated to the edges.",
+      "file": "apps/lowendinsight/lib/lei/package_repository.ex",
+      "find": "        case extract.(body) do\n          nil ->\n            nil",
+      "replace": "        case extract.(body) do\n          nil ->\n            throw(:no_repository)",
+      "guarded_by": "test/lei/package_dependencies_test.exs",
+      "app": "apps/lowendinsight"
     }
   ]
 }
