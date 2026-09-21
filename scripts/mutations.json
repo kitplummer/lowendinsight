@@ -3222,6 +3222,42 @@
       "replace": "        }",
       "guarded_by": "test/lei_service/analysis_worker_refund_test.exs",
       "app": "apps/lei_service"
+    },
+    {
+      "id": "refused-url-crashes-the-batch",
+      "bug": "analyze/3 answers {:error, reason} when RemoteUrl.validate refuses -- a two-tuple where success is a three-tuple. Matching only the latter raises FunctionClauseError and fails every other repository in the job with it.",
+      "file": "apps/lei_service/lib/lei_service/analysis.ex",
+      "find": "  defp outcome({{:ok, {:error, reason}}, url}), do: {refused(url, reason), :refused}",
+      "replace": "",
+      "guarded_by": "test/lei_service/refused_url_batch_test.exs",
+      "app": "apps/lei_service"
+    },
+    {
+      "id": "refused-url-billed-as-a-miss",
+      "bug": "A refusal counted as a cache miss bills the requester 50 credits for a repository we declined to look at. Hit and miss are billing categories; this is neither.",
+      "file": "apps/lei_service/lib/lei_service/analysis.ex",
+      "find": "  defp outcome({{:ok, {:error, reason}}, url}), do: {refused(url, reason), :refused}",
+      "replace": "  defp outcome({{:ok, {:error, reason}}, url}), do: {refused(url, reason), :miss}",
+      "guarded_by": "test/lei_service/refused_url_batch_test.exs",
+      "app": "apps/lei_service"
+    },
+    {
+      "id": "refusal-reads-as-an-analysis",
+      "bug": "A refusal without data.error passes AnalyzerModule.determined?/1, so it is cached and billed as an analysis -- a repository nobody looked at, recorded as one examined and found healthy.",
+      "file": "apps/lei_service/lib/lei_service/analysis.ex",
+      "find": "        error: \"Not analysed: #{inspect(reason)}\",",
+      "replace": "        note: \"Not analysed: #{inspect(reason)}\",",
+      "guarded_by": "test/lei_service/refused_url_batch_test.exs",
+      "app": "apps/lei_service"
+    },
+    {
+      "id": "worker-check-admits-a-rebound-host",
+      "bug": "analyze/3 re-checks RemoteUrl.validate deliberately, so the rule on what may be cloned holds even when the route's answer has gone stale -- a name resolving to a private address after admission. Skipping the re-check lets the worker clone what the guard exists to refuse.",
+      "file": "apps/lei_service/lib/lei_service/analysis.ex",
+      "find": "    case LeiService.RemoteUrl.validate(url) do\n      :ok -> analyze_remote(url, source, options)",
+      "replace": "    case :ok do\n      :ok -> analyze_remote(url, source, options)",
+      "guarded_by": "test/lei_service/refused_url_batch_test.exs",
+      "app": "apps/lei_service"
     }
   ]
 }
