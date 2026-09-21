@@ -3375,6 +3375,33 @@
       "replace": "    success | skipped)\n",
       "guarded_by": "test/lei_service/deploy_reporting_test.exs",
       "app": "apps/lei_service"
+    },
+    {
+      "id": "undeployed-tip-is-only-a-notice",
+      "bug": "A deploy that declined ships nothing and fails nowhere -- the gate is satisfied, CI is green, the run concludes success. If the monitor only notes an undeployed tip rather than failing, production sits on an older commit and nothing wakes anyone.",
+      "file": ".github/workflows/monitor.yml",
+      "find": "                echo \"::error::${TIP:0:7} has been the tip of main for ${AGE}s and is not deployed.",
+      "replace": "                echo \"::notice::${TIP:0:7} has been the tip of main for ${AGE}s and is not deployed.",
+      "guarded_by": "test/lei_service/deploy_reporting_test.exs",
+      "app": "apps/lei_service"
+    },
+    {
+      "id": "monitor-deploy-check-unnamed-in-the-page",
+      "bug": "A step missing from the failure aggregation pages as 'unidentified', which says something is wrong and not what. The page exists to say which check failed.",
+      "file": ".github/workflows/monitor.yml",
+      "find": "          DEPLOYED: ${{ steps.deployed.outcome }}\n",
+      "replace": "",
+      "guarded_by": "test/lei_service/deploy_reporting_test.exs",
+      "app": "apps/lei_service"
+    },
+    {
+      "id": "monitor-pages-on-a-deploy-in-flight",
+      "bug": "CI takes minutes and the deploy takes minutes more. Without a grace period every merge pages until it ships, and a monitor that cries wolf gets ignored -- which costs more than the check is worth.",
+      "file": ".github/workflows/monitor.yml",
+      "find": "          GRACE=$(( 30 * 60 ))",
+      "replace": "          GRACE=0",
+      "guarded_by": "test/lei_service/deploy_reporting_test.exs",
+      "app": "apps/lei_service"
     }
   ]
 }
