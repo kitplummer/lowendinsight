@@ -31,6 +31,11 @@ config :lei_service,
     ),
   cache_clean_enable: String.to_atom(System.get_env("LEI_CACHE_CLEAN_ENABLE") || "true"),
   check_repo_size?: String.to_atom(System.get_env("LEI_CHECK_REPO_SIZE") || "true"),
+  # The customer analysis path (#265). Separate from trending's cap on
+  # purpose: trending chooses its own candidates and refuses what it cannot
+  # measure, while a customer naming a repository we cannot size is asking a
+  # fair question. Sharing one dial would mean tuning either moved both.
+  max_repo_size_kb: String.to_integer(System.get_env("LEI_MAX_REPO_SIZE_KB") || "250000"),
   default_cache_timeout:
     String.to_integer(System.get_env("LEI_DEFAULT_CACHE_TIMEOUT") || "30000"),
   wait_time: String.to_integer(System.get_env("LEI_WAIT_TIME") || "7200000"),
@@ -59,8 +64,6 @@ config :lei_service,
   ]
 
 # --- lowendinsight (library) Ecto repo ---
-
-
 
 # --- lowendinsight (library) risk thresholds ---
 
