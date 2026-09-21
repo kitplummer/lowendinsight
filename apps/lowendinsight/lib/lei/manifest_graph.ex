@@ -31,6 +31,24 @@ defmodule Lei.ManifestGraph do
   In-degree is still reported, because it is real information about blast
   radius within the tree. Neither is folded into the rank: both are facts
   beside it, and the consumer's question decides which matters.
+
+  ## What inference cannot see
+
+  Directness here is deduced, not declared. A lockfile knows which
+  dependencies are direct; the request does not carry it, so this reads it off
+  the graph instead.
+
+  That is sound for a complete manifest and wrong in a way nothing detects for
+  a partial one. Send only a transitive subset, or a tree with its roots
+  omitted, and every package has in-degree zero -- so every package is reported
+  as a deliberate choice, confidently, with no signal that the answer came from
+  a tree that was never whole.
+
+  Unlike unreadable edges, which announce themselves as `nil`, this failure
+  looks exactly like a correct answer. Accepting a declared `direct` flag
+  alongside the inference, and recording which was used, is the fix if a
+  partial manifest ever turns up. It is not built, because nothing has sent one
+  and the endpoint is documented for the whole tree.
   """
 
   @typedoc "A package identified as the manifest identifies it."
