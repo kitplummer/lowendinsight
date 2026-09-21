@@ -1,5 +1,12 @@
 name: deploy
 
+# The run list shows which commit a run considered. It cannot say whether that
+# commit shipped -- run-name is fixed before the gate decides -- so the gate
+# writes shipped-or-declined to the job summary, and scripts/ops/deploy-status.sh
+# answers it properly (#259).
+run-name: >-
+  deploy · ${{ github.event.workflow_run.head_sha || github.sha }}
+
 # Deploys main to Fly once umbrella_ci has passed on it, then gates on the smoke
 # suite running against the live host. A green build is necessary, not
 # sufficient -- answering correctly in production is the gate.
@@ -46,10 +53,16 @@ jobs:
           EVENT: ${{ github.event_name }}
           RUN_SHA: ${{ github.event.workflow_run.head_sha }}
         run: |
+          # A run that deliberately ships nothing still concludes "success",
+          # because declining is success. The distinction lives in the job
+          # summary, which is rendered at the top of the run page -- where the
+          # ambiguity otherwise is (#259).
           if [ "$EVENT" = "workflow_dispatch" ]; then
             echo "sha=${GITHUB_SHA}" >> "$GITHUB_OUTPUT"
             echo "deploy=true" >> "$GITHUB_OUTPUT"
             echo "Manual deploy of ${GITHUB_SHA}; CI is not checked."
+            echo "### SHIPPING \`${GITHUB_SHA}\` (manual)" >> "$GITHUB_STEP_SUMMARY"
+            echo "CI was not checked for a manual deploy." >> "$GITHUB_STEP_SUMMARY"
             exit 0
           fi
 
@@ -65,9 +78,18 @@ jobs:
           if [ "$RUN_SHA" = "$TIP" ]; then
             echo "deploy=true" >> "$GITHUB_OUTPUT"
             echo "CI passed on ${RUN_SHA}, the tip of main. Deploying."
+            echo "### SHIPPING \`${RUN_SHA}\`" >> "$GITHUB_STEP_SUMMARY"
+            echo "CI passed on it and it is the tip of main." >> "$GITHUB_STEP_SUMMARY"
           else
             echo "deploy=false" >> "$GITHUB_OUTPUT"
             echo "::notice::CI passed on ${RUN_SHA}, but main is now at ${TIP}. Not deploying; that commit's CI run deploys it."
+            {
+              echo "### DECLINED — nothing was shipped by this run"
+              echo ""
+              echo "CI passed on \`${RUN_SHA}\`, but main has moved to \`${TIP}\`."
+              echo "Deploying the older commit would put production back a version."
+              echo "That commit's own CI run deploys it."
+            } >> "$GITHUB_STEP_SUMMARY"
           fi
 
   deploy:
@@ -212,6 +234,16 @@ jobs:
         if: success()
         env:
           FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
+          SHA: ${{ needs.gate.outputs.sha }}
         run: |
           flyctl status -a lowendinsight | head -12
           echo "readyz: $(curl -s --max-time 15 https://lowendinsight.dev/readyz)"
+
+          # Written only when this job actually reached the end, so the summary
+          # distinguishes a run that shipped from one that declined -- which the
+          # run conclusion cannot (#259).
+          {
+            echo ""
+            echo "### SHIPPED \`${SHA}\`"
+            echo "Smoke and canary passed against the live host."
+          } >> "$GITHUB_STEP_SUMMARY"
