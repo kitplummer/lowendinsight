@@ -57,13 +57,16 @@ defmodule LeiService.Analysis do
     Logger.debug("processing #{uuid} -> #{inspect(urls)}")
     LeiService.CounterAgent.new_counter(Enum.count(urls))
 
+    # Zipped with the URLs because a refusal has to name what was refused, and
+    # async_stream yields results in order without carrying the input.
     results =
       urls
       |> Task.async_stream(__MODULE__, :analyze, ["lei-get", %{types: false}],
         timeout: :infinity,
         max_concurrency: 1
       )
-      |> Enum.map(fn {:ok, {_status, repo, cache_status}} -> {repo, cache_status} end)
+      |> Enum.zip(urls)
+      |> Enum.map(&outcome/1)
 
     repos = Enum.map(results, fn {repo, _status} -> repo end)
     cache_statuses = Enum.map(results, fn {_repo, status} -> Atom.to_string(status) end)
@@ -104,6 +107,43 @@ defmodule LeiService.Analysis do
     ## We're finished with all the analysis work, write the report to datastore
     LeiService.Datastore.write_job(uuid, report)
     {:ok, report}
+  end
+
+  # One URL the rule refuses must not take the other one hundred and
+  # ninety-nine with it (#257).
+  #
+  # `analyze/3` re-checks `RemoteUrl.validate/1` -- deliberately, so the rule on
+  # what may be cloned is enforced here as well as at the route -- and answers
+  # `{:error, reason}` when it refuses. That is a two-tuple where the success
+  # path is a three-tuple, so a single clause matching only the latter raised
+  # FunctionClauseError and failed the whole job. The guard was working; its
+  # failure handling was not.
+  #
+  # `{:exit, reason}` is handled for the same reason: async_stream yields it on
+  # a crash, and it did not match either.
+  #
+  # `:refused` is neither a hit nor a miss. Both are billing categories, and
+  # this is a repository we declined to look at rather than one we looked at
+  # cheaply or expensively.
+  defp outcome({{:ok, {_status, repo, cache_status}}, _url}), do: {repo, cache_status}
+
+  defp outcome({{:ok, {:error, reason}}, url}), do: {refused(url, reason), :refused}
+
+  defp outcome({{:exit, reason}, url}), do: {refused(url, {:exited, reason}), :refused}
+
+  # Carries data.error, so AnalyzerModule.determined?/1 is false: it is not
+  # cached, not billed as an analysis, and cannot be mistaken for a repository
+  # that was examined and found healthy.
+  defp refused(url, reason) do
+    %{
+      header: %{repo: url, uuid: Ecto.UUID.generate()},
+      data: %{
+        error: "Not analysed: #{inspect(reason)}",
+        repo: url,
+        git: %{},
+        risk: "undetermined"
+      }
+    }
   end
 
   # Backward-compatible 3-arity wrapper — defaults to async mode (original behavior)
