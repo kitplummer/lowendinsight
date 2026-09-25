@@ -53,6 +53,7 @@ defmodule LeiService.BackupVerificationTest do
       # is confirmed present. Sorting a listing would find a half-written
       # upload and call it the newest backup.
       assert backup() =~ "meta/latest"
+
       refute backup() =~ ~r/s3 ls .*\|\s*(sort|tail)/,
              "picking the newest by listing can select a partial upload"
     end
@@ -68,8 +69,12 @@ defmodule LeiService.BackupVerificationTest do
       assert backup() =~ "psql -U postgres -d restored",
              "nothing connects to the restored database"
 
-      assert backup() =~ "SELECT count(*) FROM public.",
-             "nothing queries the restored database"
+      # The templated form, which is unique to the per-table loop. Matching
+      # "SELECT count(*) FROM public." alone passed with the loop's query
+      # replaced by "SELECT 1", because the schema_migrations count below
+      # satisfied it -- the guard verified the wrong line.
+      assert backup() =~ ~s[SELECT count(*) FROM public.${t}],
+             "the per-table row counts are gone, so nothing queries what restored"
     end
 
     test "an empty restore fails" do
@@ -113,6 +118,7 @@ defmodule LeiService.BackupVerificationTest do
     test "an empty or unreadable dump is not uploaded" do
       assert producer() =~ ~r/"\$SIZE" -ge 10240/, "no size floor on the dump"
       assert producer() =~ "pg_restore --list", "the dump is uploaded without being read back"
+
       assert producer() =~ "does not decrypt with the passphrase that encrypted it",
              "the artifact is uploaded without a decryption round-trip"
     end
@@ -122,6 +128,7 @@ defmodule LeiService.BackupVerificationTest do
       # failed backup must stay failed: a retry that succeeds hides why the
       # first attempt did not.
       setup = File.read!(Path.join(@root, "ops/backup/setup.sh"))
+
       assert setup =~ "--restart no",
              "a restarting machine converts a failure into a success nobody examines"
 
@@ -186,6 +193,7 @@ defmodule LeiService.BackupVerificationTest do
       # Naming does not enforce scope -- the scope is set in Tigris. But a
       # read-only name is what makes a write-scoped key here obvious in review.
       assert backup() =~ "TIGRIS_READ_ACCESS_KEY_ID"
+
       refute backup() =~ ~r/aws[^\n]*s3 (cp|mv) [^\n]*\s+s3:\/\//,
              "the verification job writes to the bucket"
     end
