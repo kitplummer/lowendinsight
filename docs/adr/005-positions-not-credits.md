@@ -115,15 +115,45 @@ than a discount we hand back.
 Not by its name. A position is the answer at a resolved commit, and the URL is
 how the customer happened to refer to it.
 
-We resolve a URL to a commit on every request anyway, so if an org already
-holds a position at that commit, they hold it — whatever URL it arrived under.
-Renames, host moves and mirrors are handled by that alone, because **the commit
-is the answer's identity**. Two names for one commit are one answer, and
-charging twice for it would be indefensible.
+If an org already holds a position at that commit, they hold it — whatever URL
+it arrived under. Renames, host moves and mirrors are handled by that alone,
+because **the commit is the answer's identity**. Two names for one commit are
+one answer, and charging twice for it would be indefensible.
 
-This also removes a defect that exists today: the cache key is derived from the
-URL, so a renamed repository silently creates a second entry for byte-identical
-content.
+This also removes a defect that exists today. `Datastore.cache_key/1` is the
+URL's host and path and nothing else, so one commit can occupy several entries.
+Measured on 2026-09-25 by analysing this repository under two spellings GitHub
+serves identically:
+
+```
+https://github.com/kitplummer/lowendinsight  ->  github:kitplummer/lowendinsight:latest
+https://github.com/KitPlummer/lowendinsight  ->  github:KitPlummer/lowendinsight:latest
+
+same commit analysed?  true   (5938718233133a3687dd96e42afc4983db5575fc)
+same cache key?        false
+```
+
+Two clones, two analyses, two entries, one commit. It takes no rename: case
+alone splits the key, and so does a mirror on another host. `.git` is the only
+variation normalised away.
+
+The entries are not byte-identical — each carries its own `uuid`, timings, and
+the URL it arrived under in `header.repo` and `data.repo`. They are the same
+answer for the same commit, which is the property that matters here.
+
+**What this does not yet do is save the clone.** The premise that we resolve a
+URL to a commit on every request does not hold today: there is no `ls-remote`
+anywhere in the codebase, and `data.git.hash` is read with `rev-parse HEAD`
+*after* cloning (`analyzer_module.ex:173`). So commit identity as described
+deduplicates the analysis and the charge, not the fetch — a second spelling
+still costs us a clone before we discover we already hold the answer.
+
+Two consequences for implementation. The report already records the resolved
+commit, so identifying positions by commit needs no new analysis work. But
+making identity save the fetch requires a pre-clone resolution step that does
+not exist. It is the same `ls-remote` step the cost cascade under *Staleness is
+knowable* depends on — one piece of work, load-bearing for both, and not yet
+built.
 
 ### What goes away
 
