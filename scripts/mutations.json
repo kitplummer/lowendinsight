@@ -3450,11 +3450,47 @@
     },
     {
       "id": "flyctl-binary-unpinned",
-      "bug": "Pinning the action while leaving the binary at 'latest' pins the wrapper and not the thing that talks to Fly. flyctl publishes daily at 19:14 UTC and the backup runs at 03:39, so every nightly backup ran a build less than nine hours old that nothing had tested.",
-      "file": ".github/workflows/backup.yml",
+      "bug": "Pinning the action while leaving the binary at 'latest' pins the wrapper and not the thing that talks to Fly. flyctl publishes daily at 19:14 UTC, so every run used a build nobody had tested. Moved from backup.yml to deploy.yml when the backup stopped needing flyctl at all (ADR-006) -- deploy is now the only workflow that installs it.",
+      "file": ".github/workflows/deploy.yml",
       "find": "    version: v0.4.108",
       "replace": "    version: latest",
       "guarded_by": "test/lei_service/workflow_pinning_test.exs",
+      "app": "apps/lei_service"
+    },
+    {
+      "id": "backup-stale-object-verifies-clean",
+      "bug": "The producer is a scheduled Fly Machine, so the way it fails is by not running -- Fly skipping it, an image that will not boot, a machine someone destroyed. None of those produce a red run, a log line or a page. Only an object that did not arrive does. Without the freshness limit the verification passes forever against the last backup ever taken (ADR-006).",
+      "file": ".github/workflows/backup.yml",
+      "find": "LIMIT=$(( 26 * 3600 ))",
+      "replace": "LIMIT=$(( 26 * 3600 * 3650 ))",
+      "guarded_by": "test/lei_service/backup_verification_test.exs",
+      "app": "apps/lei_service"
+    },
+    {
+      "id": "backup-empty-restore-verifies-clean",
+      "bug": "A dump of an empty database decrypts, lists a table of contents and restores without error. Every check in the file passes for it. Only the row counts distinguish a backup from a file shaped like one.",
+      "file": ".github/workflows/backup.yml",
+      "find": "if [ \"${MIGRATIONS:-0}\" -lt 1 ]; then",
+      "replace": "if [ \"${MIGRATIONS:-0}\" -lt 0 ]; then",
+      "guarded_by": "test/lei_service/backup_verification_test.exs",
+      "app": "apps/lei_service"
+    },
+    {
+      "id": "backup-restore-not-queried",
+      "bug": "pg_restore reporting no errors is not a restored database. Counting rows in the restored tables is what makes 'the backup is good' mean a database was rebuilt from it, rather than that a file parsed.",
+      "file": ".github/workflows/backup.yml",
+      "find": "\"SELECT count(*) FROM public.${t}\" 2>/dev/null || echo \"missing\")",
+      "replace": "\"SELECT 1\" 2>/dev/null || echo \"missing\")",
+      "guarded_by": "test/lei_service/backup_verification_test.exs",
+      "app": "apps/lei_service"
+    },
+    {
+      "id": "backup-upload-unconfirmed",
+      "bug": "`aws s3 cp` exiting zero is not the object being in the bucket. Without asking the bucket, the producer writes meta/latest pointing at an object that may not be there -- and every reader, including the nightly verification, trusts that pointer.",
+      "file": "ops/backup/backup.sh",
+      "find": "  || die \"Uploaded ${KEY} but the bucket does not have it.\"",
+      "replace": "  || true",
+      "guarded_by": "test/lei_service/backup_verification_test.exs",
       "app": "apps/lei_service"
     }
   ]

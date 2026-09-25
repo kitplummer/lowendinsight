@@ -1,0 +1,23 @@
+# The backup producer runs as a scheduled Machine, not a service.
+#
+# There are no [[services]] and no ports: nothing connects to this app. It
+# wakes on a schedule, dumps the database over the private network, uploads,
+# and exits. Its exit status is the entire result.
+#
+# `fly deploy` is used only to build and push the image
+# (--build-only --push); the scheduled Machine itself is created once with
+# `fly machine run --schedule daily`. See ops/backup/setup.sh.
+
+app = "lowendinsight-backup"
+primary_region = "iad"   # same region as lowendinsight-db, so the dump does not cross regions
+
+[build]
+  dockerfile = "Dockerfile"
+
+# No [env] for the bucket.
+#
+# `flyctl storage create -a lowendinsight-backup` sets AWS_ENDPOINT_URL_S3,
+# AWS_REGION, BUCKET_NAME and the two keys as secrets on this app. Repeating
+# any of them here would be a second source of truth for where backups go, and
+# the failure that produces -- uploading to a bucket nobody reads -- looks
+# exactly like success.

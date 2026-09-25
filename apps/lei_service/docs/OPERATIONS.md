@@ -499,26 +499,94 @@ Machine output goes to `flyctl logs`, not stdout.
 
 ### 2. Off-platform logical dump (disaster recovery)
 
-`.github/workflows/backup.yml` runs daily at 03:30 UTC: `pg_dump` over
-`flyctl proxy`, verified with `pg_restore --list`, encrypted with AES256, and
-uploaded as a GitHub Actions artifact with 90-day retention.
+**Production takes this backup; CI verifies it.** Since ADR-006 the dump is
+produced by a scheduled Fly Machine (`ops/backup/`) inside the same private
+network as the database, and `.github/workflows/backup.yml` checks the result
+daily.
 
-This exists because volume snapshots live in the same hosting account as the
-database. Losing that account takes the database and every snapshot with it.
+It changed because producing it in CI put seven external dependencies in the
+nightly path -- a third-party action, a flyctl binary resolved as `latest`, the
+Fly API, a WireGuard tunnel, `flyctl proxy`, the pgdg apt repository and a
+runner. Three nights failed in two weeks from three unrelated causes, and on two
+of them the page was rejected with a 401 so nobody was told. Read ADR-006 before
+changing any of this.
+
+This exists at all because volume snapshots live in the same hosting account as
+the database. Losing that account takes the database and every snapshot with it.
+
+#### The two halves
+
+| | where | what it does |
+|---|---|---|
+| producer | Fly app `lowendinsight-backup`, scheduled daily | dumps `lowendinsight-db.internal:5432`, verifies the dump is readable, encrypts, uploads to Tigris, writes `meta/latest` last |
+| verifier | `backup.yml`, daily 03:30 UTC | fetches the newest object, **fails if it is over 26 hours old**, decrypts, restores into a real PostgreSQL 17 and counts rows |
+
+The freshness limit is the load-bearing check. A scheduled Machine that stops
+running -- Fly skipping it, an image that will not boot, a machine someone
+destroyed -- produces no red run and no page anywhere. An object that did not
+arrive is the only signal, so "the newest backup is 40 hours old" is a build
+failure, not a warning.
 
 #### Required secrets
 
+On the **producer** (`flyctl secrets import -a lowendinsight-backup`):
+
 | Secret | Value |
 |---|---|
-| `PG_DUMP_URL` | `postgres://user:pass@localhost:15432/lei_service_prod` -- host and port must be `localhost:15432`, where `flyctl proxy` listens |
+| `PG_DUMP_URL` | `postgres://lei_backup:pass@lowendinsight-db.internal:5432/lei_service_prod` -- the private address; there is no proxy any more |
 | `BACKUP_PASSPHRASE` | symmetric encryption key |
-| `FLY_DB_TOKEN` | Fly token scoped to the **database** app: `flyctl tokens create deploy -a lowendinsight-db` |
+| `AWS_ACCESS_KEY_ID` / `AWS_SECRET_ACCESS_KEY` | Tigris key, **write** scope |
 
-The database runs as a separate Fly app from the application, so the deploy
-workflow's `FLY_API_TOKEN` cannot reach it. Widening that token to organisation
-scope would fix the proxy while handing every workflow authority over the whole
-organisation -- a poor trade for a job whose purpose is surviving an account
-compromise. Two narrow tokens are preferred over one broad one.
+On **GitHub** (`gh secret set`):
+
+| Secret | Value |
+|---|---|
+| `TIGRIS_READ_ACCESS_KEY_ID` / `TIGRIS_READ_SECRET_ACCESS_KEY` | Tigris key, **read-only** |
+| `BACKUP_PASSPHRASE` | the same passphrase the producer encrypts with |
+
+CI no longer holds `PG_DUMP_URL` or any Fly token. It cannot take a backup,
+cannot reach the database, and cannot write to the bucket. The credential that
+can dump production lives only on the machine that needs it.
+
+`FLY_DB_TOKEN` is no longer used by the backup and can be revoked once the
+producer is running. Check nothing else uses it first:
+`grep -rn FLY_DB_TOKEN .github/`.
+
+#### Setting it up, or rebuilding it
+
+```bash
+./ops/backup/setup.sh          # app, bucket, secrets, scheduled machine
+```
+
+Idempotent where Fly allows: an existing app, bucket or secret is left alone.
+Re-running it after an incident is the intended way to rebuild the producer. It
+never takes a secret as an argument -- everything is read on stdin.
+
+To watch a run, or force one now:
+
+```bash
+flyctl machine list -a lowendinsight-backup
+flyctl machine start <id> -a lowendinsight-backup
+flyctl logs -a lowendinsight-backup
+```
+
+The machine runs with `--restart no` on purpose. A failed backup stays failed so
+it is noticed; a retry that succeeds hides why the first attempt did not.
+
+#### Blast radius
+
+Tigris is provisioned through Fly and lives in the same organisation as the
+database, so **the nightly copy shares a fate with the volume snapshots it
+covers for.** Two things carry a copy off Fly:
+
+- the encrypted artifact `backup.yml` uploads on every green run (90 days),
+  automatic
+- `scripts/backup-pull.sh`, onto a machine you control, manual
+
+The second is not about durability -- the artifact covers that. It is the only
+thing that proves the passphrase **you** hold still opens these files, because
+CI decrypts with the CI secret and can therefore only establish that CI agrees
+with itself. See "Verify backups on a schedule" below.
 
 #### Backup database user
 
@@ -655,14 +723,29 @@ pg_restore --list lei.dump                 # inspect without restoring
 An untested backup is a hypothesis. Both mechanisms should be exercised
 periodically, not only when they are needed:
 
-- **After changing `BACKUP_PASSPHRASE`**, verify an artifact decrypts with the
-  copy from your password manager:
+- **After changing `BACKUP_PASSPHRASE`, without exception**, pull a copy off Fly
+  and decrypt it with the passphrase from your password manager:
 
   ```bash
   export BACKUP_PASSCODE='<copy from your password manager>'
-  ./scripts/verify-backup-artifact.sh              # latest successful backup
-  ./scripts/verify-backup-artifact.sh <run-id>     # a specific run
+  ./scripts/backup-pull.sh                 # newest object in Tigris
+  ./scripts/backup-pull.sh --restore       # and restore it into a throwaway PG 17
+  ./scripts/backup-pull.sh --keep ~/backups
+  ./scripts/backup-pull.sh --list          # what is in the bucket, and the last pull
   ```
+
+  A rotation updates two places -- the producer's Fly secrets and the CI secret
+  -- and a rotation that updates one is caught the next night by the verifier's
+  decrypt step. A rotation that updates *both* and not your password manager is
+  caught by nothing except this script.
+
+  Each pull records its date in `meta/last-local-pull`, and the nightly job
+  warns past 30 days. It warns rather than fails because durability does not
+  depend on it, and a permanently red backup job stops being read.
+
+  `scripts/verify-backup-artifact.sh` still works and reads a GitHub Actions
+  artifact instead of the bucket. Use it when Tigris or Fly is the thing that is
+  broken.
 
   Needs only `gpg` and `gh` -- no PostgreSQL server, and no Postgres client.
   `pg_restore --list` reads the archive file directly and never connects to a
