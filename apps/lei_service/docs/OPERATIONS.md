@@ -805,6 +805,32 @@ It will **not** catch a transient blip shorter than the polling interval, and it
 should not -- those self-heal. Its purpose is catching the sustained failures in
 classes 2 and 3, which are the ones that need a human.
 
+#### When the alert itself is the thing that broke
+
+Every page from this repository -- monitor, deploy and backup -- goes out
+through `scripts/notify.sh` to ntfy, authenticated with the `NTFY_TOKEN`
+repository secret. A rejected token fails the step that tried to page, which
+is visible only if someone is reading the run that already failed for another
+reason. On 2026-09-23 and 2026-09-24 the backup failed, `notify.sh` correctly
+exited non-zero on an HTTP 401, and nobody was told either night.
+
+The monitor's first step, `Check the alert channel`, now asks ntfy whether the
+token is still accepted for the topic, every 15 minutes, without sending a
+notification. A 401 or 403 there means no page from anywhere in this
+repository is arriving.
+
+```bash
+# Rotate: create a new token in the ntfy account, then, over stdin --
+# never as a command argument, which would put it in the shell history.
+gh secret set NTFY_TOKEN
+
+# Prove the whole path, not just the credential:
+gh workflow run notify-test.yml -f message="rotation $(date -u +%F)"
+```
+
+`notify-test.yml` is manual and proves the channel at the moment it is run.
+The monitor's probe is what keeps it proved.
+
 ### Debug Mode
 
 Enable debug logging:

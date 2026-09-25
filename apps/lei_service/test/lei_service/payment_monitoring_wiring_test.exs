@@ -192,10 +192,57 @@ defmodule LeiService.PaymentMonitoringWiringTest do
       monitor = monitor()
 
       # Step ids, so the page can say which check broke rather than "something".
-      for id <- ~w(readiness queue webhooks ledger payments canary smoke) do
+      for id <- ~w(alerting readiness queue webhooks ledger payments canary smoke) do
         assert monitor =~ "id: #{id}",
                "step '#{id}' has no id, so the page cannot name it"
       end
+    end
+
+    # ntfy rejected the backup page with a 401 on 2026-09-23 and again on
+    # 2026-09-24. The backup had genuinely failed both nights, notify.sh
+    # correctly exited non-zero, and the page still reached nobody. Nothing
+    # checked the channel on a schedule: it was proved once by hand on
+    # 2026-09-17 and assumed to hold. An alarm that cannot ring is the shape
+    # this repository keeps meeting, one layer further out again.
+    test "the monitor checks it can still page before checking anything else" do
+      probe = step("monitor.yml", "Check the alert channel")
+
+      assert probe =~ "NTFY_TOKEN", "the probe does not use the paging credential"
+
+      # The topic's auth endpoint, which answers whether this token may
+      # publish here -- without sending a notification every 15 minutes.
+      assert probe =~ "/auth", "the probe does not ask ntfy whether the token is accepted"
+
+      # The status has to be compared. A probe that records a code and never
+      # reads it is the check that passes while it cannot do its job.
+      assert probe =~ ~r/2\?\?\)/,
+             "the probe never distinguishes an accepted credential from a rejected one"
+
+      assert probe =~ "::error::", "a rejected credential does not fail the run"
+
+      # The page has to be able to name this check, or a dead alert channel
+      # reads as "unidentified" -- something is wrong, and not what.
+      assert monitor() =~ "ALERTING: ${{ steps.alerting.outcome }}",
+             "the alert-channel check is not collected for the page"
+
+      assert monitor() =~ ~s("alerting:$ALERTING"),
+             "the alert-channel check is not named in the failure list"
+    end
+
+    test "an alert channel it could not reach is not a working one" do
+      probe = step("monitor.yml", "Check the alert channel")
+
+      # 401 is the case seen; a 5xx or no response at all leaves the same
+      # question unanswered, and the rest of this file treats an answer it
+      # could not get as a failure.
+      refute probe =~ ~r/\*\)\s*\n\s*(echo[^\n]*\n\s*)?exit 0/,
+             "an unanswered probe exits 0, which reports a channel nobody has tested as working"
+
+      # The step runs under `bash -e`. A connection curl could not make exits
+      # 7, which aborts the step before the branch above has said why -- the
+      # run fails, and pages as "unidentified" rather than naming ntfy.
+      assert probe =~ ~r/auth" \|\| true\)/,
+             "a failed connection aborts the step before it can say what went wrong"
     end
 
     test "the paging workflows check out the repository that holds the script" do

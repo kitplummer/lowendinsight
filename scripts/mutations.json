@@ -3402,6 +3402,42 @@
       "replace": "          GRACE=0",
       "guarded_by": "test/lei_service/deploy_reporting_test.exs",
       "app": "apps/lei_service"
+    },
+    {
+      "id": "reconciliation-test-real-clock",
+      "bug": "A test froze @now at 2026-09-17 and dated its ledger purchase an hour before it, then ran the reconciliation with DateTime.utc_now(). The purchase sat inside the seven-day window until real time walked past it, so the test passed for seven days and broke the nightly on 2026-09-25 with no change behind it (13 guards reported broken alongside it).",
+      "file": "apps/lei_service/test/lei/stripe_reconciliation_test.exs",
+      "find": "expect(Lei.StripeMock, :retrieve_payment_intent, fn _ -> {:error, stripe_missing()} end)\n\n    {:ok, _} = run()",
+      "replace": "expect(Lei.StripeMock, :retrieve_payment_intent, fn _ -> {:error, stripe_missing()} end)\n\n    {:ok, _} = StripeReconciliation.run(now: DateTime.utc_now())",
+      "guarded_by": "test/lei/test_hygiene_test.exs",
+      "app": "apps/lei_service"
+    },
+    {
+      "id": "monitor-alert-channel-unverified",
+      "bug": "ntfy rejected the paging credential with a 401 on 2026-09-23 and 2026-09-24. The backup had really failed both nights and the page reached nobody; the channel had been proved once by hand on 2026-09-17 and assumed to hold since. A probe that treats any answer as acceptance is a channel nobody has tested, reported as working.",
+      "file": ".github/workflows/monitor.yml",
+      "find": "          case \"$STATUS\" in\n            2??)\n              echo \"The alert channel accepts this token.\"",
+      "replace": "          case \"$STATUS\" in\n            *)\n              echo \"The alert channel accepts this token.\"",
+      "guarded_by": "test/lei_service/payment_monitoring_wiring_test.exs",
+      "app": "apps/lei_service"
+    },
+    {
+      "id": "monitor-alert-channel-unnamed-in-the-page",
+      "bug": "A step missing from the failure aggregation pages as 'unidentified', which says something is wrong and not what. For the alert channel specifically, that is the one page whose text explains why no other page arrived.",
+      "file": ".github/workflows/monitor.yml",
+      "find": "          for pair in \"alerting:$ALERTING\" \"readiness:$READINESS\"",
+      "replace": "          for pair in \"readiness:$READINESS\"",
+      "guarded_by": "test/lei_service/payment_monitoring_wiring_test.exs",
+      "app": "apps/lei_service"
+    },
+    {
+      "id": "monitor-alert-probe-aborts-before-it-explains",
+      "bug": "The probe runs under `bash -e`, so a connection curl could not make exits 7 and aborts the step before the branch that names ntfy has run. The run fails either way -- and pages as 'unidentified' rather than saying the alert channel could not be reached.",
+      "file": ".github/workflows/monitor.yml",
+      "find": "-H @- \"${NTFY_SERVER}/${NTFY_TOPIC}/auth\" || true)",
+      "replace": "-H @- \"${NTFY_SERVER}/${NTFY_TOPIC}/auth\")",
+      "guarded_by": "test/lei_service/payment_monitoring_wiring_test.exs",
+      "app": "apps/lei_service"
     }
   ]
 }

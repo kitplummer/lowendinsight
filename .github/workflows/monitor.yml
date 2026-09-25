@@ -29,6 +29,60 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      # Asked first, because every check below it is worth running only if a
+      # failure can still reach someone.
+      #
+      # ntfy rejected the backup page with a 401 on 2026-09-23 and again on
+      # 2026-09-24. The backup had really failed both nights and notify.sh
+      # really did exit non-zero -- the alert simply went nowhere, and the only
+      # thing that had ever tested the channel was one manual run of
+      # notify-test.yml on 2026-09-17. A credential is not verified by having
+      # worked once.
+      #
+      # The topic's auth endpoint rather than a notification: it answers
+      # whether this token is accepted and may publish here, and answering it
+      # 96 times a day costs nobody a buzzing phone.
+      - name: Check the alert channel
+        id: alerting
+        env:
+          NTFY_TOKEN: ${{ secrets.NTFY_TOKEN }}
+          NTFY_TOPIC: ${{ secrets.NTFY_TOPIC }}
+          NTFY_SERVER: ${{ vars.NTFY_SERVER || 'https://ntfy.sh' }}
+        run: |
+          if [ -z "$NTFY_TOKEN" ] || [ -z "$NTFY_TOPIC" ]; then
+            echo "::error::NTFY_TOKEN or NTFY_TOPIC is unset, so no check in this file can page anyone. Set them with: gh secret set NTFY_TOKEN"
+            exit 1
+          fi
+
+          # The token reaches curl in a header read from stdin, never on a
+          # command line -- same handling as scripts/notify.sh.
+          # `|| true`: the step runs under `bash -e`, and a connection curl
+          # could not make exits 7 -- which would abort here, before the branch
+          # below has said why. The run fails either way; the difference is
+          # whether it names what went wrong or pages as "unidentified".
+          STATUS=$(printf 'Authorization: Bearer %s\n' "$NTFY_TOKEN" \
+            | curl -s -o /dev/null -w '%{http_code}' --max-time 20 \
+              -H @- "${NTFY_SERVER}/${NTFY_TOPIC}/auth" || true)
+
+          echo "ntfy auth probe: HTTP ${STATUS:-no response}"
+
+          case "$STATUS" in
+            2??)
+              echo "The alert channel accepts this token."
+              ;;
+            401|403)
+              echo "::error::ntfy rejected the paging credential (HTTP ${STATUS}). Every page from this repository -- monitor, deploy and backup -- is going nowhere, and each one still reports having sent it. Rotate the token and set it over stdin: gh secret set NTFY_TOKEN"
+              exit 1
+              ;;
+            *)
+              # Consistent with the rest of this file: an answer we could not
+              # get is not a reassuring one. A channel nobody has reached is
+              # not a channel known to work.
+              echo "::error::Could not reach ntfy to verify the alert channel (HTTP ${STATUS:-no response}). Whether a page would arrive is unknown."
+              exit 1
+              ;;
+          esac
+
       # Checked before the smoke suite because it is the cheap, specific signal.
       # "degraded" means a dependency is down while the app still serves -- the
       # exact state that went unnoticed for months.
@@ -435,6 +489,7 @@ jobs:
           NTFY_TOKEN: ${{ secrets.NTFY_TOKEN }}
           NTFY_TOPIC: ${{ secrets.NTFY_TOPIC }}
           RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+          ALERTING: ${{ steps.alerting.outcome }}
           READINESS: ${{ steps.readiness.outcome }}
           QUEUE: ${{ steps.queue.outcome }}
           WEBHOOKS: ${{ steps.webhooks.outcome }}
@@ -447,7 +502,7 @@ jobs:
           # Which checks failed, by name, so the page says what is wrong rather
           # than that something is.
           FAILED=""
-          for pair in "readiness:$READINESS" "queue:$QUEUE" "webhooks:$WEBHOOKS" \
+          for pair in "alerting:$ALERTING" "readiness:$READINESS" "queue:$QUEUE" "webhooks:$WEBHOOKS" \
                       "ledger:$LEDGER" "payments:$PAYMENTS" "canary:$CANARY" "smoke:$SMOKE" \
                       "deployed:$DEPLOYED"; do
             name="${pair%%:*}"
