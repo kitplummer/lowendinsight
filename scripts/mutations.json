@@ -3402,6 +3402,15 @@
       "replace": "          GRACE=0",
       "guarded_by": "test/lei_service/deploy_reporting_test.exs",
       "app": "apps/lei_service"
+    },
+    {
+      "id": "reconciliation-test-real-clock",
+      "bug": "A test froze @now at 2026-09-17 and dated its ledger purchase an hour before it, then ran the reconciliation with DateTime.utc_now(). The purchase sat inside the seven-day window until real time walked past it, so the test passed for seven days and broke the nightly on 2026-09-25 with no change behind it (13 guards reported broken alongside it).",
+      "file": "apps/lei_service/test/lei/stripe_reconciliation_test.exs",
+      "find": "expect(Lei.StripeMock, :retrieve_payment_intent, fn _ -> {:error, stripe_missing()} end)\n\n    {:ok, _} = run()",
+      "replace": "expect(Lei.StripeMock, :retrieve_payment_intent, fn _ -> {:error, stripe_missing()} end)\n\n    {:ok, _} = StripeReconciliation.run(now: DateTime.utc_now())",
+      "guarded_by": "test/lei/test_hygiene_test.exs",
+      "app": "apps/lei_service"
     }
   ]
 }

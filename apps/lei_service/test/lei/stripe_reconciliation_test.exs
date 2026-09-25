@@ -310,7 +310,7 @@ defmodule Lei.StripeReconciliationTest do
 
     expect(Lei.StripeMock, :retrieve_payment_intent, fn _ -> {:error, stripe_missing()} end)
 
-    {:ok, _} = StripeReconciliation.run(now: DateTime.utc_now())
+    {:ok, _} = run()
 
     body = Lei.Metrics.collect()
     assert body =~ ~s(lei_stripe_reconciliation{measure="runs"} 1)
@@ -329,7 +329,7 @@ defmodule Lei.StripeReconciliationTest do
 
   test "a failed latest run reports failed, with no discrepancy count to mistake for zero" do
     expect(Lei.StripeMock, :list_payment_intents, fn _, _ -> {:error, :timeout} end)
-    {:ok, _} = StripeReconciliation.run(now: DateTime.utc_now())
+    {:ok, _} = run()
 
     body = Lei.Metrics.collect()
     assert body =~ ~s(lei_stripe_reconciliation{measure="failed"} 1)

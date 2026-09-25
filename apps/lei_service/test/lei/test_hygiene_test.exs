@@ -68,6 +68,34 @@ defmodule Lei.TestHygieneTest do
            """
   end
 
+  test "a test that freezes a clock does not hand the code under test the real one" do
+    # A fixture dated from a frozen @now, compared against a window measured
+    # from DateTime.utc_now(), is inside the window until real time walks past
+    # it. The test then passes for days and starts failing on a date nobody
+    # changed anything on. This is how the nightly broke on 2026-09-25: a
+    # ledger purchase an hour before a frozen 2026-09-17 fell out of the
+    # reconciliation's seven-day window measured from the real clock.
+    offenders =
+      for path <- test_files(),
+          source = File.read!(path),
+          String.contains?(source, "@now ~U[") or String.contains?(source, "@now ~N["),
+          Regex.match?(~r/now: (DateTime|NaiveDateTime)\.utc_now\(\)/, source),
+          do: Path.relative_to(path, @test_root)
+
+    assert offenders == [],
+           """
+           These test files freeze a clock in @now and also pass the real clock
+           as the code's notion of now:
+
+             #{Enum.join(offenders, "\n  ")}
+
+           Pass the frozen @now everywhere. Mixing the two dates the test
+           against the calendar: it stays green until the gap between @now and
+           today grows past whatever window the code measures, then fails on a
+           day with no change behind it.
+           """
+  end
+
   test "the hygiene check can actually see the suite" do
     # A wildcard that resolves to nothing would make both checks above pass
     # vacuously -- the same class of bug they exist to catch.
