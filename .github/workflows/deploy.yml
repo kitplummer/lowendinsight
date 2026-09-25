@@ -104,7 +104,10 @@ jobs:
           # The commit CI passed, not whatever main is when this job starts.
           ref: ${{ needs.gate.outputs.sha }}
 
-      - uses: superfly/flyctl-actions/setup-flyctl@master
+      - uses: superfly/flyctl-actions/setup-flyctl@ed8efb33836e8b2096c7fd3ba1c8afe303ebbff1 # master @ 2026-09-25
+        with:
+          # Not 'latest': see backup.yml for why.
+          version: v0.4.108
 
       - name: Check FLY_API_TOKEN is configured
         env:

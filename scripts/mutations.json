@@ -3438,6 +3438,24 @@
       "replace": "-H @- \"${NTFY_SERVER}/${NTFY_TOPIC}/auth\")",
       "guarded_by": "test/lei_service/payment_monitoring_wiring_test.exs",
       "app": "apps/lei_service"
+    },
+    {
+      "id": "third-party-action-unpinned",
+      "bug": "superfly/flyctl-actions/setup-flyctl was used at @master in the backup and deploy workflows, so unpinned third-party code ran with a Fly token in scope. It failed silently on 2026-09-23: no output, every later step skipped, no backup taken. A tag moves and @master is not even a tag.",
+      "file": ".github/workflows/audit.yml",
+      "find": "erlef/setup-beam@54075bcc5e249e4758d363f27d099f55d843f124 # v1",
+      "replace": "erlef/setup-beam@v1",
+      "guarded_by": "test/lei_service/workflow_pinning_test.exs",
+      "app": "apps/lei_service"
+    },
+    {
+      "id": "flyctl-binary-unpinned",
+      "bug": "Pinning the action while leaving the binary at 'latest' pins the wrapper and not the thing that talks to Fly. flyctl publishes daily at 19:14 UTC and the backup runs at 03:39, so every nightly backup ran a build less than nine hours old that nothing had tested.",
+      "file": ".github/workflows/backup.yml",
+      "find": "    version: v0.4.108",
+      "replace": "    version: latest",
+      "guarded_by": "test/lei_service/workflow_pinning_test.exs",
+      "app": "apps/lei_service"
     }
   ]
 }
