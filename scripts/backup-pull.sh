@@ -26,7 +26,7 @@
 # Requires: aws cli, gpg. Docker only for --restore.
 set -uo pipefail
 
-BUCKET="${BACKUP_BUCKET:-lei-db-backups}"
+BUCKET="${BACKUP_BUCKET:-lei-pg-backups}"
 ENDPOINT="${AWS_ENDPOINT_URL_S3:-https://fly.storage.tigris.dev}"
 MARKER="meta/last-local-pull"
 LATEST="meta/latest"

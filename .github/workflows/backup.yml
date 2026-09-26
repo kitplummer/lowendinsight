@@ -115,7 +115,7 @@ jobs:
           AWS_ACCESS_KEY_ID: ${{ secrets.TIGRIS_READ_ACCESS_KEY_ID }}
           AWS_SECRET_ACCESS_KEY: ${{ secrets.TIGRIS_READ_SECRET_ACCESS_KEY }}
           AWS_ENDPOINT_URL_S3: https://fly.storage.tigris.dev
-          BUCKET: lei-db-backups
+          BUCKET: lei-pg-backups
         run: |
           S3() { aws --endpoint-url "$AWS_ENDPOINT_URL_S3" "$@"; }
 
@@ -255,7 +255,7 @@ jobs:
           AWS_ACCESS_KEY_ID: ${{ secrets.TIGRIS_READ_ACCESS_KEY_ID }}
           AWS_SECRET_ACCESS_KEY: ${{ secrets.TIGRIS_READ_SECRET_ACCESS_KEY }}
           AWS_ENDPOINT_URL_S3: https://fly.storage.tigris.dev
-          BUCKET: lei-db-backups
+          BUCKET: lei-pg-backups
         run: |
           LAST=$(aws --endpoint-url "$AWS_ENDPOINT_URL_S3" s3 cp \
             "s3://${BUCKET}/meta/last-local-pull" - 2>/dev/null | head -1 || true)

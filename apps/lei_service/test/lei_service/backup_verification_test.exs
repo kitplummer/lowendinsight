@@ -124,12 +124,13 @@ defmodule LeiService.BackupVerificationTest do
     end
 
     test "it does not retry itself into a green run" do
-      # --restart no in setup.sh, and nothing resembling a retry loop here. A
-      # failed backup must stay failed: a retry that succeeds hides why the
-      # first attempt did not.
-      setup = File.read!(Path.join(@root, "ops/backup/setup.sh"))
+      # Documented rather than scripted. The setup script this asserted against
+      # was deleted after it failed three times and hung on a prompt that needed
+      # kill -9; the flag still has to be written down where the person creating
+      # the machine will read it.
+      readme = File.read!(Path.join(@root, "ops/backup/README.md"))
 
-      assert setup =~ "--restart no",
+      assert readme =~ "--restart no",
              "a restarting machine converts a failure into a success nobody examines"
 
       refute producer() =~ ~r/for attempt in|until pg_dump|retry/,
@@ -218,7 +219,7 @@ defmodule LeiService.BackupVerificationTest do
           "ops/backup/backup.sh",
           "ops/backup/Dockerfile",
           "ops/backup/fly.toml",
-          "ops/backup/setup.sh",
+          "ops/backup/README.md",
           "scripts/backup-pull.sh",
           ".github/workflows/backup.yml",
           "docs/adr/006-backup-near-the-data.md"

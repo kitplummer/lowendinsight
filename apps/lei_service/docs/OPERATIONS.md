@@ -480,7 +480,7 @@ flyctl machine run postgres:17-alpine -a lowendinsight-db -r iad \
   -v <NEW_VOL_ID>:/data --vm-memory 512 --rm -- sh -c \
   'export PGDATA=/data/postgresql; chown -R postgres:postgres $PGDATA; chmod 700 $PGDATA;
    su postgres -s /bin/sh -c "pg_ctl -D /data/postgresql -o \"-c shared_preload_libraries=\" -w -t 60 start";
-   su postgres -s /bin/sh -c "psql -p 5433 -U postgres -d lei_service_prod -c \"select count(*) from orgs\""'
+   su postgres -s /bin/sh -c "psql -p 5433 -U postgres -d lowendinsight_get_prod -c \"select count(*) from orgs\""'
 
 flyctl volumes destroy <NEW_VOL_ID> -a lowendinsight-db --yes
 ```
@@ -533,7 +533,7 @@ On the **producer** (`flyctl secrets import -a lowendinsight-backup`):
 
 | Secret | Value |
 |---|---|
-| `PG_DUMP_URL` | `postgres://lei_backup:pass@lowendinsight-db.internal:5432/lei_service_prod` -- the private address; there is no proxy any more |
+| `PG_DUMP_URL` | `postgres://lei_backup:pass@lowendinsight-db.internal:5432/lowendinsight_get_prod` -- the private address; there is no proxy any more |
 | `BACKUP_PASSPHRASE` | symmetric encryption key |
 | `AWS_ACCESS_KEY_ID` / `AWS_SECRET_ACCESS_KEY` | Tigris key, **write** scope |
 
@@ -599,12 +599,18 @@ Connect **to the application database**, not the default `postgres` one --
 running it against `postgres` silently grants nothing useful:
 
 ```bash
-flyctl postgres connect -a lowendinsight-db -d lei_service_prod
+# `flyctl postgres connect` does not work on this cluster: flex runs HAProxy on
+# 5432 and Postgres itself on 5433, and there is no local unix socket, so it
+# fails with "server closed the connection unexpectedly" -- which looks alarming
+# and means nothing. Go in over TCP on the real port instead. The password comes
+# from the VM's own environment, so it is never typed or echoed.
+flyctl ssh console -a lowendinsight-db
+PGPASSWORD=$OPERATOR_PASSWORD psql -h 127.0.0.1 -p 5433 -U postgres -d lowendinsight_get_prod
 ```
 
 ```sql
 CREATE USER lei_backup WITH PASSWORD '<generated>';
-GRANT CONNECT ON DATABASE lei_service_prod TO lei_backup;
+GRANT CONNECT ON DATABASE lowendinsight_get_prod TO lei_backup;
 GRANT USAGE ON SCHEMA public TO lei_backup;
 
 -- Tables and sequences both. pg_dump reads sequence values to emit setval on

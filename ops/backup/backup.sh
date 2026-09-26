@@ -10,7 +10,7 @@
 # were all in the nightly path. See docs/adr/006-backup-near-the-data.md.
 #
 # Required environment (set with: flyctl secrets import -a lowendinsight-backup)
-#   PG_DUMP_URL          postgres://user:pass@lowendinsight-db.internal:5432/lei_service_prod
+#   PG_DUMP_URL          postgres://user:pass@lowendinsight-db.internal:5432/lowendinsight_get_prod
 #   BACKUP_PASSPHRASE    symmetric key for the artifact
 #   AWS_ACCESS_KEY_ID    Tigris key, write scope
 #   AWS_SECRET_ACCESS_KEY
