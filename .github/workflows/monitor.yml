@@ -422,18 +422,40 @@ jobs:
             0)
               echo "The tip of main is live."
               ;;
-            1)
+            1|2)
+              # Both share the grace. deploy-status.sh answers 1 for "no deploy
+              # run, or every run declined" and 2 for "a run exists but its
+              # Deploy and verify job cannot be read yet", and in the first
+              # minutes after a merge either is the normal state of a deploy in
+              # flight.
+              #
+              # 2 used to fall through to the catch-all below and fail
+              # immediately. Merging #277 made this run red four minutes later
+              # and sent an email: the deploy run was eight seconds old, so its
+              # job did not exist yet. Every merge did that, from the one check
+              # whose purpose is noticing an undeployed tip -- which is how an
+              # alarm stops being read.
+              case "$RESULT" in
+                1) WHAT="is not deployed" ;;
+                *) WHAT="has a deploy run whose job state cannot be read yet" ;;
+              esac
+
               if [ "$AGE" -lt "$GRACE" ]; then
-                echo "::notice::${TIP:0:7} is not deployed yet, but was committed ${AGE}s ago; within the ${GRACE}s grace."
-              else
+                echo "::notice::${TIP:0:7} ${WHAT}, but was committed ${AGE}s ago; within the ${GRACE}s grace."
+              elif [ "$RESULT" = "1" ]; then
                 echo "::error::${TIP:0:7} has been the tip of main for ${AGE}s and is not deployed. A deploy run that declines ships nothing and still reports success, so nothing else will tell you."
+                exit 1
+              else
+                # Past the grace, the same rule as everywhere else in this file:
+                # an answer we could not get is not a reassuring one.
+                echo "::error::Could not determine whether ${TIP:0:7} is deployed, ${AGE}s after it became the tip. Not knowing is not the same as fine. Check: scripts/ops/deploy-status.sh ${TIP:0:7}"
                 exit 1
               fi
               ;;
             *)
-              # Consistent with the rest of this workflow: an answer we could
-              # not get is not a reassuring one.
-              echo "::error::Could not determine whether ${TIP:0:7} is deployed."
+              # An exit code this script does not document. Not a deploy state
+              # at all -- gh missing, a bad sha, the script itself broken.
+              echo "::error::deploy-status.sh exited ${RESULT}, which it does not define. Whether ${TIP:0:7} is deployed is unknown."
               exit 1
               ;;
           esac

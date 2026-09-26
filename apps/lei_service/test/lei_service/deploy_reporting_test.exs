@@ -232,6 +232,39 @@ defmodule LeiService.DeployReportingTest do
              "an unreadable deploy state passes silently"
     end
 
+    # Merging #277 turned the monitor red four minutes later, and emailed about
+    # it. The deploy run for the merge commit had existed for eight seconds, so
+    # its `Deploy and verify` job had not been created yet, deploy-status.sh
+    # answered "could not tell" (exit 2), and the grace period was only ever
+    # applied to "not deployed" (exit 1). Every merge produced a red run and a
+    # page-shaped email from the one check whose job is noticing an undeployed
+    # tip -- which is how an alarm stops being read.
+    test "a deploy whose job state is not readable yet is within the grace" do
+      monitor = File.read!(@monitor)
+
+      # Both outcomes share the grace: 1 is "no run, or every run declined",
+      # 2 is "a run exists but its job has not started". In the first minutes
+      # after a merge either is normal.
+      assert monitor =~ ~r/^\s*1\|2\)/m,
+             "only 'not deployed' gets the grace, so a deploy in flight fails the run"
+
+      refute monitor =~
+               ~r/::error::Could not determine whether \$\{TIP:0:7\} is deployed\.\n\s*exit 1/,
+             "an unreadable state fails immediately, before the grace is considered"
+    end
+
+    # The other half of the same rule: inside the grace it is too early to tell,
+    # outside it, not knowing is not the same as fine.
+    test "an unreadable deploy state still fails once the grace has passed" do
+      monitor = File.read!(@monitor)
+
+      assert monitor =~ "Not knowing is not the same as fine",
+             "an answer we could not get reads as reassuring after the grace"
+
+      assert monitor =~ ~r/Could not determine whether[^\n]*after it became the tip/,
+             "the failure does not say how long it has been unreadable"
+    end
+
     test "a failure names itself in the page" do
       # The aggregation lists failed checks by name. A step missing from it
       # pages as "unidentified", which says something is wrong and not what.
