@@ -3546,6 +3546,24 @@
       "replace": "    \"github.com\" => %{name: \"github.com\", fold_case: true},",
       "guarded_by": "test/lei_service/datastore_test.exs",
       "app": "apps/lei_service"
+    },
+    {
+      "id": "smoke-failure-says-nothing",
+      "bug": "The monitor failed on the smoke step at 2026-09-26 19:36 with 'Process completed with exit code 28' and nothing else. 23 curl requests under set -e, so the first to time out aborted the script with no summary and no indication which request hung. The page said 'failed checks: smoke' and that was all anyone had; production was answering in under 200ms and the cause is now unknowable.",
+      "file": "scripts/smoke-test.sh",
+      "find": "trap 'on_error $? $LINENO \"$BASH_COMMAND\"' ERR",
+      "replace": "",
+      "guarded_by": "test/lei_service/smoke_diagnostics_test.exs",
+      "app": "apps/lei_service"
+    },
+    {
+      "id": "smoke-diagnostic-hides-the-request",
+      "bug": "Naming the exit code without the request is what the bare 'exit code 28' already did. The failing command and the host it was aimed at are the whole point of the diagnostic.",
+      "file": "scripts/smoke-test.sh",
+      "find": "  red \"  The request that failed:\"\n  printf '    %s\\n' \"$cmd\" >&2",
+      "replace": "  red \"  A request failed.\"",
+      "guarded_by": "test/lei_service/smoke_diagnostics_test.exs",
+      "app": "apps/lei_service"
     }
   ]
 }

@@ -38,6 +38,51 @@ check_contains() {
   fi
 }
 
+# When this script dies, say where.
+#
+# It runs under `set -euo pipefail` and makes 23 curl requests, so the first one
+# to time out, fail DNS or be refused aborts immediately -- and until this trap
+# existed, that produced a bare "Process completed with exit code 28" with no
+# summary and no indication of which request hung. The monitor page then said
+# `failed checks: smoke` and nothing more (2026-09-26 19:36; production was
+# answering in under 200ms, the next run passed, and the cause is now
+# unknowable).
+#
+# $BASH_COMMAND is the command text *before* expansion, so it shows the URL and
+# a literal `$API_KEY` rather than the key's value. Verified, and asserted in
+# smoke_diagnostics_test.exs, because a version that expanded it would put a
+# credential in every CI log.
+on_error() {
+  local code=$1 line=$2 cmd=$3
+
+  echo ""
+  red "=== Smoke test aborted at line ${line} (exit ${code}) ==="
+
+  case "$code" in
+    6)  red "  curl could not resolve the host." ;;
+    7)  red "  curl could not connect -- refused, or nothing listening." ;;
+    28) red "  curl timed out: the request exceeded --max-time." ;;
+    35 | 60) red "  TLS failed: handshake or certificate verification." ;;
+    52) red "  the server closed the connection without a reply." ;;
+    *)  red "  a command failed." ;;
+  esac
+
+  red "  The request that failed:"
+  printf '    %s\n' "$cmd" >&2
+
+  # The command above is unexpanded, so it reads "$BASE_URL" rather than the
+  # host. Stating it here keeps the diagnostic readable on its own, without
+  # expanding anything that might hold a credential.
+  red "  Against: ${BASE_URL}"
+
+  # How far it got. Without this, a failure halfway through is
+  # indistinguishable from one on the first request.
+  red "  Got through ${PASS} passed, ${FAIL} failed of ${TOTAL} checks attempted."
+  red "  Checks after this one did not run, so this is not a full result."
+}
+
+trap 'on_error $? $LINENO "$BASH_COMMAND"' ERR
+
 bold "=== LEI Smoke Test: $BASE_URL ==="
 echo ""
 
