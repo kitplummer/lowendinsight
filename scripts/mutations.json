@@ -3492,6 +3492,24 @@
       "replace": "  || true",
       "guarded_by": "test/lei_service/backup_verification_test.exs",
       "app": "apps/lei_service"
+    },
+    {
+      "id": "monitor-pages-on-a-deploy-whose-job-is-unread",
+      "bug": "deploy-status.sh answers 2 when a deploy run exists but its 'Deploy and verify' job has not been created yet -- the normal state for the first minutes after a merge. With 2 outside the grace, merging #277 turned the monitor red four minutes later and emailed about it, from the one check whose purpose is noticing an undeployed tip.",
+      "file": ".github/workflows/monitor.yml",
+      "find": "            1|2)",
+      "replace": "            1)",
+      "guarded_by": "test/lei_service/deploy_reporting_test.exs",
+      "app": "apps/lei_service"
+    },
+    {
+      "id": "monitor-unreadable-deploy-state-reads-as-fine",
+      "bug": "Inside the grace an unreadable deploy state is too early to tell. Past it, an answer we could not get is not a reassuring one -- the rule the rest of monitor.yml is built on. Downgrading it to a notice means production can sit on an older commit with nothing saying so.",
+      "file": ".github/workflows/monitor.yml",
+      "find": "echo \"::error::Could not determine whether ${TIP:0:7} is deployed, ${AGE}s after it became the tip. Not knowing is not the same as fine. Check: scripts/ops/deploy-status.sh ${TIP:0:7}\"\n                exit 1",
+      "replace": "echo \"::notice::Could not determine whether ${TIP:0:7} is deployed.\"",
+      "guarded_by": "test/lei_service/deploy_reporting_test.exs",
+      "app": "apps/lei_service"
     }
   ]
 }
