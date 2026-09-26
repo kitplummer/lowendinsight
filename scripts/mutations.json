@@ -3515,7 +3515,7 @@
       "id": "cache-key-splits-on-case",
       "bug": "Measured 2026-09-25: this repository analysed as kitplummer/lowendinsight and as KitPlummer/lowendinsight produced two cache keys, two clones and two analyses of commit 5938718. GitHub treats them as one repository. One answer, billed twice at the cache-miss rate, stored twice for thirty days.",
       "file": "apps/lei_service/lib/lei_service/datastore.ex",
-      "find": "    package = if host in @case_insensitive_paths, do: String.downcase(path), else: path",
+      "find": "    package = if known && known.fold_case, do: String.downcase(path), else: path",
       "replace": "    package = path",
       "guarded_by": "test/lei_service/datastore_test.exs",
       "app": "apps/lei_service"
@@ -3524,8 +3524,26 @@
       "id": "cache-key-folds-case-sensitive-hosts",
       "bug": "Downcasing every path merges org/Repo and org/repo on a host where they are two different repositories, so a cache hit returns the wrong repository's report. A duplicate entry costs a clone and a charge; a collision answers a question nobody asked. Normalisation has to be per host.",
       "file": "apps/lei_service/lib/lei_service/datastore.ex",
-      "find": "    package = if host in @case_insensitive_paths, do: String.downcase(path), else: path",
+      "find": "    package = if known && known.fold_case, do: String.downcase(path), else: path",
       "replace": "    package = String.downcase(path)",
+      "guarded_by": "test/lei_service/datastore_test.exs",
+      "app": "apps/lei_service"
+    },
+    {
+      "id": "cache-key-collides-hosts-by-tld",
+      "bug": "Stripping .com/.org/.io from every host made git.example.com, git.example.org and git.example.io one cache key, and gitlab.io the same key as gitlab.com. A cache hit then returned a different host's report for the same path -- a wrong answer rather than a duplicated one.",
+      "file": "apps/lei_service/lib/lei_service/datastore.ex",
+      "find": "    ecosystem = if known, do: known.name, else: host",
+      "replace": "    ecosystem = if known, do: known.name, else: host |> String.replace_suffix(\".com\", \"\") |> String.replace_suffix(\".org\", \"\") |> String.replace_suffix(\".io\", \"\")",
+      "guarded_by": "test/lei_service/datastore_test.exs",
+      "app": "apps/lei_service"
+    },
+    {
+      "id": "cache-key-orphans-the-existing-cache",
+      "bug": "The short names for github.com, gitlab.com and bitbucket.org exist so entries already in the cache keep working. Keying those hosts on their full name changes every key shape, orphans every entry, and bills the next request for each as a cache miss -- the customer pays 50 credits for an answer we hold and cannot find.",
+      "file": "apps/lei_service/lib/lei_service/datastore.ex",
+      "find": "    \"github.com\" => %{name: \"github\", fold_case: true},",
+      "replace": "    \"github.com\" => %{name: \"github.com\", fold_case: true},",
       "guarded_by": "test/lei_service/datastore_test.exs",
       "app": "apps/lei_service"
     }

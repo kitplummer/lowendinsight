@@ -11,44 +11,56 @@ defmodule LeiService.Datastore do
 
   require Logger
 
-  # Hosts that treat the owner and repository name case-insensitively: the same
-  # repository, whatever case you type. Anything not on this list keeps its path
-  # case.
+  # The hosts this service was built around, and the two things that differ per
+  # host: the short name the cache key uses, and whether the path is
+  # case-insensitive.
   #
-  # The asymmetry is deliberate and it is the whole reason this is a list rather
-  # than a blanket String.downcase/1. On a case-sensitive host, `org/Repo` and
-  # `org/repo` can be two different repositories, and folding them together
-  # would return one's report for the other. A duplicate entry costs a clone and
-  # a charge; a collision answers a question nobody asked. The second is worse,
-  # so normalisation is opt-in per host.
-  @case_insensitive_paths ~w(github.com gitlab.com bitbucket.org)
+  # **The short names are here so existing cache entries keep working.** A key
+  # that changes shape orphans its entry, and the next request for it is billed
+  # as a cache miss -- the customer pays 50 credits for an answer we are holding
+  # and cannot find. These three carry effectively all of the cache, so they keep
+  # exactly the keys they had.
+  #
+  # `fold_case` says the host treats owner and repository names
+  # case-insensitively: the same repository whatever case you type. Measured on
+  # 2026-09-25, GitHub served `kitplummer/lowendinsight` and
+  # `KitPlummer/lowendinsight` as one repository while this function made two
+  # keys for them -- two clones, two analyses, two charges for one answer.
+  #
+  # It is per host and not a blanket downcase because on a case-sensitive host
+  # `org/Repo` and `org/repo` can be two different repositories, and folding them
+  # would return one's report for the other. A duplicate wastes a clone; a
+  # collision answers a question nobody asked.
+  @hosts %{
+    "github.com" => %{name: "github", fold_case: true},
+    "gitlab.com" => %{name: "gitlab", fold_case: true},
+    "bitbucket.org" => %{name: "bitbucket", fold_case: true}
+  }
 
   @doc """
   cache_key/1: converts a git repo URL into a structured cache key with format
   {ecosystem}:{package}:{version}. For example:
-    https://github.com/org/repo -> github:org/repo:latest
-    https://gitlab.com/org/repo -> gitlab:org/repo:latest
+    https://github.com/org/repo      -> github:org/repo:latest
+    https://gitlab.com/org/repo      -> gitlab:org/repo:latest
+    https://git.example.com/org/repo -> git.example.com:org/repo:latest
 
   The host is lowercased -- DNS is case-insensitive, so `GitHub.com` and
-  `github.com` are one host -- and on the hosts listed in
-  `@case_insensitive_paths` the path is lowercased too.
+  `github.com` are one host. A host in `@hosts` uses its short name and, where
+  marked, a lowercased path; any other host keys on its full name.
 
-  Measured on 2026-09-25: this repository analysed as `kitplummer/lowendinsight`
-  and as `KitPlummer/lowendinsight` produced two keys, two clones and two
-  analyses of the same commit. One answer, billed twice, cached twice. The
-  canonical form is the lowercase one, which is the form already in the cache,
-  so existing entries keep working rather than being orphaned into cache misses.
+  Unknown hosts keep the whole hostname on purpose. This used to strip `.com`,
+  `.org` and `.io` from every host, which made `git.example.com`,
+  `git.example.org` and `git.example.io` one key -- and `gitlab.io` the same key
+  as `gitlab.com`. A cache hit then returned a different host's report for the
+  same path, which is a wrong answer rather than a duplicated one.
   """
   def cache_key(url) do
     uri = URI.parse(url)
 
     host = uri.host |> to_string() |> String.downcase()
+    known = Map.get(@hosts, host)
 
-    ecosystem =
-      host
-      |> String.replace_suffix(".com", "")
-      |> String.replace_suffix(".org", "")
-      |> String.replace_suffix(".io", "")
+    ecosystem = if known, do: known.name, else: host
 
     path =
       (uri.path || "/")
@@ -56,7 +68,7 @@ defmodule LeiService.Datastore do
       |> String.trim_trailing("/")
       |> String.trim_trailing(".git")
 
-    package = if host in @case_insensitive_paths, do: String.downcase(path), else: path
+    package = if known && known.fold_case, do: String.downcase(path), else: path
 
     "#{ecosystem}:#{package}:latest"
   end

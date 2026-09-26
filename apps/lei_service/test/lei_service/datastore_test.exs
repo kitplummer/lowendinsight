@@ -164,12 +164,42 @@ defmodule LeiService.DatastoreTest do
              LeiService.Datastore.cache_key("https://github.com/Org/Repo")
   end
 
-  test "cache_key strips known TLD suffixes" do
+  # Stripping .com/.org/.io from any host made distinct hosts share a key, so a
+  # cache hit returned a different host's report for the same path. Worse than a
+  # duplicate: a duplicate wastes a clone, this answers incorrectly.
+  test "hosts differing only by TLD do not share a cache key" do
+    com = LeiService.Datastore.cache_key("https://git.example.com/org/repo")
+    org = LeiService.Datastore.cache_key("https://git.example.org/org/repo")
+    io = LeiService.Datastore.cache_key("https://git.example.io/org/repo")
+
+    assert length(Enum.uniq([com, org, io])) == 3,
+           "git.example.{com,org,io} share a cache key and would serve each other's reports"
+
+    refute LeiService.Datastore.cache_key("https://gitlab.com/o/r") ==
+             LeiService.Datastore.cache_key("https://gitlab.io/o/r"),
+           "gitlab.com and gitlab.io share a cache key"
+  end
+
+  # The reason the short names survive at all. Every key that changes shape
+  # orphans a cached entry, and the next request for it is billed as a cache
+  # miss -- so the hosts that hold the cache keep exactly the keys they had.
+  test "the hosts that dominate the cache keep their existing keys" do
+    assert "github:org/repo:latest" ==
+             LeiService.Datastore.cache_key("https://github.com/org/repo")
+
+    assert "gitlab:org/repo:latest" ==
+             LeiService.Datastore.cache_key("https://gitlab.com/org/repo")
+
     assert "bitbucket:team/project:latest" ==
              LeiService.Datastore.cache_key("https://bitbucket.org/team/project")
+  end
 
-    assert "sourcehut:user/repo:latest" ==
+  test "an unknown host keys on its full name" do
+    assert "sourcehut.io:user/repo:latest" ==
              LeiService.Datastore.cache_key("https://sourcehut.io/user/repo")
+
+    assert "git.example.com:org/repo:latest" ==
+             LeiService.Datastore.cache_key("https://git.example.com/org/repo")
   end
 
   test "cache_key handles HTTP scheme" do
