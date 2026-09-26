@@ -104,7 +104,15 @@ jobs:
           # The commit CI passed, not whatever main is when this job starts.
           ref: ${{ needs.gate.outputs.sha }}
 
-      - uses: superfly/flyctl-actions/setup-flyctl@master
+      - uses: superfly/flyctl-actions/setup-flyctl@ed8efb33836e8b2096c7fd3ba1c8afe303ebbff1 # master @ 2026-09-25
+        with:
+          # Pinned, action and binary both. This was `@master` with the
+          # binary defaulting to `latest`, so unpinned third-party code ran
+          # with a Fly token in scope and installed whatever had shipped most
+          # recently -- flyctl publishes daily. v0.4.108 is the build that ran
+          # in the deploy and the backup that both succeeded on 2026-09-25.
+          # Bump deliberately, not by schedule.
+          version: v0.4.108
 
       - name: Check FLY_API_TOKEN is configured
         env:
