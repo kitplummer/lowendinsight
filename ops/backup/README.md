@@ -128,3 +128,30 @@ flyctl machine run <new-image-ref> --schedule daily --restart no \
 `./refresh-digest.sh` prints the current digest of `postgres:17-bookworm` for the
 `FROM` line. It is pinned so that what runs with these credentials changes only
 when someone decides it should.
+
+## Things that cost time, written down
+
+**`flyctl storage create -a <app>` does not overwrite secrets that already
+exist.** If the app already has `AWS_ACCESS_KEY_ID` or `BUCKET_NAME` from an
+earlier bucket, a new bucket leaves them pointing at the old one, and the
+producer fails with `AccessDenied` or `NoSuchBucket` naming a bucket you
+destroyed. Verify what the machine actually receives rather than what you
+believe you set:
+
+```bash
+flyctl machine run <image-ref> -a lowendinsight-backup --restart no --region iad \
+  --vm-memory 256 --entrypoint /bin/sh -- \
+  -c 'echo "BUCKET=[$BUCKET_NAME] KEY8=[$(printf %.8s "$AWS_ACCESS_KEY_ID")]"'
+flyctl logs -a lowendinsight-backup   # then destroy the machine
+```
+
+**`flyctl secrets set` fails on this app** with `app has no current release`,
+because the app is build-only and has never been deployed. Use
+`flyctl secrets import --stage` (or `secrets set --stage`) instead.
+
+**A machine takes its secrets when it is created.** Staging a secret does
+nothing to a machine that already exists -- destroy it and run it again.
+
+**Pass `flyctl machine run` a tag, not a digest.** Given
+`repo@sha256:...` it appends the digest a second time and fails with
+`invalid image identifier`.

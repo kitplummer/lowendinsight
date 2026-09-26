@@ -41,17 +41,49 @@ ntfy with an HTTP 401**. The backup did not happen, twice, and nobody was told
 either night. The credential had been proved once by hand on 2026-09-17 and
 assumed to hold; the monitor now probes it every 15 minutes.
 
-### Why the 09-24 cause is still unknown
+### The 09-24 cause, found afterwards: it was not the proxy
 
-It is not diagnosable from what we keep. `flyctl proxy` is backgrounded in one
-step and used in the next, so anything it says after its own step closes goes
-nowhere, and nothing checks the process is still alive when the dump fails.
-`flyctl logs` retains about forty minutes, so the server side is gone too.
+**This section corrects the rest of this document.** The first draft blamed the
+proxy for 09-24 and called the cause undiagnosable. Both were wrong, and the
+correction matters enough to leave the mistake visible.
 
-That is the strongest argument in this document. Not that the proxy is
-unreliable -- it worked on most nights -- but that when it failed we could not
-find out why, and a backup path whose failures are unexplainable is one that
-cannot be improved.
+While setting the producer up on 2026-09-25, `flyctl postgres connect` failed
+from a laptop with the *same* error -- `server closed the connection
+unexpectedly` -- with no proxy, no runner and no tunnel in the path. The
+database's own logs then said it plainly:
+
+```
+Health check for your postgres vm has failed. Your instance has hit resource limits.
+[x] memory: system spent 2.78s of the last 10 seconds waiting on memory
+[x] io:     system spent 3.52s of the last 10 seconds waiting on io
+proxy | [ALERT] backend 'bk_db' has no server available!
+```
+
+Thirteen resource-limit events in one log window. The production database was
+running on **256 MB of RAM and one shared CPU**. Under load it stalls, HAProxy
+marks every backend down, and in-flight connections die exactly the way
+`pg_dump` died 81 seconds into the 09-24 dump. It was raised to 1 GB on
+2026-09-25, and that -- not this ADR -- is what fixes that failure.
+
+The honest accounting of the three nights:
+
+| date | cause | fixed by |
+|---|---|---|
+| 09-12 | missing grant on `credit_entries` | the `backup-grants` stage |
+| 09-23 | `setup-flyctl@master` failed silently | pinning the action and the binary |
+| 09-24 | the database VM stalling at 256 MB | raising it to 1 GB |
+
+**None of the three are fixed by this ADR.** What it removes is five
+dependencies from the nightly path, which shrinks the class 09-23 belongs to; it
+would not have prevented any of them.
+
+The diagnosability argument survives, and is now the main one. When the proxy
+failed we could not learn why: it was backgrounded in one step and used in the
+next, so anything it said afterwards went nowhere, nothing checked the process
+was alive, and `flyctl logs` keeps about forty minutes. The cause was found only
+because it recurred interactively in front of a human. A nightly path whose
+failures are unexplainable cannot be improved, and this replaces it with a
+machine whose log Fly keeps.
 
 ## Decision
 
@@ -60,7 +92,8 @@ cannot be improved.
 A scheduled Fly Machine in the same organisation and private network as the
 database dumps `lowendinsight-db.internal:5432` directly, encrypts, and writes
 to a Tigris bucket. No proxy, no tunnel, no flyctl, no apt repository, no
-runner.
+runner. This is a reduction in surface area, not a fix for any of the three
+observed failures -- see the correction above.
 
 CI's nightly job fetches the newest object and proves it is a backup: it is
 recent, it decrypts, and **it restores into a real PostgreSQL 17 and answers
