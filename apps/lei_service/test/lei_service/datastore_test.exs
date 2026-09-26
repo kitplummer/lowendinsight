@@ -124,6 +124,46 @@ defmodule LeiService.DatastoreTest do
              LeiService.Datastore.cache_key("https://github.com/org/repo.git")
   end
 
+  # Measured on 2026-09-25: analysing this repository as kitplummer/lowendinsight
+  # and as KitPlummer/lowendinsight produced two cache keys, two clones and two
+  # analyses of commit 5938718 -- one answer, billed twice, stored twice. GitHub
+  # treats those as one repository; cache_key/1 did not.
+  test "cache_key is case-insensitive where the host is" do
+    for host <- ~w(github.com gitlab.com bitbucket.org) do
+      canonical = LeiService.Datastore.cache_key("https://#{host}/org/repo")
+
+      assert canonical == LeiService.Datastore.cache_key("https://#{host}/Org/Repo"),
+             "#{host}: Org/Repo is a second entry for the same repository"
+
+      assert canonical == LeiService.Datastore.cache_key("https://#{host}/ORG/REPO")
+
+      assert canonical ==
+               LeiService.Datastore.cache_key("https://#{String.upcase(host)}/org/repo"),
+             "#{host}: the host is case-insensitive per DNS and must normalise"
+    end
+  end
+
+  # The other half, and the more important one. Downcasing the path everywhere
+  # would merge two genuinely distinct repositories on a case-sensitive host into
+  # one entry -- serving the wrong report for a repository nobody asked about.
+  # A duplicate costs money; a collision answers incorrectly.
+  test "cache_key preserves path case on hosts that are case-sensitive" do
+    refute LeiService.Datastore.cache_key("https://git.example.com/org/Repo") ==
+             LeiService.Datastore.cache_key("https://git.example.com/org/repo"),
+           "an unknown host's paths were folded together, which can serve the wrong report"
+
+    # The host half still normalises: DNS is case-insensitive regardless of host.
+    assert LeiService.Datastore.cache_key("https://GIT.EXAMPLE.COM/org/Repo") ==
+             LeiService.Datastore.cache_key("https://git.example.com/org/Repo")
+  end
+
+  # The canonical form has to be the one already in the cache, or every existing
+  # entry is orphaned and the next request for it is billed as a cache miss.
+  test "the canonical form is the lowercase one already in use" do
+    assert "github:org/repo:latest" ==
+             LeiService.Datastore.cache_key("https://github.com/Org/Repo")
+  end
+
   test "cache_key strips known TLD suffixes" do
     assert "bitbucket:team/project:latest" ==
              LeiService.Datastore.cache_key("https://bitbucket.org/team/project")
