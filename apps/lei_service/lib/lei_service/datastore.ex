@@ -11,27 +11,52 @@ defmodule LeiService.Datastore do
 
   require Logger
 
+  # Hosts that treat the owner and repository name case-insensitively: the same
+  # repository, whatever case you type. Anything not on this list keeps its path
+  # case.
+  #
+  # The asymmetry is deliberate and it is the whole reason this is a list rather
+  # than a blanket String.downcase/1. On a case-sensitive host, `org/Repo` and
+  # `org/repo` can be two different repositories, and folding them together
+  # would return one's report for the other. A duplicate entry costs a clone and
+  # a charge; a collision answers a question nobody asked. The second is worse,
+  # so normalisation is opt-in per host.
+  @case_insensitive_paths ~w(github.com gitlab.com bitbucket.org)
+
   @doc """
   cache_key/1: converts a git repo URL into a structured cache key with format
   {ecosystem}:{package}:{version}. For example:
     https://github.com/org/repo -> github:org/repo:latest
     https://gitlab.com/org/repo -> gitlab:org/repo:latest
+
+  The host is lowercased -- DNS is case-insensitive, so `GitHub.com` and
+  `github.com` are one host -- and on the hosts listed in
+  `@case_insensitive_paths` the path is lowercased too.
+
+  Measured on 2026-09-25: this repository analysed as `kitplummer/lowendinsight`
+  and as `KitPlummer/lowendinsight` produced two keys, two clones and two
+  analyses of the same commit. One answer, billed twice, cached twice. The
+  canonical form is the lowercase one, which is the form already in the cache,
+  so existing entries keep working rather than being orphaned into cache misses.
   """
   def cache_key(url) do
     uri = URI.parse(url)
 
+    host = uri.host |> to_string() |> String.downcase()
+
     ecosystem =
-      uri.host
-      |> to_string()
+      host
       |> String.replace_suffix(".com", "")
       |> String.replace_suffix(".org", "")
       |> String.replace_suffix(".io", "")
 
-    package =
+    path =
       (uri.path || "/")
       |> String.trim_leading("/")
       |> String.trim_trailing("/")
       |> String.trim_trailing(".git")
+
+    package = if host in @case_insensitive_paths, do: String.downcase(path), else: path
 
     "#{ecosystem}:#{package}:latest"
   end
