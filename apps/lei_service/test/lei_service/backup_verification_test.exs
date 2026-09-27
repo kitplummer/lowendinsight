@@ -123,18 +123,32 @@ defmodule LeiService.BackupVerificationTest do
              "the artifact is uploaded without a decryption round-trip"
     end
 
-    test "it does not retry itself into a green run" do
-      # Documented rather than scripted. The setup script this asserted against
-      # was deleted after it failed three times and hung on a prompt that needed
-      # kill -9; the flag still has to be written down where the person creating
-      # the machine will read it.
-      readme = File.read!(Path.join(@root, "ops/backup/README.md"))
+    test "a retried failure is paged, not hidden" do
+      # This asserted `--restart no`, which turned out to stop Fly's scheduler
+      # starting the machine at all -- so the backup neither retried nor ran
+      # (ADR-006, superseded section). The producer uses on-failure now, which
+      # is Fly's own default for a scheduled machine.
+      #
+      # So the property is no longer "it never retries". It is that a failed
+      # attempt is never silent: backup.sh pages on each one, including attempts
+      # a later retry recovers. Without the credentials that page is dead code,
+      # which is what it was until 2026-09-27.
+      assert producer() =~ "page ", "the producer has no paging path at all"
 
-      assert readme =~ "--restart no",
-             "a restarting machine converts a failure into a success nobody examines"
+      assert producer() =~ ~r/NTFY_TOKEN/,
+             "the producer cannot page, so a failed attempt is silent"
 
+      # die() must page, not merely log: a failure that only writes to a log
+      # nobody reads is the state this whole design exists to leave behind.
+      die_body = producer() |> String.split("die() {") |> Enum.at(1) |> String.slice(0, 200)
+
+      assert die_body =~ "page",
+             "a fatal error logs without paging:\n#{die_body}"
+
+      # And it still must not retry internally -- Fly's retry is bounded and
+      # visible in the machine log; a loop inside the script is neither.
       refute producer() =~ ~r/for attempt in|until pg_dump|retry/,
-             "the producer retries, which turns a diagnosable failure into a quiet one"
+             "the producer retries internally, which is neither bounded nor visible"
     end
   end
 

@@ -3582,6 +3582,15 @@
       "replace": "  value=$(gh variable get \"$PULL_VAR\" 2>/dev/null; true \\",
       "guarded_by": "test/lei_service/backup_verification_test.exs",
       "app": "apps/lei_service"
+    },
+    {
+      "id": "backup-producer-fails-silently",
+      "bug": "The producer runs with restart on-failure, because --restart no stops Fly's scheduler starting the machine at all (ADR-006, superseded). A bounded retry is therefore possible, and the thing that keeps it from hiding a systematic fault is that every failed attempt pages. Without the page, a dump that fails and then succeeds on retry is indistinguishable from one that worked first time, and a dump that fails three times is silent until the next nightly verification.",
+      "file": "ops/backup/backup.sh",
+      "find": "die() {\n  log \"FAILED: $1\"\n  page \"$1\"",
+      "replace": "die() {\n  log \"FAILED: $1\"",
+      "guarded_by": "test/lei_service/backup_verification_test.exs",
+      "app": "apps/lei_service"
     }
   ]
 }

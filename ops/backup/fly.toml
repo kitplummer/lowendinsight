@@ -6,7 +6,7 @@
 #
 # `fly deploy` is used only to build and push the image
 # (--build-only --push); the scheduled Machine itself is created once with
-# `fly machine run --schedule daily`. See ops/backup/setup.sh.
+# `fly machine run --schedule daily`. See ops/backup/README.md.
 
 app = "lowendinsight-backup"
 primary_region = "iad"   # same region as lowendinsight-db, so the dump does not cross regions

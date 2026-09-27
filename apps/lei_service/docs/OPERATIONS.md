@@ -521,6 +521,29 @@ the database. Losing that account takes the database and every snapshot with it.
 | producer | Fly app `lowendinsight-backup`, scheduled daily | dumps `lowendinsight-db.internal:5432`, verifies the dump is readable, encrypts, uploads to Tigris, writes `meta/latest` last |
 | verifier | `backup.yml`, daily 03:30 UTC | fetches the newest object, **fails if it is over 26 hours old**, decrypts, restores into a real PostgreSQL 17 and counts rows |
 
+#### Steady state: what runs by itself, and what you do
+
+Setting this up was involved. Running it is not. In normal operation:
+
+| | who | when | how you learn it broke |
+|---|---|---|---|
+| take the dump, upload it | the Fly machine | daily, Fly picks the minute | no object arrives; the check below fails |
+| verify it restores | `backup.yml` | daily 03:30 UTC | the run fails and pages |
+| keep a copy off Fly | `backup.yml` artifact | every green run, 90-day retention | the run fails |
+| **pull a copy to a machine you control** | **you** | **whenever, and after every passphrase rotation** | the nightly warns past 30 days |
+
+That is one recurring human task, and the only thing it establishes -- that the
+passphrase in your password manager still opens these artifacts -- is the one
+thing no automated check can, because CI decrypts with the CI secret and can only
+show that CI agrees with itself.
+
+```bash
+export BACKUP_PASSCODE='<from your password manager>'   # and a read-only Tigris key
+./scripts/backup-pull.sh --keep ~/backups
+```
+
+Everything else is a response to a red run, and every red run names what failed.
+
 The freshness limit is the load-bearing check. A scheduled Machine that stops
 running -- Fly skipping it, an image that will not boot, a machine someone
 destroyed -- produces no red run and no page anywhere. An object that did not
@@ -554,13 +577,16 @@ producer is running. Check nothing else uses it first:
 
 #### Setting it up, or rebuilding it
 
-```bash
-./ops/backup/setup.sh          # app, bucket, secrets, scheduled machine
-```
+`ops/backup/README.md` has the five steps, as commands to read and run rather
+than a script to trust. A setup script existed and was deleted: it failed three
+times, hung on a prompt that needed `kill -9`, and asked for credentials that
+`flyctl storage create` had already set. The commands it wrapped are short enough
+to read.
 
-Idempotent where Fly allows: an existing app, bucket or secret is left alone.
-Re-running it after an incident is the intended way to rebuild the producer. It
-never takes a secret as an argument -- everything is read on stdin.
+That file also records the things that cost time -- `flyctl storage create` does
+not overwrite existing secrets, `flyctl secrets set` fails on an app with no
+release, a machine takes its secrets at creation, and `flyctl machine run` wants
+a tag rather than a digest.
 
 To watch a run, or force one now:
 
