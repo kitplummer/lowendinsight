@@ -745,9 +745,15 @@ periodically, not only when they are needed:
   decrypt step. A rotation that updates *both* and not your password manager is
   caught by nothing except this script.
 
-  Each pull records its date in `meta/last-local-pull`, and the nightly job
-  warns past 30 days. It warns rather than fails because durability does not
-  depend on it, and a permanently red backup job stops being read.
+  Each pull records its date as the `LEI_LAST_BACKUP_PULL` repository variable
+  (via `gh`, best effort), and the nightly job warns past 30 days. It warns
+  rather than fails because durability does not depend on it, and a permanently
+  red backup job stops being read.
+
+  A repository variable rather than an object in the bucket, so the key you use
+  for this can be **read-only**: an earlier version wrote a marker to the bucket,
+  which meant a human doing a read-only job held a key that could delete every
+  backup, and a read-only key could never clear the warning.
 
   `scripts/verify-backup-artifact.sh` still works and reads a GitHub Actions
   artifact instead of the bucket. Use it when Tigris or Fly is the thing that is

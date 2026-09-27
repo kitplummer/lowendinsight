@@ -155,3 +155,25 @@ nothing to a machine that already exists -- destroy it and run it again.
 **Pass `flyctl machine run` a tag, not a digest.** Given
 `repo@sha256:...` it appends the digest a second time and fails with
 `invalid image identifier`.
+
+## The keys, and which is which
+
+Three, with distinct jobs. Tigris shows a secret key **once**, at creation, and
+it is not recoverable afterwards -- the producer's was lost that way and had to
+be replaced. Store both halves of any key you create.
+
+| key | holder | permission | why |
+|---|---|---|---|
+| producer | the Fly machine's secrets | read-write | uploads the nightly dump and `meta/latest` |
+| ci-verify | GitHub secrets | **read-only** | CI must not be able to overwrite or delete a backup |
+| operator-backup-pull | a human, in a password manager | **read-only** | `scripts/backup-pull.sh` only reads |
+
+The operator key is read-only on purpose. An earlier version of the pull script
+wrote a `meta/last-local-pull` object to the bucket, which forced a human doing a
+read-only job to hold a key that could delete every backup -- and meant a
+read-only key could never clear the nightly staleness warning. The date is now
+recorded as the `LEI_LAST_BACKUP_PULL` repository variable via `gh`, which CI
+reads directly.
+
+Delete keys scoped to a destroyed bucket. They still authenticate to the account
+and do nothing else.
