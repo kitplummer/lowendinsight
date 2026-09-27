@@ -169,6 +169,30 @@ defmodule LeiService.BackupVerificationTest do
              "the pull is not recorded anywhere CI can read"
     end
 
+    # `gh variable get` is not a command. The first version read the date with
+    # it, so --list reported "never" however many pulls had been recorded, while
+    # the write beside it worked -- a read path that silently disagreed with the
+    # write path it is paired with.
+    test "the pull date is read with a command that exists" do
+      # Comments stripped first: the comment explaining this bug names the
+      # broken command, so asserting against the whole file failed on the
+      # explanation rather than on any code.
+      code =
+        puller()
+        |> String.split("\n")
+        |> Enum.reject(&String.match?(&1, ~r/^\s*#/))
+        |> Enum.join("\n")
+
+      refute code =~ "variable get",
+             "gh has no `variable get` subcommand; the read silently returns nothing"
+
+      assert puller() =~ "gh variable list",
+             "the recorded date is written but never read back"
+
+      assert puller() =~ "gh variable set",
+             "the date is read but never recorded"
+    end
+
     test "the puller decrypts with the operator's copy, not the CI secret" do
       # CI decrypting with the CI secret proves CI agrees with itself. A
       # password-manager copy that has drifted is undetectable from here.
