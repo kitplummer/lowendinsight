@@ -3564,6 +3564,15 @@
       "replace": "  red \"  A request failed.\"",
       "guarded_by": "test/lei_service/smoke_diagnostics_test.exs",
       "app": "apps/lei_service"
+    },
+    {
+      "id": "backup-pull-needs-a-writable-key",
+      "bug": "Recording the pull date as an object in the bucket forced the operator running backup-pull.sh -- which otherwise only reads -- to hold a key that could also delete every backup. And a read-only key could never clear the nightly staleness warning, so it would read 'never' for ever however often someone pulled.",
+      "file": "scripts/backup-pull.sh",
+      "find": "if record_pull \"$(date -u +%Y-%m-%d)\"; then",
+      "replace": "if printf '%s' \"$(date -u +%Y-%m-%d)\" > \"$WORKDIR/m\" && S3 s3 cp \"$WORKDIR/m\" \"s3://${BUCKET}/meta/last-local-pull\" --only-show-errors; then",
+      "guarded_by": "test/lei_service/backup_verification_test.exs",
+      "app": "apps/lei_service"
     }
   ]
 }

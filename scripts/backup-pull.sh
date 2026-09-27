@@ -21,14 +21,23 @@
 #      as having no backup.
 #
 # Run it after every passphrase rotation, and otherwise often enough that the
-# staleness line below stays uncomfortable to read.
+# staleness line below stays uncomfortable to read. Each run records the date as
+# the LEI_LAST_BACKUP_PULL repository variable, which the nightly job reads; a
+# read-only bucket key is enough, because nothing here writes to the bucket.
 #
 # Requires: aws cli, gpg. Docker only for --restore.
 set -uo pipefail
 
 BUCKET="${BACKUP_BUCKET:-lei-pg-backups}"
 ENDPOINT="${AWS_ENDPOINT_URL_S3:-https://fly.storage.tigris.dev}"
-MARKER="meta/last-local-pull"
+# Where the date of the last pull is recorded.
+#
+# A GitHub repository variable, not an object in the bucket. Writing a marker
+# to the bucket forced this script -- which otherwise only reads -- to hold a
+# key that can also delete backups, and a read-only key could never clear the
+# nightly staleness warning. `gh` is already how an operator talks to this
+# repository, and CI reads a variable for free.
+PULL_VAR="LEI_LAST_BACKUP_PULL"
 LATEST="meta/latest"
 KEEP=""
 WANT=""
@@ -56,16 +65,36 @@ command -v gpg >/dev/null || fail "gpg is not installed."
 
 S3() { aws --endpoint-url "$ENDPOINT" "$@"; }
 
+# Best effort, both ways: an operator without gh authenticated still gets a
+# valid backup, they just do not update the date CI reads.
+last_pull_date() {
+  command -v gh >/dev/null || return 1
+  gh variable get "$PULL_VAR" 2>/dev/null | tr -d '\r\n'
+}
+
+record_pull() {
+  command -v gh >/dev/null || return 1
+  printf '%s' "$1" | gh variable set "$PULL_VAR" --body "$1" >/dev/null 2>&1
+}
+
 S3 s3 ls "s3://${BUCKET}/" >/dev/null 2>&1 \
   || fail "cannot read s3://${BUCKET}. Set AWS_ACCESS_KEY_ID and AWS_SECRET_ACCESS_KEY
        to a Tigris key for this bucket (flyctl storage dashboard)."
 
 if [ "$MODE" = "list" ]; then
-  bold "=== s3://${BUCKET}/dumps ==="
-  S3 s3 ls "s3://${BUCKET}/dumps/" --recursive --human-readable | tail -30
+  bold "=== s3://${BUCKET}/dumps (times UTC) ==="
+
+  # s3api rather than `s3 ls`: the latter prints the local timezone while every
+  # other timestamp this script and the nightly job emit is UTC, and two zones
+  # in one tool is how a stale backup gets read as a fresh one.
+  S3 s3api list-objects-v2 --bucket "$BUCKET" --prefix dumps/ \
+    --query 'reverse(sort_by(Contents,&LastModified))[:30].[LastModified,Size,Key]' \
+    --output text 2>/dev/null \
+    | awk '{ printf "  %s  %8.1f KiB  %s\n", $1, $2/1024, $3 }' \
+    || fail "could not list ${BUCKET}"
+
   echo
-  LAST=$(S3 s3 cp "s3://${BUCKET}/${MARKER}" - 2>/dev/null | tr -d '\r\n' || true)
-  dim "last local pull: ${LAST:-never}"
+  dim "last local pull: $(last_pull_date || echo never)"
   exit 0
 fi
 
@@ -169,11 +198,12 @@ fi
 # the date back means the gap is a number someone can look at, rather than a
 # memory. Best effort: a read-only key cannot write it, and a copy that was
 # taken and not recorded is still a copy.
-if printf '%s\n' "$(date -u +%Y-%m-%dT%H:%M:%SZ) ${KEY}" > "$WORKDIR/marker" \
-   && S3 s3 cp "$WORKDIR/marker" "s3://${BUCKET}/${MARKER}" --only-show-errors 2>/dev/null; then
-  green "  recorded this pull in ${MARKER}"
+if record_pull "$(date -u +%Y-%m-%d)"; then
+  green "  recorded this pull as ${PULL_VAR}"
 else
-  dim "  could not record the pull (read-only key?) -- the copy is still good"
+  dim "  could not record the pull date -- install and authenticate gh to set"
+  dim "  ${PULL_VAR}, which is what clears the nightly staleness warning."
+  dim "  The copy itself is good either way."
 fi
 
 echo

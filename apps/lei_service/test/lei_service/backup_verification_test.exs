@@ -149,6 +149,26 @@ defmodule LeiService.BackupVerificationTest do
       assert backup() =~ "retention-days: 90"
     end
 
+    test "the puller needs no write access to the bucket" do
+      # The pull reads an object and decrypts it. Requiring write access so it
+      # could record its own marker made the operator hold a key that can
+      # delete backups, to do a job that only reads them.
+      # Pinned to a *write*: an s3:// destination, or put-object. The first
+      # version of this refuted any line containing "s3 cp" and "s3://", which
+      # also matched the two downloads the script must do.
+      refute puller() =~ ~r/s3 (cp|mv) "[^"]*" "s3:\/\//,
+             "the puller copies something into the bucket, so an operator key cannot be read-only"
+
+      refute puller() =~ "put-object",
+             "the puller writes an object, so an operator key cannot be read-only"
+
+      refute puller() =~ ~r/s3 rm/,
+             "the puller can delete from the bucket"
+
+      assert puller() =~ "LEI_LAST_BACKUP_PULL",
+             "the pull is not recorded anywhere CI can read"
+    end
+
     test "the puller decrypts with the operator's copy, not the CI secret" do
       # CI decrypting with the CI secret proves CI agrees with itself. A
       # password-manager copy that has drifted is undetectable from here.
@@ -163,8 +183,15 @@ defmodule LeiService.BackupVerificationTest do
     end
 
     test "how long since a copy left Fly is surfaced" do
-      assert backup() =~ "meta/last-local-pull",
+      # Recorded as a repository variable rather than an object in the bucket.
+      # Writing a marker to the bucket forced the operator's key to be
+      # read-write for a job that only ever reads, and a read-only key could
+      # therefore never clear this warning -- it would say "never" for ever.
+      assert backup() =~ "LEI_LAST_BACKUP_PULL",
              "nothing records or reads when a copy was last taken off Fly"
+
+      refute backup() =~ "meta/last-local-pull",
+             "the freshness signal still requires the bucket, and so a writable key"
 
       assert backup() =~ ~r/"\$DAYS" -gt 30/,
              "the gap is printed but never judged"
