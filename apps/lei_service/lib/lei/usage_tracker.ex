@@ -102,6 +102,17 @@ defmodule Lei.UsageTracker do
 
   defp allowance(%Org{} = org, analyses, required_credits) do
     cond do
+      # Beta (ADR-007). Every org is held to the free tier's allowance, and no
+      # org is refused for money.
+      #
+      # First, so it overrides both branches below, and both matter. A
+      # credit-funded org would otherwise be refused for an empty balance while
+      # nothing is being charged, and a billable Pro org would otherwise be
+      # served *without limit* -- which in beta means unbounded free analysis,
+      # because nobody is billable when nothing bills.
+      Lei.Billing.beta?() ->
+        quota(org, analyses, beta_limit(org))
+
       prepaid?(org) ->
         balance = Credits.balance(org.id)
 
@@ -119,17 +130,40 @@ defmodule Lei.UsageTracker do
         :ok
 
       true ->
-        usage = get_current_usage(org.id)
-        used = usage.cache_hits + usage.cache_misses
-        limit = org.free_tier_analyses_limit || free_tier_limit()
-
-        if used < limit and used + analyses <= limit,
-          do: :ok,
-          else:
-            {:error,
-             {:quota_exceeded,
-              %{used: used, limit: limit, requested: analyses, remaining: max(limit - used, 0)}}}
+        quota(org, analyses, org.free_tier_analyses_limit || free_tier_limit())
     end
+  end
+
+  # What an org may use in beta.
+  #
+  # `Wallets.provision/1` and the ACP path both set free_tier_analyses_limit to
+  # 0 alongside prepaid: true -- correctly, because a credit-funded org buys its
+  # analyses rather than receiving an allowance. In beta nothing is bought, so a
+  # zero there would mean "free, and you get none": every wallet and every agent
+  # org refused with quota_exceeded, used: 0, limit: 0.
+  #
+  # So in beta a zero or nil limit means "no allowance configured" and the
+  # deployment's default applies. A positive per-org limit is still honoured,
+  # which is how one beta tester gets a bigger number than the rest.
+  defp beta_limit(%Org{} = org) do
+    case org.free_tier_analyses_limit do
+      limit when is_integer(limit) and limit > 0 -> limit
+      _ -> free_tier_limit()
+    end
+  end
+
+  # The allowance check itself, shared so the charging path and beta cannot
+  # drift into applying a limit differently.
+  defp quota(%Org{} = org, analyses, limit) do
+    usage = get_current_usage(org.id)
+    used = usage.cache_hits + usage.cache_misses
+
+    if used < limit and used + analyses <= limit,
+      do: :ok,
+      else:
+        {:error,
+         {:quota_exceeded,
+          %{used: used, limit: limit, requested: analyses, remaining: max(limit - used, 0)}}}
   end
 
   @doc """
@@ -326,6 +360,19 @@ defmodule Lei.UsageTracker do
   Uses ADR-001 rates: $0.005/hit, $0.05/miss.
   """
   def calculate_cost(cache_hits, cache_misses) do
+    if Lei.Billing.beta?() do
+      # Zero, not "the rates happen to be zero". The usage row is still written,
+      # with the counts, so beta accumulates exactly the data it exists to
+      # accumulate -- it simply records that it cost the customer nothing.
+      # report_meter_event/3 already declines to report zero units, so nothing
+      # reaches Stripe either (ADR-007).
+      Decimal.new(0)
+    else
+      charged_cost(cache_hits, cache_misses)
+    end
+  end
+
+  defp charged_cost(cache_hits, cache_misses) do
     hit_rate = hit_cost_cents()
     miss_rate = miss_cost_cents()
 

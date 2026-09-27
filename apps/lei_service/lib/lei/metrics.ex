@@ -60,6 +60,16 @@ defmodule Lei.Metrics do
       "# TYPE lei_stripe_mode gauge",
       "lei_stripe_mode{mode=\"#{Lei.Stripe.Mode.current()}\"} 1",
       "",
+      # Whether this deployment charges for analysis (ADR-007). One series,
+      # value 1, labelled with the mode -- the same shape as lei_stripe_mode,
+      # and for the same reason: monitor.yml asserts which mode it expects, so
+      # beta left switched on after launch is a red run rather than a month of
+      # service nobody billed for. Without this, "we are in beta" and "billing
+      # has silently stopped working" are the same observable state.
+      "# HELP lei_billing_mode Whether analysis is charged for, or free during beta",
+      "# TYPE lei_billing_mode gauge",
+      "lei_billing_mode{mode=\"#{Lei.Billing.mode()}\"} 1",
+      "",
       "# HELP lei_stripe_webhook_total Stripe webhook verification outcomes since boot",
       "# TYPE lei_stripe_webhook_total counter",
       webhook_metrics(),

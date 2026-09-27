@@ -79,6 +79,13 @@ defmodule LeiService.Endpoint do
 
   # The homepage's guide for agents that read markdown rather than HTML. Built
   # from the same facts, so the two cannot disagree about a price or a rail.
+  # Beta terms. Rendered from the running configuration, like the agent guide and
+  # for the same reason: a terms page that says "free during beta" while the
+  # deployment charges, or the reverse, is worse than no page at all.
+  get "/terms" do
+    render(conn, "terms.html", guide: LeiService.AgentGuide.facts())
+  end
+
   get "/llms.txt" do
     template = Path.join([:code.priv_dir(:lei_service), "templates", "llms.txt.eex"])
     body = EEx.eval_file(template, guide: LeiService.AgentGuide.facts())

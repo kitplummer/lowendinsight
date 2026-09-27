@@ -1,0 +1,102 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Beta terms — LowEndInsight</title>
+  <link rel="stylesheet" href="/css/lei.css">
+</head>
+<body>
+<main class="prose">
+  <h1>Beta terms</h1>
+
+  <h2>This is a beta</h2>
+  <p>
+    LowEndInsight is being tested in the open. It may be unavailable, it may
+    return wrong answers, and features may change or disappear. Do not use it as
+    the only input to a decision that matters.
+  </p>
+
+  <h2>Analysis is free during beta</h2>
+  <p>
+    <%= if guide.beta? do %>
+      Nothing is charged today. Accounts are limited to
+      <%= LeiService.AgentGuide.number(guide.free_monthly_analyses) %> analyses a
+      month, which is what keeps the beta affordable for us.
+    <% else %>
+      Beta has ended and analysis is charged at the published rates.
+    <% end %>
+    Prices are published at <a href="/llms.txt">/llms.txt</a> so that when beta
+    ends nothing about the change is a surprise. We will tell account holders
+    before charging begins.
+  </p>
+
+  <h2>No warranty, and use is at your own risk</h2>
+  <p>
+    <strong>The service is provided &ldquo;as is&rdquo; and &ldquo;as
+    available&rdquo;, with no warranty of any kind, express or implied.</strong>
+    That includes, without limitation, any implied warranty of merchantability,
+    fitness for a particular purpose, accuracy, or non-infringement.
+  </p>
+  <p>
+    <strong>Any use of this service, and any reliance on its output, is entirely
+    at your own risk.</strong> The reports are automated measurements of public
+    repository metadata. They may be incomplete, out of date, or wrong. They are
+    not a security audit, not a licence review, not legal or professional advice,
+    and not a statement that any dependency is safe to use.
+  </p>
+  <p>
+    You are responsible for deciding what to do with the output and for
+    verifying anything you act on. To the fullest extent permitted by law we
+    accept no liability for any loss or damage &mdash; direct, indirect,
+    incidental, consequential or otherwise &mdash; arising from use of the
+    service, from inability to use it, or from decisions made on the basis of
+    what it reports.
+  </p>
+
+  <h2>What we store</h2>
+  <ul>
+    <li>
+      <strong>Public repository data.</strong> We clone repositories you ask
+      about, compute metrics, and keep the resulting report in a shared cache for
+      30 days. Reports are shared: if you and someone else ask about the same
+      commit, you get the same cached answer.
+    </li>
+    <li>
+      <strong>Your account.</strong> An organisation record, hashed API keys, and
+      a count of analyses used per billing period.
+    </li>
+    <li>
+      <strong>We do not store repository contents.</strong> A clone is deleted
+      once its metrics are computed. What persists is the report: counts, dates,
+      contributor names as they appear in public commit metadata, and risk
+      ratings.
+    </li>
+    <li>
+      <strong>Private repositories are not supported.</strong> Do not point this
+      at one. There is no path for supplying credentials, and a private
+      repository will simply fail to clone.
+    </li>
+  </ul>
+
+  <h2>Ending it</h2>
+  <p>
+    You can stop using the service at any time and ask us to delete your
+    account. We may end the beta, or an individual account, at any time. If we
+    end the beta we will keep the cached public reports, which contain nothing
+    of yours.
+  </p>
+
+  <h2>Changes</h2>
+  <p>
+    These terms will change as the service leaves beta. The version in force is
+    whatever this page says; it is generated from the running deployment rather
+    than pasted, so it cannot describe a mode the service is not in.
+  </p>
+
+  <p class="footnote">
+    Questions: <a href="https://github.com/kitplummer/lowendinsight/issues">open an issue</a>.
+  </p>
+</main>
+</body>
+</html>

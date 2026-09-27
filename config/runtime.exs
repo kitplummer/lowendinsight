@@ -12,6 +12,20 @@ import Config
 # fly.toml. Lei.Stripe.Mode refuses a live Stripe key unless it is "production".
 config :lei_service, deploy_env: System.get_env("LEI_DEPLOY_ENV")
 
+# Whether analysis is charged for (ADR-007). Anything other than exactly "beta"
+# charges, including a typo, an empty value and an unset one -- Lei.Billing
+# resolves an unrecognised mode to :charge for the same reason.
+#
+# Entering beta means this *and* the LEI_EXPECTED_BILLING_MODE repository
+# variable; the monitor fails while they disagree.
+billing_mode =
+  case System.get_env("LEI_BILLING_MODE") do
+    "beta" -> :beta
+    _ -> :charge
+  end
+
+config :lei_service, billing_mode: billing_mode
+
 if config_env() == :prod do
   config :lei_service, LeiService.Endpoint,
     port: String.to_integer(System.get_env("PORT") || "4444"),
