@@ -73,7 +73,14 @@ not a hang. Type or paste these two lines and press Ctrl-D:
 ```
 PG_DUMP_URL=postgres://lei_backup:THEPASSWORD@lowendinsight-db.internal:5432/lowendinsight_get_prod
 BACKUP_PASSPHRASE=THEPASSPHRASE
+NTFY_TOKEN=tk_...
+NTFY_TOPIC=...
 ```
+
+The two ntfy values are the same ones in the repository's GitHub secrets. They
+are what makes a failed attempt page; without them `backup.sh` checks for them,
+finds nothing, and returns quietly, so a failed dump is silent and you find out
+from the nightly verification a day later.
 
 `BACKUP_PASSPHRASE` must match what the existing artifacts use, or old and new
 backups need different keys. Use stdin rather than `flyctl secrets set`, which
@@ -90,12 +97,20 @@ That prints an image reference. Then, once:
 
 ```bash
 flyctl machine run <image-ref> \
-  --schedule daily --restart no \
+  --schedule daily --restart on-failure \
   -a lowendinsight-backup --vm-memory 512 --region iad
 ```
 
-`--restart no` is deliberate: a failed backup must stay failed and be noticed. A
-retry that succeeds hides why the first attempt did not.
+`--restart on-failure` is Fly's own default for a scheduled machine, and
+overriding it with `--restart no` stopped the scheduler starting the machine at
+all -- the backup neither retried nor ran, for 36 hours, while the config
+cheerfully reported `schedule: "daily"`. See the superseded section in ADR-006.
+
+A retry can still hide a systematic fault, so that is closed by paging instead:
+`NTFY_TOKEN` and `NTFY_TOPIC` are set on this app and `backup.sh` pages on every
+failed attempt, including ones a retry later recovers. Set them with the other
+secrets in step 3 -- without them the paging path in `backup.sh` is dead code and
+a failed dump is silent.
 
 ## 5. Prove it
 
@@ -121,7 +136,7 @@ scheduled machine holds an image reference, not a tag.
 cd ops/backup && flyctl deploy --build-only --push -a lowendinsight-backup
 flyctl machine list -a lowendinsight-backup
 flyctl machine destroy --force <old-id> -a lowendinsight-backup
-flyctl machine run <new-image-ref> --schedule daily --restart no \
+flyctl machine run <new-image-ref> --schedule daily --restart on-failure \
   -a lowendinsight-backup --vm-memory 512 --region iad
 ```
 

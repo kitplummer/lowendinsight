@@ -157,12 +157,51 @@ nightly backup over a human's calendar would make this job red for a reason that
 is not about the backup -- and `monitor.yml` already documents what a
 permanently red check does to the people meant to read it.
 
-### No retries
+### Retries: the first answer here was wrong, and it stopped the backup running
 
-The machine runs with `--restart no`, and the producer has no retry loop. A
-failed backup must stay failed and be noticed. A retry that succeeds converts a
-diagnosable fault into a green run, and this repository has shipped that mistake
-already: a test retry loop that turned ordering bugs into passes.
+**Superseded.** This section originally read:
+
+> The machine runs with `--restart no`, and the producer has no retry loop. A
+> failed backup must stay failed and be noticed. A retry that succeeds converts
+> a diagnosable fault into a green run, and this repository has shipped that
+> mistake already: a test retry loop that turned ordering bugs into passes.
+
+The reasoning is fine and the configuration it produced was not. `--restart no`
+appears to stop Fly's scheduler starting the machine at all, so the backup did
+not retry and did not run either.
+
+Evidence as of 2026-09-27, 36 hours after the machine was created with
+`--schedule daily`:
+
+- the machine's config carries `schedule: "daily"`, so the schedule is set
+- its event log contains **no flyd-initiated start** -- every start is
+  `SOURCE=user`, a human forcing one
+- two daily windows passed with no object arriving in the bucket
+- `flyctl machine run --help` states the `--restart` default is **`on-failure`**
+  for "Machines created by `fly deploy` and **Machines with a schedule**". Fly
+  chose that default for scheduled machines; this overrode it
+
+A scheduled run is plausibly implemented as flyd restarting a stopped machine, in
+which case `no` tells it never to. That mechanism is inference; the four facts
+above are not. An isolating test -- two machines on `--schedule hourly` differing
+only in restart policy -- was run to confirm it.
+
+**So the producer uses `on-failure`.** A backup that never runs is worse than one
+that retries, and the original argument does not survive contact with that. It
+also conflated two different things: a retried *test* hides an ordering bug,
+because the retry is the only evidence anything was ever wrong. A retried *dump*
+is legitimate -- the goal is a backup existing, and a transient failure that
+succeeds on the second attempt has produced one.
+
+What the original argument was right about is that a retry can hide a systematic
+fault. That is closed properly rather than by refusing to retry: `NTFY_TOKEN` and
+`NTFY_TOPIC` are set on the producer app, so `backup.sh` pages on **every failed
+attempt**, including ones a later retry recovers. Until those were set the page in
+`backup.sh` was dead code -- it checks for the variables and returns quietly when
+they are absent, so a failed dump was silent.
+
+The nightly freshness check is unaffected either way: it asks whether an object
+arrived, not how many attempts it took.
 
 ## Consequences
 
@@ -197,6 +236,14 @@ already: a test retry loop that turned ordering bugs into passes.
   that restores there could still need work against the real thing.
 - **Fly chooses the minute.** There is no guarantee about *when* the backup is
   taken, only that one arrives within 26 hours.
+- **A transient failure may be retried up to three times** before the run is
+  considered failed, which is the price of the scheduler working at all (above).
+  Each attempt pages, so a recovered failure is visible rather than hidden, but
+  the run's own final state will read as success.
+- **The scheduler is Fly's, and opaque.** There is no way to ask when the next run
+  is due, so "the schedule is configured" and "the schedule fires" are separate
+  facts. The freshness check is what distinguishes them, and it is the only thing
+  that does.
 
 ### Neutral
 
