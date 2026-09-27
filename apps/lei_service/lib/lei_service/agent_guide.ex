@@ -29,6 +29,12 @@ defmodule LeiService.AgentGuide do
     %{
       mode: mode,
       live?: mode == :live,
+      # Beta (ADR-007). The rates below are unchanged and still describe what
+      # will be charged after beta -- what changes is that nothing is charged
+      # now. Both are stated, because this module exists so a page never quotes
+      # a price the ledger does not take.
+      beta?: Lei.Billing.beta?(),
+      billing_mode: Lei.Billing.mode(),
       hit_credits: hit,
       hit_usd: usd(hit),
       miss_credits: miss,

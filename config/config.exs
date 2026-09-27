@@ -182,6 +182,13 @@ config :lei_service,
   # than as a production secret so it is greppable and testable; "" excludes
   # nothing. See Lei.StripeReconciliation.
   reconciliation_probe_prefix: "probe",
+  # Whether analysis is charged for (ADR-007). :charge or :beta.
+  #
+  # Declared here so it is greppable and testable, and :charge so that an
+  # unconfigured deployment bills: free service that nobody chose is the failure
+  # that goes unnoticed for a month, while charging that should not happen is
+  # reported by a customer within the hour. Production sets LEI_BILLING_MODE.
+  billing_mode: :charge,
   rate_limits: %{
     free: 60,
     pro: 600,

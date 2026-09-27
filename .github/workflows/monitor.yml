@@ -128,6 +128,47 @@ jobs:
             exit 1
           fi
 
+      # Beta serves analysis for free (ADR-007), which is indistinguishable from
+      # billing having silently stopped unless somebody declares which was
+      # intended. This is that declaration: the deployment publishes the mode it
+      # is in and this asserts the mode we expect it to be in.
+      #
+      # It is the check that matters at the end of beta. Nothing else would
+      # notice a launch that flipped the price list and left the mode alone --
+      # revenue would simply not arrive, for as long as it took someone to ask
+      # why.
+      - name: Check the billing mode is the one we expect
+        id: billing_mode
+        env:
+          # Defaults to 'charge', which is what an unconfigured deployment does.
+          #
+          # Entering beta is therefore two deliberate steps that must happen
+          # together: set LEI_BILLING_MODE=beta on the app, and set this
+          # variable to beta. Either one alone fails this check -- which is the
+          # point. Defaulting this to 'beta' would have turned the monitor red
+          # the moment this merged, before production was in beta at all.
+          EXPECTED: ${{ vars.LEI_EXPECTED_BILLING_MODE || 'charge' }}
+        run: |
+          METRICS=$(curl -s --max-time 15 https://lowendinsight.dev/metrics)
+
+          if ! echo "$METRICS" | grep -q "^lei_billing_mode{"; then
+            echo "::error::/metrics is not publishing lei_billing_mode, so whether this deployment charges for analysis cannot be read. The deployed release predates ADR-007, or the collector stopped."
+            exit 1
+          fi
+
+          ACTUAL=$(echo "$METRICS" | sed -n 's/^lei_billing_mode{mode="\([^"]*\)"} 1$/\1/p' | head -1)
+          echo "billing mode: ${ACTUAL:-unreadable}  expected: ${EXPECTED}"
+
+          if [ -z "$ACTUAL" ]; then
+            echo "::error::lei_billing_mode is published but its mode label could not be read."
+            exit 1
+          fi
+
+          if [ "$ACTUAL" != "$EXPECTED" ]; then
+            echo "::error::Production is in billing mode '${ACTUAL}' and we expect '${EXPECTED}'. If beta has ended, set the LEI_EXPECTED_BILLING_MODE variable and the deployment's billing_mode together; if it has not, production is charging beta users."
+            exit 1
+          fi
+
       # A wrong STRIPE_WEBHOOK_SECRET fails exactly like an unset one: every
       # delivery 400s, subscriptions quietly stop activating, and nothing else
       # changes. That state already went unnoticed once in this project.
@@ -512,6 +553,7 @@ jobs:
           NTFY_TOPIC: ${{ secrets.NTFY_TOPIC }}
           RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
           ALERTING: ${{ steps.alerting.outcome }}
+          BILLING_MODE: ${{ steps.billing_mode.outcome }}
           READINESS: ${{ steps.readiness.outcome }}
           QUEUE: ${{ steps.queue.outcome }}
           WEBHOOKS: ${{ steps.webhooks.outcome }}
@@ -524,7 +566,7 @@ jobs:
           # Which checks failed, by name, so the page says what is wrong rather
           # than that something is.
           FAILED=""
-          for pair in "alerting:$ALERTING" "readiness:$READINESS" "queue:$QUEUE" "webhooks:$WEBHOOKS" \
+          for pair in "alerting:$ALERTING" "billing_mode:$BILLING_MODE" "readiness:$READINESS" "queue:$QUEUE" "webhooks:$WEBHOOKS" \
                       "ledger:$LEDGER" "payments:$PAYMENTS" "canary:$CANARY" "smoke:$SMOKE" \
                       "deployed:$DEPLOYED"; do
             name="${pair%%:*}"

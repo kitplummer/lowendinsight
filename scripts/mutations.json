@@ -1157,8 +1157,8 @@
       "id": "free-tier-limit-not-per-request",
       "bug": "A free org with one analysis left could submit thousands of URLs in one request: the gate compared analyses remaining with a price in credits and admitted anyway (security, 2026-09-14).",
       "file": "apps/lei_service/lib/lei/usage_tracker.ex",
-      "find": "        if used < limit and used + analyses <= limit,",
-      "replace": "        if used < limit,",
+      "find": "    if used < limit and used + analyses <= limit,",
+      "replace": "    if used < limit,",
       "guarded_by": "test/lei_service/per_request_quota_test.exs",
       "app": "apps/lei_service"
     },
@@ -3425,8 +3425,8 @@
       "id": "monitor-alert-channel-unnamed-in-the-page",
       "bug": "A step missing from the failure aggregation pages as 'unidentified', which says something is wrong and not what. For the alert channel specifically, that is the one page whose text explains why no other page arrived.",
       "file": ".github/workflows/monitor.yml",
-      "find": "          for pair in \"alerting:$ALERTING\" \"readiness:$READINESS\"",
-      "replace": "          for pair in \"readiness:$READINESS\"",
+      "find": "          for pair in \"alerting:$ALERTING\" \"billing_mode:$BILLING_MODE\" \"readiness:$READINESS\"",
+      "replace": "          for pair in \"billing_mode:$BILLING_MODE\" \"readiness:$READINESS\"",
       "guarded_by": "test/lei_service/payment_monitoring_wiring_test.exs",
       "app": "apps/lei_service"
     },
@@ -3590,6 +3590,51 @@
       "find": "die() {\n  log \"FAILED: $1\"\n  page \"$1\"",
       "replace": "die() {\n  log \"FAILED: $1\"",
       "guarded_by": "test/lei_service/backup_verification_test.exs",
+      "app": "apps/lei_service"
+    },
+    {
+      "id": "beta-default-is-free-service",
+      "bug": "An unset, misspelled or failed-to-load billing mode must charge. Resolving anything unrecognised to :beta means a config mistake hands out free analysis indefinitely, and free service nobody chose is the failure that goes unnoticed for a month -- while charging that should not happen is reported by a customer within the hour (ADR-007).",
+      "file": "apps/lei_service/lib/lei/billing.ex",
+      "find": "      mode when mode in @modes -> mode\n      _ -> :charge",
+      "replace": "      mode when mode in @modes -> mode\n      _ -> :beta",
+      "guarded_by": "test/lei/beta_billing_test.exs",
+      "app": "apps/lei_service"
+    },
+    {
+      "id": "beta-charges-anyway",
+      "bug": "Beta is free analysis. If cost_in_credits keeps returning the ADR-001 rates, admission debits the ledger and refuses orgs for insufficient credits while the service claims to be free -- and the terms page and llms.txt both say nothing is charged.",
+      "file": "apps/lei_service/lib/lei/credits.ex",
+      "find": "    if Lei.Billing.beta?() do\n      0\n    else",
+      "replace": "    if false do\n      0\n    else",
+      "guarded_by": "test/lei/beta_billing_test.exs",
+      "app": "apps/lei_service"
+    },
+    {
+      "id": "beta-serves-pro-orgs-without-limit",
+      "bug": "Under charging, a billable Pro org is served without limit because its usage is metered to Stripe. In beta nothing is metered, so 'unlimited' means unbounded free analysis -- the allowance is the only thing bounding what beta costs us. The beta branch has to come before the pro branch.",
+      "file": "apps/lei_service/lib/lei/usage_tracker.ex",
+      "find": "      Lei.Billing.beta?() ->\n        quota(org, analyses, beta_limit(org))\n",
+      "replace": "      false ->\n        quota(org, analyses, beta_limit(org))\n",
+      "guarded_by": "test/lei/beta_billing_test.exs",
+      "app": "apps/lei_service"
+    },
+    {
+      "id": "beta-refuses-credit-funded-orgs",
+      "bug": "Wallets.provision/1 and the ACP path set free_tier_analyses_limit to 0 with prepaid: true, because a credit-funded org buys analyses rather than receiving an allowance. Carried into beta unchanged that is 'free, and you get none': every wallet and every agent org refused with used: 0, limit: 0.",
+      "file": "apps/lei_service/lib/lei/usage_tracker.ex",
+      "find": "      limit when is_integer(limit) and limit > 0 -> limit\n      _ -> free_tier_limit()",
+      "replace": "      limit when is_integer(limit) -> limit\n      _ -> free_tier_limit()",
+      "guarded_by": "test/lei/beta_billing_test.exs",
+      "app": "apps/lei_service"
+    },
+    {
+      "id": "beta-mode-not-published",
+      "bug": "Beta serving for free and billing having silently stopped are the same observable state unless the deployment publishes which was intended. Without the gauge, monitor.yml cannot assert the mode, and beta left switched on after launch is a month of unbilled service that nothing reports.",
+      "file": "apps/lei_service/lib/lei/metrics.ex",
+      "find": "      \"lei_billing_mode{mode=\\\"#{Lei.Billing.mode()}\\\"} 1\",",
+      "replace": "      \"\",",
+      "guarded_by": "test/lei/beta_billing_test.exs",
       "app": "apps/lei_service"
     }
   ]

@@ -25,10 +25,20 @@ defmodule Lei.Credits do
 
   @doc """
   Credits owed for a number of cache hits and misses.
+
+  Zero in beta (ADR-007). That is the single place free analysis is decided:
+  `UsageTracker.debit_credits/3` writes a ledger entry only when this is
+  positive, and `Gate.admit/2` asks for a top-up only when it exceeds the
+  balance. So a zero here means no debit, no refusal and no Stripe meter event,
+  while the usage row is still written -- which is the whole point of beta.
   """
   def cost_in_credits(cache_hits, cache_misses)
       when is_integer(cache_hits) and is_integer(cache_misses) do
-    cache_hits * @credits_per_cache_hit + cache_misses * @credits_per_cache_miss
+    if Lei.Billing.beta?() do
+      0
+    else
+      cache_hits * @credits_per_cache_hit + cache_misses * @credits_per_cache_miss
+    end
   end
 
   @doc """

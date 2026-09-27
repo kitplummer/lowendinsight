@@ -25,7 +25,15 @@ Batch responses carry `ranking`, worst first, so you need not read every entry. 
 A request is priced before it runs, from which repositories already have cached reports. It is charged when accepted, whether it completes in the request or runs asynchronously. A balance smaller than the request is asked to top up by at least the difference.
 
 ## Pricing
+<%= if guide.beta? do %>
+**LowEndInsight is in beta and analysis is free.** No credits are spent, no card
+is charged, and no usage is billed. Accounts are limited to
+<%= LeiService.AgentGuide.number(guide.free_monthly_analyses) %> analyses a
+month, which is what bounds the beta rather than a price.
 
+The rates below are what will apply when beta ends. They are published now so
+nothing changes silently later; today they are not charged.
+<% end %>
 - One credit is $0.001.
 - A repository with a cached report: <%= LeiService.AgentGuide.number(guide.hit_credits) %> credits (<%= guide.hit_usd %>).
 - A repository analyzed fresh: <%= LeiService.AgentGuide.number(guide.miss_credits) %> credits (<%= guide.miss_usd %>).
@@ -35,7 +43,7 @@ A request is priced before it runs, from which repositories already have cached 
 
 - **Stablecoin, MPP `tempo`** (<%= if guide.stablecoin.available?, do: "available", else: "unavailable" %>): any agent, no account. <%= guide.stablecoin.token %> on <%= guide.stablecoin.chain %>, verified and settled by Stripe.
 - **Card through an agent wallet, MPP `stripe`** (<%= if guide.card.available?, do: "available", else: "unavailable" %>): agents that already have an API key. A Shared Payment Token from an agent wallet such as Link. Not offered without an account: a card token identifies no one to hold the balance.
-- **Free tier**: people who sign up at https://lowendinsight.dev/signup, <%= LeiService.AgentGuide.number(guide.free_monthly_analyses) %> analyses a month.
+- **Free tier**: people who sign up at https://lowendinsight.dev/signup, <%= LeiService.AgentGuide.number(guide.free_monthly_analyses) %> analyses a month.<%= if guide.beta?, do: " During beta this allowance applies to every account, paid or not, and nothing is charged beyond it -- requests above it are refused rather than billed.", else: "" %>
 - **Pro**: people, through Stripe Checkout at signup. <%= guide.pro_price %>, including <%= guide.pro_included_usd %> of usage.
 
 ## No account, and why
