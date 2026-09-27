@@ -67,9 +67,21 @@ S3() { aws --endpoint-url "$ENDPOINT" "$@"; }
 
 # Best effort, both ways: an operator without gh authenticated still gets a
 # valid backup, they just do not update the date CI reads.
+# `gh variable get` does not exist -- not in 2.46, which is what Ubuntu ships,
+# and it is not what set/list are paired with. Reading it through `list --json`
+# works on every version that can set it. The first version of this used `get`,
+# so --list reported "never" however many times a pull had been recorded, while
+# the write itself worked: a read path that silently disagreed with the write
+# path beside it.
 last_pull_date() {
   command -v gh >/dev/null || return 1
-  gh variable get "$PULL_VAR" 2>/dev/null | tr -d '\r\n'
+
+  local value
+  value=$(gh variable list --json name,value \
+    --jq ".[] | select(.name==\"${PULL_VAR}\") | .value" 2>/dev/null | tr -d '\r\n')
+
+  [ -n "$value" ] || return 1
+  printf '%s' "$value"
 }
 
 record_pull() {

@@ -3573,6 +3573,15 @@
       "replace": "if printf '%s' \"$(date -u +%Y-%m-%d)\" > \"$WORKDIR/m\" && S3 s3 cp \"$WORKDIR/m\" \"s3://${BUCKET}/meta/last-local-pull\" --only-show-errors; then",
       "guarded_by": "test/lei_service/backup_verification_test.exs",
       "app": "apps/lei_service"
+    },
+    {
+      "id": "backup-pull-reads-with-a-nonexistent-command",
+      "bug": "`gh variable get` is not a gh command. Reading the pull date with it returned nothing on every version, so --list said 'never' however many pulls had been recorded, while `gh variable set` beside it worked. A read path that silently disagreed with its own write path.",
+      "file": "scripts/backup-pull.sh",
+      "find": "  value=$(gh variable list --json name,value \\",
+      "replace": "  value=$(gh variable get \"$PULL_VAR\" 2>/dev/null; true \\",
+      "guarded_by": "test/lei_service/backup_verification_test.exs",
+      "app": "apps/lei_service"
     }
   ]
 }
