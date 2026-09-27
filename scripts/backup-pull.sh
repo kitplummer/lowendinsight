@@ -96,14 +96,44 @@ S3 s3 ls "s3://${BUCKET}/" >/dev/null 2>&1 \
 if [ "$MODE" = "list" ]; then
   bold "=== s3://${BUCKET}/dumps (times UTC) ==="
 
-  # s3api rather than `s3 ls`: the latter prints the local timezone while every
-  # other timestamp this script and the nightly job emit is UTC, and two zones
-  # in one tool is how a stale backup gets read as a fresh one.
-  S3 s3api list-objects-v2 --bucket "$BUCKET" --prefix dumps/ \
-    --query 'reverse(sort_by(Contents,&LastModified))[:30].[LastModified,Size,Key]' \
-    --output text 2>/dev/null \
-    | awk '{ printf "  %s  %8.1f KiB  %s\n", $1, $2/1024, $3 }' \
-    || fail "could not list ${BUCKET}"
+  # `s3 ls`, not `s3api list-objects-v2`.
+  #
+  # The Ubuntu package of aws-cli 2.31.35 rejects both list operations with
+  # "badly formed help string" before it ever reaches the network -- with or
+  # without --query, and `list-objects` v1 too. `head-object`, `get-object` and
+  # `s3 ls` on the same build are fine, which is why a pull works and only this
+  # listing broke. A broken argument model in one distro build of one operation.
+  #
+  # And there is no timezone conversion here, because there is nothing to
+  # convert: the producer names every object with `date -u`, so the key *is* the
+  # UTC timestamp. `s3 ls` prints the local zone in its own columns, which is
+  # what made a 02:10Z object read as 22:10 the previous day; the key does not
+  # have that problem. Sorting the keys is sorting by time.
+  if ! listing=$(S3 s3 ls "s3://${BUCKET}/dumps/" --recursive 2>&1); then
+    printf '%s\n' "$listing" | sed 's/^/    /' >&2
+    fail "could not list s3://${BUCKET}/dumps (aws said the above)"
+  fi
+
+  if [ -z "$listing" ]; then
+    dim "  no objects under dumps/ -- has the producer ever run?"
+  else
+    printf '%s\n' "$listing" \
+      | sort -rk4 \
+      | head -30 \
+      | awk '{
+          if ($4 ~ /^dumps\/[0-9][0-9][0-9][0-9]\/[0-9][0-9]\/[0-9][0-9]\/[0-9][0-9][0-9][0-9][0-9][0-9]Z/) {
+            split($4, p, "/")
+            printf "  %s-%s-%sT%s:%s:%sZ  %8.1f KiB  %s\n", \
+              p[2], p[3], p[4], substr(p[5],1,2), substr(p[5],3,2), substr(p[5],5,2), $3/1024, $4
+          } else {
+            # A key the producer did not write. Shown rather than skipped, and
+            # marked, because silently dropping objects from a backup listing is
+            # how a listing stops being one.
+            printf "  %-25s %8.1f KiB  %s  (key not dated by the producer)\n", \
+              $1 " " $2, $3/1024, $4
+          }
+        }'
+  fi
 
   echo
   dim "last local pull: $(last_pull_date || echo never)"
