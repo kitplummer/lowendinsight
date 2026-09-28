@@ -155,7 +155,21 @@ defmodule LeiService.CacheBaseline do
   # field ended a measurement at coordinate 900 of 16,000.
   defp attempt(resolve, entry) do
     try do
-      resolve.(entry)
+      case resolve.(entry) do
+        {:ok, url} when is_binary(url) ->
+          {:ok, url}
+
+        {:error, reason} ->
+          {:error, reason}
+
+        # Loud, because the alternative is storing it and counting the coordinate
+        # as unresolved -- which is exactly how a resolver returning the entry
+        # instead of the resolution produced a run that resolved nothing and
+        # still printed rates.
+        other ->
+          raise ArgumentError,
+                "resolver returned #{inspect(other)}; expected {:ok, url} or {:error, reason}"
+      end
     rescue
       error -> {:error, {:crashed, Exception.message(error)}}
     catch
@@ -223,8 +237,28 @@ defmodule LeiService.CacheBaseline do
         |> Enum.group_by(& &1.ecosystem)
         |> Map.new(fn {ecosystem, entries} -> {ecosystem, counts(entries, cached)} end),
       unresolved_reasons: unresolved_reasons(resolved),
-      unresolved: unresolved(resolved)
+      unresolved: unresolved(resolved),
+      repositories_missing: missing(resolved, cached)
     }
+  end
+
+  @doc """
+  The repositories a real manifest depends on that we do not hold.
+
+  This is the output the measurement exists to produce, beyond the rate itself:
+  the work a preload would have to do, and the population to sample when costing
+  it. A count alone cannot be sampled, and a cost model built on a sample of
+  something else -- fifteen repositories chosen by hand, say -- is a cost model
+  for a different corpus. History size drives the clone here, not project size,
+  so which repositories are in it matters.
+  """
+  @spec missing([map()], MapSet.t()) :: [String.t()]
+  def missing(resolved, cached) do
+    resolved
+    |> Enum.filter(&match?({:ok, _}, &1.repository))
+    |> Enum.map(fn %{repository: {:ok, url}} -> url end)
+    |> Enum.uniq()
+    |> Enum.reject(&MapSet.member?(cached, &1))
   end
 
   defp unresolved_reasons(resolved) do

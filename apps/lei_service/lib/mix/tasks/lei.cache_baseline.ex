@@ -126,6 +126,17 @@ defmodule Mix.Tasks.Lei.CacheBaseline do
       |> Enum.map(fn %{repository: {:ok, url}} -> url end)
       |> Enum.uniq()
 
+    # A run that resolved nothing is a broken run, not a corpus with no
+    # repositories, and it would otherwise go on to report a hit rate of n/a and
+    # a coverage of 0% as though those were findings. This is how the resolver
+    # contract bug above presented.
+    if urls == [] and unique != [] do
+      Mix.raise(
+        "none of #{length(unique)} coordinates resolved to a repository. " <>
+          "That is a fault here, not a fact about the corpus; refusing to report rates."
+      )
+    end
+
     shell().info("Probing #{length(urls)} repositories against the cache...")
     cached = probe(urls, opts[:probe_url])
 
@@ -201,15 +212,18 @@ defmodule Mix.Tasks.Lei.CacheBaseline do
     end
   end
 
+  # Returns the resolution, not the entry: resolve_all/3 is what attaches it.
+  # This returned the entry with :repository already set, so resolve_all set
+  # :repository to the whole entry, nothing matched {:ok, url}, and every
+  # coordinate counted as unresolved -- "Probing 0 repositories" and a coverage
+  # of 0%. It reached main green, because the tests call resolve_all with their
+  # own resolver and the task's was the one nobody drove.
   defp resolve(entry) do
-    repository =
-      case Baseline.route(entry) do
-        {:direct, url} -> {:ok, url}
-        {:registry, ecosystem, package} -> Lei.PackageRepository.resolve(ecosystem, package)
-        {:error, reason} -> {:error, reason}
-      end
-
-    Map.put(entry, :repository, repository)
+    case Baseline.route(entry) do
+      {:direct, url} -> {:ok, url}
+      {:registry, ecosystem, package} -> Lei.PackageRepository.resolve(ecosystem, package)
+      {:error, reason} -> {:error, reason}
+    end
   end
 
   defp probe([], _base), do: MapSet.new()
