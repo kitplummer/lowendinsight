@@ -82,6 +82,26 @@ defmodule LeiService.BetaWebContentTest do
       assert body =~ "beta", "signup does not say it is a beta"
     end
 
+    test "posting tier=pro is refused during beta, not just hidden" do
+      # Hiding the radio is a form change. The path still accepted tier=pro, so
+      # anything posting directly could subscribe and receive the same allowance
+      # as a free account. Harmless while Stripe is in test mode, and not
+      # harmless the day it goes live with beta still on.
+      conn =
+        :post
+        |> Plug.Test.conn("/signup", "name=Beta+Probe&tier=pro")
+        |> Plug.Conn.put_req_header("content-type", "application/x-www-form-urlencoded")
+
+      beta!()
+      conn = LeiService.Endpoint.call(conn, @opts)
+
+      refute conn.status in [302, 303],
+             "tier=pro was accepted during beta and redirected to checkout"
+
+      assert conn.resp_body =~ "beta",
+             "the refusal does not explain that paid plans are unavailable during beta"
+    end
+
     test "Pro comes back when charging resumes" do
       charging!()
       body = get("/signup").resp_body

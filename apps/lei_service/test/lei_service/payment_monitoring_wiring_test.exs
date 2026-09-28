@@ -82,6 +82,40 @@ defmodule LeiService.PaymentMonitoringWiringTest do
       assert monitor() =~ "::error::Payment path(s) switched off"
     end
 
+    # During beta, acp and pro_checkout are switched off deliberately: one sells
+    # credit bundles and the other a subscription, and analysis is free, so
+    # neither should take money. Paging every 15 minutes for a state we chose is
+    # how an alarm stops being read -- the interaction this file already
+    # documents about a check known to be red.
+    #
+    # mpp and tempo stay on, because the $0.50 account charge for an
+    # account-less agent settles on them. Those being off is still an incident.
+    test "a path switched off on purpose during beta does not page" do
+      monitor = monitor()
+
+      assert monitor =~ "BETA_EXPECTED_OFF",
+             "every switched-off path pages, including the ones beta switches off"
+
+      assert monitor =~ ~r/acp[^\n]*pro_checkout|pro_checkout[^\n]*acp/,
+             "the paths beta expects to be off are not named"
+    end
+
+    test "the rails that take the beta account charge must stay on" do
+      # If mpp and tempo are off, an account-less agent cannot pay the $0.50 and
+      # cannot get an account at all -- and analysis being free would hide it,
+      # because every existing account keeps working.
+      monitor = monitor()
+
+      assert monitor =~ "REQUIRED_ON",
+             "nothing asserts the rails that settle the account charge are enabled"
+
+      assert monitor =~ ~r/mpp[^\n]*tempo|tempo[^\n]*mpp/,
+             "the rails that must stay on are not named"
+
+      assert monitor =~ "::error::",
+             "a rail being off is not an error"
+    end
+
     # Naming the gauge is not enough: it is named twice in this file, once in
     # the family-presence loop above, so a mutation that hardcoded HELD=0 left
     # both mentions standing and the assertion passed. The count has to be

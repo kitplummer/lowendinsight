@@ -390,15 +390,62 @@ jobs:
           # -- rails switched off (#215)
           #
           # A kill switch used during an incident and never switched back is
-          # revenue silently declining, and nothing else reports it: a rail
-          # that is off refuses cleanly, which looks like no demand.
-          OFF=$(echo "$METRICS" | grep '^lei_payment_switch_enabled{' | grep ' 0$' \
-            | sed -n 's/^lei_payment_switch_enabled{path="\([^"]*\)"} 0$/\1/p' | paste -sd, -)
+          # revenue silently declining, and nothing else reports it: a rail that
+          # is off refuses cleanly, which looks like no demand.
+          #
+          # Two paths are off on purpose during beta (ADR-007). acp sells credit
+          # bundles and pro_checkout sells a subscription, and analysis is free,
+          # so neither should take money. Paging every 15 minutes for a state we
+          # chose is how an alarm stops being read.
+          BETA_EXPECTED_OFF="acp pro_checkout"
 
-          if [ -n "$OFF" ]; then
-            echo "::error::Payment path(s) switched off: ${OFF}. If an incident is over, re-enable with: scripts/payments.sh switch-on <path> --reason ..."
+          # And two must stay on, because the one-off $0.50 account charge for an
+          # account-less agent settles on them. If those are off, no agent can
+          # get an account -- and free analysis would hide it, since every
+          # existing account keeps working.
+          REQUIRED_ON="mpp tempo"
+
+          BILLING=$(echo "$METRICS" | sed -n 's/^lei_billing_mode{mode="\([^"]*\)"} 1$/\1/p' | head -1)
+
+          OFF=$(echo "$METRICS" | grep '^lei_payment_switch_enabled{' | grep ' 0$' \
+            | sed -n 's/^lei_payment_switch_enabled{path="\([^"]*\)"} 0$/\1/p')
+
+          UNEXPECTED=""
+          for path in $OFF; do
+            EXPECTED=no
+
+            if [ "$BILLING" = "beta" ]; then
+              for ok in $BETA_EXPECTED_OFF; do
+                [ "$path" = "$ok" ] && EXPECTED=yes
+              done
+            fi
+
+            if [ "$EXPECTED" = "yes" ]; then
+              echo "  ${path}: off, expected during beta"
+            else
+              UNEXPECTED="${UNEXPECTED}${UNEXPECTED:+, }${path}"
+            fi
+          done
+
+          if [ -n "$UNEXPECTED" ]; then
+            echo "::error::Payment path(s) switched off: ${UNEXPECTED}. If an incident is over, re-enable with: scripts/payments.sh switch-on <path> --reason ..."
             FAILED=1
           fi
+
+          # Asserted present and enabled, rather than inferred from the absence
+          # of an off signal: a gauge that stopped being published would read as
+          # "not off".
+          for path in $REQUIRED_ON; do
+            VALUE=$(echo "$METRICS" | sed -n "s/^lei_payment_switch_enabled{path=\"${path}\"} \([01]\)$/\1/p" | head -1)
+
+            if [ -z "$VALUE" ]; then
+              echo "::error::No switch gauge for '${path}'. Whether the rail that settles the agent account charge is enabled cannot be read."
+              FAILED=1
+            elif [ "$VALUE" != "1" ]; then
+              echo "::error::'${path}' is switched off, so an agent without an account cannot pay the beta account charge and cannot get an account at all. Re-enable with: scripts/payments.sh switch-on ${path} --reason ..."
+              FAILED=1
+            fi
+          done
 
           # -- credentials presented and held (#215)
           #
