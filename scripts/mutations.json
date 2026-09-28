@@ -3753,6 +3753,33 @@
       "replace": "          REQUIRED_ON=\"\"",
       "guarded_by": "test/lei_service/payment_monitoring_wiring_test.exs",
       "app": "apps/lei_service"
+    },
+    {
+      "id": "mcp-drops-the-reason-a-repo-was-not-analysed",
+      "bug": "A repository the service could not analyse comes back with every field undetermined and the reason in data.error. Rendering only the rating tells the agent 'undetermined risk', which reads as a finding about the dependency rather than a failure to look at it -- and the agent repeats it to its user as though it meant something. Found by running the server, not by reading it.",
+      "file": "clients/mcp/lei_mcp.py",
+      "find": "    if data.get(\"error\"):",
+      "replace": "    if False:",
+      "guarded_by": "test/lei_service/mcp_server_test.exs",
+      "app": "apps/lei_service"
+    },
+    {
+      "id": "mcp-answers-notifications",
+      "bug": "A JSON-RPC notification has no id and must not be answered. Replying to one puts an extra message on the stream the client is not expecting, which corrupts the conversation and presents as an agent that has hung.",
+      "file": "clients/mcp/lei_mcp.py",
+      "find": "    if message_id is None:\n        return None",
+      "replace": "    if message_id is None:\n        message_id = 0",
+      "guarded_by": "test/lei_service/mcp_server_test.exs",
+      "app": "apps/lei_service"
+    },
+    {
+      "id": "mcp-swallows-unknown-methods",
+      "bug": "A method the server does not understand must be answered with an error. Ignoring it leaves the client waiting for a reply that never comes, which presents as a hung agent rather than a failure.",
+      "file": "clients/mcp/lei_mcp.py",
+      "find": "        \"error\": {\"code\": -32601, \"message\": \"Method not found: %s\" % method},",
+      "replace": "        \"error\": {\"code\": -32000, \"message\": \"Method not found: %s\" % method},",
+      "guarded_by": "test/lei_service/mcp_server_test.exs",
+      "app": "apps/lei_service"
     }
   ]
 }
