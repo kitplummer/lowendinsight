@@ -283,6 +283,63 @@ defmodule LeiService.CacheProbeTest do
     end
   end
 
+  describe "a run survives what it cannot resolve" do
+    test "one hung lookup does not take the other coordinates with it" do
+      # Found by running it. A registry request that outlasted the per-element
+      # timeout ended a forty-minute run over fifteen thousand coordinates at the
+      # last step, after every SBOM had already been fetched: Task.async_stream
+      # defaults to on_timeout: :exit, which kills the stream and the
+      # measurement with it.
+      entries = [
+        %{ecosystem: "npm", package: "fast"},
+        %{ecosystem: "npm", package: "slow"}
+      ]
+
+      resolve = fn
+        %{package: "slow"} -> Process.sleep(:infinity)
+        %{package: "fast"} -> {:ok, "https://github.com/o/fast"}
+      end
+
+      resolved = Baseline.resolve_all(entries, resolve, concurrency: 2, timeout: 100)
+
+      assert length(resolved) == 2,
+             "the coordinate that timed out was dropped from the results, so the counts lose it"
+
+      by_package = Map.new(resolved, &{&1.package, &1.repository})
+      assert by_package["fast"] == {:ok, "https://github.com/o/fast"}
+      assert {:error, {:crashed, :timeout}} = by_package["slow"]
+    end
+
+    test "a timed-out lookup is our failure, not a package with no repository" do
+      resolved =
+        Baseline.resolve_all(
+          [%{ecosystem: "npm", package: "slow"}],
+          fn _ ->
+            Process.sleep(:infinity)
+          end, timeout: 100)
+
+      counts = Baseline.counts(resolved, MapSet.new())
+
+      assert counts.lookup_failed == 1
+      assert counts.no_repository == 0
+      assert counts.hit_rate == nil
+    end
+
+    test "a resolver that raises fails one coordinate, not the run" do
+      entries = [%{ecosystem: "npm", package: "boom"}, %{ecosystem: "npm", package: "ok"}]
+
+      resolve = fn
+        %{package: "boom"} -> raise ArgumentError, "registry gave us something unexpected"
+        %{package: "ok"} -> {:ok, "https://github.com/o/ok"}
+      end
+
+      resolved = Baseline.resolve_all(entries, resolve, concurrency: 2)
+
+      assert length(resolved) == 2
+      assert Baseline.counts(resolved, MapSet.new()).lookup_failed == 1
+    end
+  end
+
   describe "the scheduled measurement" do
     # The task's own guards (--min-repos, --max-lookup-failures) are what stop a
     # degraded run from publishing a number. A workflow that stopped passing

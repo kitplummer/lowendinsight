@@ -118,6 +118,52 @@ defmodule LeiService.CacheBaseline do
   def failure_kind(_other), do: :transient
 
   @doc """
+  Resolve every coordinate, and survive the ones that do not resolve.
+
+  `on_timeout: :kill_task`, not the default `:exit`. Found on 2026-09-28: one
+  registry request that outlasted the per-element timeout ended a forty-minute
+  run over fifteen thousand coordinates at the last step, after every SBOM had
+  been fetched. The default kills the stream and therefore the measurement.
+
+  `zip_input_on_exit` for the same reason -- without it the entry that failed is
+  not in the result, so the counts silently lose a package rather than recording
+  one we could not look up.
+
+  A coordinate we could not resolve is a data point. It is recorded as
+  `{:crashed, reason}`, which `failure_kind/1` calls transient: our failure, not
+  a fact about the package.
+  """
+  @spec resolve_all([map()], (map() -> term()), keyword()) :: [map()]
+  def resolve_all(entries, resolve, opts \\ []) do
+    entries
+    |> Task.async_stream(fn entry -> Map.put(entry, :repository, attempt(resolve, entry)) end,
+      max_concurrency: Keyword.get(opts, :concurrency, 8),
+      timeout: Keyword.get(opts, :timeout, 180_000),
+      on_timeout: :kill_task,
+      zip_input_on_exit: true
+    )
+    |> Enum.map(fn
+      {:ok, result} -> result
+      {:exit, {entry, reason}} -> Map.put(entry, :repository, {:error, {:crashed, reason}})
+    end)
+  end
+
+  # A raise inside Task.async_stream is not an {:exit, _} the stream reports: the
+  # task is linked, so it takes the caller with it and no option changes that.
+  # Only on_timeout is configurable. So the raise is caught here, where it costs
+  # one coordinate instead of the run -- which is how npm's string `repository`
+  # field ended a measurement at coordinate 900 of 16,000.
+  defp attempt(resolve, entry) do
+    try do
+      resolve.(entry)
+    rescue
+      error -> {:error, {:crashed, Exception.message(error)}}
+    catch
+      kind, reason -> {:error, {:crashed, {kind, reason}}}
+    end
+  end
+
+  @doc """
   Counts and rates over resolved entries, against the set of cached URLs.
 
   Entries are `%{ecosystem:, package:, repository: {:ok, url} | {:error, reason}}`.

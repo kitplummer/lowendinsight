@@ -3897,6 +3897,33 @@
       "replace": "",
       "guarded_by": "test/lei/package_repository_test.exs",
       "app": "apps/lowendinsight"
+    },
+    {
+      "id": "baseline-timeout-kills-the-run",
+      "bug": "Task.async_stream defaults to on_timeout: :exit, which kills the stream. One registry request that outlasted the per-element timeout ended a forty-minute measurement over fifteen thousand coordinates at the last step, after every SBOM had already been fetched.",
+      "file": "apps/lei_service/lib/lei_service/cache_baseline.ex",
+      "find": "      on_timeout: :kill_task,\n",
+      "replace": "",
+      "guarded_by": "test/lei_service/cache_probe_test.exs",
+      "app": "apps/lei_service"
+    },
+    {
+      "id": "baseline-loses-the-coordinate-that-failed",
+      "bug": "Without zip_input_on_exit the entry that timed out is not in the result at all, so a coordinate we could not look up silently disappears from the denominator instead of being counted as a lookup failure. A run degraded by timeouts would report better coverage than a clean one.",
+      "file": "apps/lei_service/lib/lei_service/cache_baseline.ex",
+      "find": "      zip_input_on_exit: true\n    )\n    |> Enum.map(fn\n      {:ok, result} -> result\n      {:exit, {entry, reason}} -> Map.put(entry, :repository, {:error, {:crashed, reason}})\n    end)",
+      "replace": "      zip_input_on_exit: true\n    )\n    |> Enum.map(fn\n      {:ok, result} -> result\n      {:exit, {_entry, _reason}} -> nil\n    end)\n    |> Enum.reject(&is_nil/1)",
+      "guarded_by": "test/lei_service/cache_probe_test.exs",
+      "app": "apps/lei_service"
+    },
+    {
+      "id": "baseline-resolver-raise-kills-the-run",
+      "bug": "A raise inside Task.async_stream is not an {:exit, _} the stream reports: the task is linked, so it takes the caller with it. Unrescued, one malformed registry response ends the whole measurement -- which is exactly how npm's string `repository` field ended one at coordinate 900 of 16,000.",
+      "file": "apps/lei_service/lib/lei_service/cache_baseline.ex",
+      "find": "    try do\n      resolve.(entry)\n    rescue\n      error -> {:error, {:crashed, Exception.message(error)}}\n    catch\n      kind, reason -> {:error, {:crashed, {kind, reason}}}\n    end",
+      "replace": "    resolve.(entry)",
+      "guarded_by": "test/lei_service/cache_probe_test.exs",
+      "app": "apps/lei_service"
     }
   ]
 }
