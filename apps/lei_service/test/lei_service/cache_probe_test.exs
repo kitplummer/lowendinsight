@@ -316,7 +316,9 @@ defmodule LeiService.CacheProbeTest do
           [%{ecosystem: "npm", package: "slow"}],
           fn _ ->
             Process.sleep(:infinity)
-          end, timeout: 100)
+          end,
+          timeout: 100
+        )
 
       counts = Baseline.counts(resolved, MapSet.new())
 
