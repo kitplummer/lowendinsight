@@ -1,30 +1,62 @@
 #!/usr/bin/env bash
-# Verify a backup artifact can be decrypted with the passphrase you actually
-# store -- not the one in GitHub.
+# Verify a backup can be decrypted with the passphrase you actually store --
+# not the one in CI.
 #
-# The backup workflow already round-trips each artifact, encrypting then
-# decrypting and comparing. That check cannot catch the failure that matters:
-# it decrypts with the same secret it encrypted with, so a password-manager
-# copy that has drifted from the GitHub secret still passes. This script closes
-# that gap by decrypting with your copy.
+# The producer round-trips every artifact, encrypting then decrypting and
+# comparing, and the nightly job decrypts with the CI secret. Neither can catch
+# the failure that matters: both use the same secret they encrypted with, so a
+# password-manager copy that has drifted still passes. This closes that gap by
+# decrypting with your copy.
 #
-# Requires only gpg and gh. No PostgreSQL server, and no Postgres client --
-# pg_restore --list reads the archive file directly and never connects to a
-# database. It is used when present, and a magic-byte check substitutes when
-# it is not.
+# Reads the bucket by default, because that is the store of record. The GitHub
+# Actions artifact remains available with --from-artifact, and that is not
+# vestigial: it is the only path that works when Fly or Tigris is the thing that
+# is broken, which is precisely when a recovery tool is wanted.
+#
+# Needs no write access to the bucket. A read-only key is enough, and is what
+# you should hold.
+#
+# Requires gpg, and aws for the bucket or gh for an artifact. No PostgreSQL
+# server, and no Postgres client -- pg_restore --list reads the archive file
+# directly and never connects to a database. It is used when present, and a
+# magic-byte check substitutes when it is not.
 #
 # Usage:
 #   export BACKUP_PASSCODE='...'          # from your password manager
-#   ./scripts/verify-backup-artifact.sh              # latest successful backup
-#   ./scripts/verify-backup-artifact.sh 34557291848  # a specific run
+#   export AWS_ACCESS_KEY_ID=... AWS_SECRET_ACCESS_KEY=...   # read-only Tigris key
 #
-# Run it after rotating BACKUP_PASSPHRASE. A rotated key never tested against
-# the copy you keep is the same failure as having no backup.
+#   ./scripts/verify-backup-artifact.sh                    # newest in the bucket
+#   ./scripts/verify-backup-artifact.sh dumps/2026/09/28/144452Z.dump.gpg
+#   ./scripts/verify-backup-artifact.sh --from-artifact     # latest CI artifact
+#   ./scripts/verify-backup-artifact.sh --from-artifact 34557291848
+#
+# Run it after rotating the backup passphrase. A rotated key never tested
+# against the copy you actually keep is the same failure as having no backup.
+#
+# scripts/backup-pull.sh overlaps with this deliberately: that one keeps a copy
+# and records the date for the nightly staleness warning, this one only answers
+# "does my passphrase still open a backup", and can answer it from either source.
 
 set -euo pipefail
 
 REPO="${LEI_REPO:-kitplummer/lowendinsight}"
-RUN_ID="${1:-}"
+BUCKET="${BACKUP_BUCKET:-lei-pg-backups}"
+ENDPOINT="${AWS_ENDPOINT_URL_S3:-https://fly.storage.tigris.dev}"
+
+SOURCE="bucket"
+TARGET=""
+
+while [ $# -gt 0 ]; do
+  case "$1" in
+    --from-artifact) SOURCE="artifact"; shift ;;
+    -h|--help) sed -n '2,40p' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
+    -*) echo "unknown option: $1" >&2; exit 2 ;;
+    *) TARGET="$1"; shift ;;
+  esac
+done
+
+RUN_ID=""
+[ "$SOURCE" = "artifact" ] && RUN_ID="$TARGET"
 
 green() { printf "\033[32m%s\033[0m\n" "$1"; }
 red()   { printf "\033[31m%s\033[0m\n" "$1"; }
@@ -39,8 +71,14 @@ fail() { red "FAIL: $1"; exit 1; }
        secret only proves GitHub agrees with itself."
 
 command -v gpg >/dev/null || fail "gpg is not installed."
-command -v gh  >/dev/null || fail "gh is not installed."
-gh auth status >/dev/null 2>&1 || fail "gh is not authenticated. Run: gh auth login"
+
+if [ "$SOURCE" = "bucket" ]; then
+  command -v aws >/dev/null || fail "aws cli is not installed, and the bucket is the default source.
+       Install it, or read a CI artifact instead: $0 --from-artifact"
+else
+  command -v gh  >/dev/null || fail "gh is not installed."
+  gh auth status >/dev/null 2>&1 || fail "gh is not authenticated. Run: gh auth login"
+fi
 
 # --- scratch space, always cleaned up ---
 WORKDIR="$(mktemp -d)"
@@ -58,26 +96,71 @@ trap cleanup EXIT INT TERM
 
 bold "=== LEI backup artifact verification ==="
 
-# --- locate the run ---
-if [ -z "$RUN_ID" ]; then
-  echo "Finding the most recent successful backup run..."
-  RUN_ID=$(gh run list --repo "$REPO" --workflow backup.yml \
-             --status success --limit 1 --json databaseId \
-             --jq '.[0].databaseId' 2>/dev/null || true)
-  [ -n "$RUN_ID" ] || fail "No successful backup run found in $REPO."
+# --- fetch, from whichever source ---
+S3() { aws --endpoint-url "$ENDPOINT" "$@"; }
+
+if [ "$SOURCE" = "bucket" ]; then
+  bold "Reading s3://${BUCKET}"
+
+  KEY="$TARGET"
+
+  if [ -z "$KEY" ]; then
+    # meta/latest is written by the producer *after* the object it names is
+    # confirmed present, so it never points at a half-written upload.
+    if ! ERR=$(S3 s3 cp "s3://${BUCKET}/meta/latest" "$WORKDIR/latest.txt" 2>&1); then
+      printf '%s\n' "$ERR" | sed 's/^/       /'
+
+      case "$ERR" in
+        *AccessDenied* | *InvalidAccessKeyId* | *SignatureDoesNotMatch* | *Forbidden*)
+          fail "could not read s3://${BUCKET}: the credentials were rejected.
+       A read-only key for this bucket is enough, and is what you want here." ;;
+        *)
+          fail "could not read s3://${BUCKET}/meta/latest; aws said the above.
+       To check a CI artifact instead: $0 --from-artifact" ;;
+      esac
+    fi
+
+    KEY=$(tr -d '\r\n' < "$WORKDIR/latest.txt")
+    [ -n "$KEY" ] || fail "meta/latest is empty; the producer has written no backup."
+  fi
+
+  echo "  Object: ${KEY}"
+
+  MODIFIED=$(S3 s3api head-object --bucket "$BUCKET" --key "$KEY" \
+    --query LastModified --output text 2>/dev/null || true)
+  [ -n "$MODIFIED" ] && echo "  Taken:  ${MODIFIED}"
+
+  ENCRYPTED="$WORKDIR/$(basename "$KEY")"
+
+  if ! ERR=$(S3 s3 cp "s3://${BUCKET}/${KEY}" "$ENCRYPTED" 2>&1); then
+    printf '%s\n' "$ERR" | sed 's/^/       /'
+    fail "could not read s3://${BUCKET}/${KEY}; aws said the above."
+  fi
+else
+  bold "Reading a GitHub Actions artifact"
+  echo "  (the bucket is the store of record; this path is for when it is"
+  echo "   unreachable, or Fly is the thing that is broken)"
+
+  if [ -z "$RUN_ID" ]; then
+    echo "Finding the most recent successful backup run..."
+    RUN_ID=$(gh run list --repo "$REPO" --workflow backup.yml \
+               --status success --limit 1 --json databaseId \
+               --jq '.[0].databaseId' 2>/dev/null || true)
+    [ -n "$RUN_ID" ] || fail "No successful backup run found in $REPO."
+  fi
+
+  RUN_DATE=$(gh run view "$RUN_ID" --repo "$REPO" --json createdAt --jq .createdAt 2>/dev/null || echo "unknown")
+  echo "  Run:  $RUN_ID"
+  echo "  Date: $RUN_DATE"
+
+  echo "Downloading artifact..."
+  gh run download "$RUN_ID" --repo "$REPO" --dir "$WORKDIR" >/dev/null 2>&1 \
+    || fail "Could not download artifacts from run $RUN_ID (expired after 90 days?)."
+
+  ENCRYPTED=$(find "$WORKDIR" -name '*.dump.gpg' -type f | head -1)
+  [ -n "$ENCRYPTED" ] || fail "No .dump.gpg found in the artifacts for run $RUN_ID."
 fi
 
-RUN_DATE=$(gh run view "$RUN_ID" --repo "$REPO" --json createdAt --jq .createdAt 2>/dev/null || echo "unknown")
-echo "  Run:  $RUN_ID"
-echo "  Date: $RUN_DATE"
-
-# --- download ---
-echo "Downloading artifact..."
-gh run download "$RUN_ID" --repo "$REPO" --dir "$WORKDIR" >/dev/null 2>&1 \
-  || fail "Could not download artifacts from run $RUN_ID (expired after 90 days?)."
-
-ENCRYPTED=$(find "$WORKDIR" -name '*.dump.gpg' -type f | head -1)
-[ -n "$ENCRYPTED" ] || fail "No .dump.gpg found in the artifacts for run $RUN_ID."
 echo "  Found: $(basename "$ENCRYPTED") ($(stat -c%s "$ENCRYPTED") bytes)"
 
 # --- decrypt: the actual test ---
@@ -134,5 +217,5 @@ else
 fi
 
 echo ""
-green "=== Backup artifact verified with your stored passphrase ==="
+green "=== Backup verified with the passphrase you store ==="
 echo "Plaintext removed from ${WORKDIR}."

@@ -782,9 +782,11 @@ periodically, not only when they are needed:
   which meant a human doing a read-only job held a key that could delete every
   backup, and a read-only key could never clear the warning.
 
-  `scripts/verify-backup-artifact.sh` still works and reads a GitHub Actions
-  artifact instead of the bucket. Use it when Tigris or Fly is the thing that is
-  broken.
+  `scripts/verify-backup-artifact.sh` answers the narrower question -- "does my
+  passphrase still open a backup" -- and reads the bucket by default. It keeps a
+  `--from-artifact` mode that reads a CI artifact instead, which is the only path
+  that works when Tigris or Fly is the thing that is broken. Neither mode writes
+  to the bucket, so a read-only key is enough for both.
 
   Needs only `gpg` and `gh` -- no PostgreSQL server, and no Postgres client.
   `pg_restore --list` reads the archive file directly and never connects to a

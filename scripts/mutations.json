@@ -3708,6 +3708,24 @@
       "replace": "            | jq -r '.[0].id' 2>/dev/null || echo 83039db7e71718)",
       "guarded_by": "test/lei_service/backup_trigger_test.exs",
       "app": "apps/lei_service"
+    },
+    {
+      "id": "artifact-verifier-ignores-the-bucket",
+      "bug": "The bucket is the store of record; a CI artifact is a 90-day copy of it. Defaulting to the artifact meant this tool could only ever check something CI had already downloaded, and never the object the producer actually wrote.",
+      "file": "scripts/verify-backup-artifact.sh",
+      "find": "SOURCE=\"bucket\"",
+      "replace": "SOURCE=\"artifact\"",
+      "guarded_by": "test/lei_service/backup_verification_test.exs",
+      "app": "apps/lei_service"
+    },
+    {
+      "id": "artifact-verifier-loses-the-fallback",
+      "bug": "The one case this tool exists for is Fly or Tigris being the thing that is broken. Without --from-artifact there is nothing to verify then, which is exactly when someone reaches for it.",
+      "file": "scripts/verify-backup-artifact.sh",
+      "find": "    --from-artifact) SOURCE=\"artifact\"; shift ;;",
+      "replace": "    --from-artifact) fail \"not supported\" ;;",
+      "guarded_by": "test/lei_service/backup_verification_test.exs",
+      "app": "apps/lei_service"
     }
   ]
 }
