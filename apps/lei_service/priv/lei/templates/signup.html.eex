@@ -10,15 +10,24 @@
     <div class="field">
       <label class="label">Plan</label>
       <div class="control">
-        <label class="radio">
-          <input type="radio" name="tier" value="free" checked>
-          Free &mdash; 60 requests/min, $0
-        </label>
-        <br>
-        <label class="radio">
-          <input type="radio" name="tier" value="pro">
-          Pro &mdash; 600 requests/min, $29/mo
-        </label>
+        <%= if assigns[:beta?] do %>
+          <input type="hidden" name="tier" value="free">
+          <p>
+            Free during beta &mdash; 60 requests/min, and analysis at no charge
+            up to the monthly allowance. Paid plans return when beta ends; we
+            will tell you before anything is charged.
+          </p>
+        <% else %>
+          <label class="radio">
+            <input type="radio" name="tier" value="free" checked>
+            Free &mdash; 60 requests/min, $0
+          </label>
+          <br>
+          <label class="radio">
+            <input type="radio" name="tier" value="pro">
+            Pro &mdash; 600 requests/min, $29/mo
+          </label>
+        <% end %>
       </div>
     </div>
     <div class="field">

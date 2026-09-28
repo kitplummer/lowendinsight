@@ -788,6 +788,12 @@ defmodule Lei.Web.Router do
   defp render_page(conn, template, assigns \\ []) do
     tpl_dir = Path.join(:code.priv_dir(@otp_app) |> to_string(), "lei/templates")
     assigns = Keyword.put(assigns, :conn, conn)
+
+    # Every human page learns whether analysis is currently free, in one place,
+    # so the banner cannot be on one page and missing from another -- and so it
+    # disappears by itself when beta ends rather than waiting for someone to
+    # remember a template (ADR-007).
+    assigns = Keyword.put_new(assigns, :beta?, Lei.Billing.beta?())
     # Lei.Web.HTMLEngine escapes every <%= %>. Plain EEx escaped nothing, so org
     # and key names were written into the page as markup.
     inner =

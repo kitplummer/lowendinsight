@@ -77,13 +77,26 @@
       </div>
     </section>
 
+    <%= if guide.beta? do %>
+      <div class="notification is-info" style="border-radius:0;margin-bottom:0;text-align:center;">
+        <strong>Beta.</strong> Analysis is free during beta, up to the monthly
+        allowance on each account. The service is provided with no warranty and
+        any use is at your own risk &mdash; see <a href="/terms">terms</a>.
+      </div>
+    <% end %>
+
     <section class="section">
       <div class="container">
         <div class="columns">
           <div class="column is-8">
             <div class="box" id="agents">
               <h2 class="title is-4">Use it from an agent &mdash; no account needed</h2>
-              <p class="mb-4">LowEndInsight is paid per use over the <a href="https://mpp.dev">Machine Payments Protocol</a> (MPP), an open HTTP payment scheme. An agent that has never been here can analyze a repository without signing up: it asks, is told the price, pays, and is served.</p>
+              <%= if guide.beta? do %>
+                <p class="mb-4"><strong>During beta, analysis is free.</strong> An agent that has never been here is still asked once for <%= LeiService.AgentGuide.number(guide.challenge_credits) %> credits (<%= guide.challenge_usd %>) &mdash; the smallest amount these payment rails will settle. That buys an account rather than analysis: nothing is deducted from it while analysis is free, and it stays yours to spend when charging resumes. An account costs nothing to create, so without it every allowance would be an allowance per attacker.</p>
+                <p class="mb-4">The flow below is the one that will apply when beta ends, and it is the flow you integrate against today.</p>
+              <% else %>
+                <p class="mb-4">LowEndInsight is paid per use over the <a href="https://mpp.dev">Machine Payments Protocol</a> (MPP), an open HTTP payment scheme. An agent that has never been here can analyze a repository without signing up: it asks, is told the price, pays, and is served.</p>
+              <% end %>
 
               <ol class="steps ml-5 mb-4">
                 <li><strong>Ask.</strong> <code>POST /v1/analyze</code> with no credentials returns <code>402 Payment Required</code> and a <code>WWW-Authenticate: Payment</code> challenge naming the amount, the asset and where to send it.</li>
@@ -127,7 +140,10 @@ const key = res.headers.get('lei-api-key')   // keep it: it holds your balance</
             </div>
 
             <div class="box" id="pricing">
-              <h2 class="title is-4">Pricing</h2>
+              <h2 class="title is-4">Pricing<%= if guide.beta?, do: " when beta ends", else: "" %></h2>
+              <%= if guide.beta? do %>
+                <p class="mb-4">None of these are charged today. They are published now so that nothing about them is a surprise later, and we will tell account holders before charging begins.</p>
+              <% end %>
               <table class="table is-fullwidth">
                 <tbody>
                   <tr><td>A repository with a cached report</td><td><strong><%= LeiService.AgentGuide.number(guide.hit_credits) %> credits</strong></td><td><%= guide.hit_usd %></td></tr>
