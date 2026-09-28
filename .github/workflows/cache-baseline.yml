@@ -1,0 +1,112 @@
+name: cache-baseline
+
+# What fraction of a real manifest is already in our cache.
+#
+# ADR-005 argues the shared cache is the asset: the five-hundredth customer
+# holding `jason` costs nothing extra. That is true at some hit rate and false
+# at others, and the number had never been measured. This measures it against
+# production, on a schedule, so it can be compared before and after any preload.
+#
+# Monthly, because the cache TTL is 30 days: a preloaded corpus expires on that
+# cycle whether or not anything changed, so monthly is the period over which the
+# number actually moves.
+#
+# Read-only. It calls POST /v1/cache/probe, which clones nothing, analyses
+# nothing and charges nothing. It cannot warm the cache it is measuring -- which
+# is the whole reason the probe route exists.
+
+on:
+  workflow_dispatch:
+    inputs:
+      repos:
+        description: Repository list to measure against
+        default: scripts/baseline-repos.txt
+      concurrency:
+        description: Registry lookups in flight (higher is faster and fails more)
+        default: '6'
+  schedule:
+    - cron: '17 6 1 * *'
+
+permissions:
+  contents: read
+
+jobs:
+  measure:
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: erlef/setup-beam@54075bcc5e249e4758d363f27d099f55d843f124 # v1
+        with:
+          elixir-version: 1.20.4
+          otp-version: 28.5.0.6
+
+      - name: Install dependencies
+        run: |
+          mix local.rebar --force
+          mix local.hex --force
+          mix deps.get
+
+      # The cache-scoped key the canary already holds. /v1/cache/probe is under
+      # the same scope and strictly less authority than the invalidate the
+      # canary does with it, so this needs no new secret and no wider grant.
+      - name: The probe key exists
+        env:
+          LEI_API_KEY: ${{ secrets.LEI_ADMIN_API_KEY }}
+        run: |
+          if [ -z "$LEI_API_KEY" ]; then
+            echo "::error::LEI_ADMIN_API_KEY is not set, so there is no cache-scoped key to probe with. Without it this job would measure nothing and report it as a rate."
+            exit 1
+          fi
+
+      - name: Measure the hit rate against production
+        env:
+          MIX_ENV: prod
+          # Reading another public repository's dependency-graph SBOM. If the
+          # job-scoped token is refused for that, every SBOM fetch 403s, the
+          # --min-repos guard below fails the run and prints the statuses; the
+          # fix is a PAT with public repo read as LEI_GH_TOKEN.
+          LEI_GH_TOKEN: ${{ secrets.LEI_GH_TOKEN || secrets.GITHUB_TOKEN }}
+          LEI_API_KEY: ${{ secrets.LEI_ADMIN_API_KEY }}
+          REPOS: ${{ inputs.repos || 'scripts/baseline-repos.txt' }}
+          CONCURRENCY: ${{ inputs.concurrency || '6' }}
+        run: |
+          # --min-repos 40 of 50: a run that could read only a handful of SBOMs
+          # must fail rather than publish a rate measured over them.
+          mix lei.cache_baseline \
+            --repos "$REPOS" \
+            --probe-url https://lowendinsight.dev \
+            --out baseline.json \
+            --concurrency "$CONCURRENCY" \
+            --min-repos 40 \
+            --max-lookup-failures 10 \
+            | tee baseline.txt
+
+      - name: Put the headline in the run summary
+        if: always()
+        run: |
+          if [ -f baseline.txt ]; then
+            {
+              echo '## Cache baseline'
+              echo '```'
+              cat baseline.txt
+              echo '```'
+            } >> "$GITHUB_STEP_SUMMARY"
+          else
+            echo '## Cache baseline did not produce a measurement' >> "$GITHUB_STEP_SUMMARY"
+          fi
+
+      # The JSON carries the unresolved coordinates as well as the counts, which
+      # is what tells you whether a poor number is a fact about the ecosystem or
+      # a bug in our resolver.
+      - name: Keep the run
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: cache-baseline
+          path: |
+            baseline.json
+            baseline.txt
+          retention-days: 90
+          if-no-files-found: warn

@@ -3861,6 +3861,42 @@
       "replace": "      coverage: rate(length(repositories), length(distinct))",
       "guarded_by": "test/lei_service/cache_probe_test.exs",
       "app": "apps/lei_service"
+    },
+    {
+      "id": "npm-string-repository-raises",
+      "bug": "npm's `repository` is a string as often as an object, and get_in/2 on the string raises FunctionClauseError inside a Task -- taking the whole batch job down rather than failing one package. @nodelib/fs.stat publishes this form and is a transitive dependency of most npm projects.",
+      "file": "apps/lowendinsight/lib/lei/package_repository.ex",
+      "find": "      %{\"url\" => url} -> url\n      url when is_binary(url) -> url\n      _ -> nil",
+      "replace": "      %{\"url\" => url} -> url\n      _ -> nil",
+      "guarded_by": "test/lei/package_repository_test.exs",
+      "app": "apps/lowendinsight"
+    },
+    {
+      "id": "monorepo-path-treated-as-a-repository",
+      "bug": "A registry URL pointing into a monorepo directory is a path, not a clone target. Cloning it fails, and keying the cache on it makes a second entry for a repository we may already hold -- so the customer is billed for a miss on an answer we are holding and cannot find.",
+      "file": "apps/lowendinsight/lib/lei/package_repository.ex",
+      "find": "      case (uri.path || \"\") |> String.split(\"/\", trim: true) do\n        [owner, repo | _] -> \"https://#{host}/#{owner}/#{repo}\"\n        _ -> url\n      end",
+      "replace": "      url",
+      "guarded_by": "test/lei/package_repository_test.exs",
+      "app": "apps/lowendinsight"
+    },
+    {
+      "id": "npm-shorthand-repository-unresolved",
+      "bug": "package.json permits `github:owner/repo` and a bare `owner/repo`, and npm publishes both. Not expanding them makes the package look like it has no repository, which understates coverage and silently drops real dependencies from a manifest scan.",
+      "file": "apps/lowendinsight/lib/lei/package_repository.ex",
+      "find": "  defp expand_shorthand(url) do",
+      "replace": "  defp expand_shorthand(url) when is_binary(url), do: url\n\n  defp expand_shorthand_unused(url) do",
+      "guarded_by": "test/lei/package_repository_test.exs",
+      "app": "apps/lowendinsight"
+    },
+    {
+      "id": "scp-form-repository-unresolved",
+      "bug": "git@github.com:owner/repo is scp syntax: the colon is a path separator, not a port. Left alone it produces https://github.com:owner/repo, which matches no repository, so a package published that way looks like it has none and is dropped from a manifest scan.",
+      "file": "apps/lowendinsight/lib/lei/package_repository.ex",
+      "find": "      |> String.replace(~r{^https://([^/:]+):(?=\\D)}, \"https://\\\\1/\")\n",
+      "replace": "",
+      "guarded_by": "test/lei/package_repository_test.exs",
+      "app": "apps/lowendinsight"
     }
   ]
 }

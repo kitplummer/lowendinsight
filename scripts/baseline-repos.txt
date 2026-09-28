@@ -12,6 +12,21 @@
 # service gets nothing from us today, and the baseline should say so in numbers
 # rather than leave it to be discovered.
 #
+# Every repository here was checked on 2026-09-28 to have a dependency-graph
+# SBOM GitHub will actually export. Seven candidates were dropped for reasons
+# worth knowing before anyone adds to the list:
+#
+#   * a library does not commit a lockfile, so its graph holds four or five
+#     packages -- its CI actions -- and none of its ecosystem. ecto, oban,
+#     broadway and axon all looked like Elixir coverage and measured nothing.
+#     Applications only.
+#   * GitHub times out generating the SBOM for the largest repositories
+#     (vercel/next.js, grafana/grafana return 500). Nothing on our side can fix
+#     that.
+#   * an archived repository's graph goes stale or 404s (localstack).
+#   * our own repository returns 404 for its SBOM, which is worth chasing
+#     separately: the dependency graph appears not to be exporting for it.
+#
 # Keep this list stable. Changing it changes the number, and the point of the
 # measurement is to repeat it after a preload and see whether the money moved it.
 
@@ -23,9 +38,9 @@ strapi/strapi
 hoppscotch/hoppscotch
 appwrite/appwrite
 facebook/docusaurus
-grafana/grafana
+directus/directus
 mattermost/mattermost
-vercel/next.js
+medusajs/medusa
 
 # --- pypi
 apache/airflow
@@ -37,19 +52,19 @@ scikit-learn/scikit-learn
 home-assistant/core
 ansible/ansible
 sqlalchemy/sqlalchemy
-localstack/localstack
+getmoto/moto
 
 # --- hex: our own ecosystem, and the one we can most cheaply preload
 phoenixframework/phoenix
-elixir-ecto/ecto
+logflare/logflare
 plausible/analytics
 firezone/firezone
 livebook-dev/livebook
 thechangelog/changelog.com
 supabase/realtime
-papercups-io/papercups
-oban-bg/oban
-kitplummer/lowendinsight
+teslamate-org/teslamate
+phoenixframework/phoenix_live_view
+supabase/supavisor
 
 # --- cargo
 denoland/deno

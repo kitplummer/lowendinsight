@@ -201,10 +201,22 @@ defmodule Mix.Tasks.Lei.CacheBaseline do
     end
   end
 
+  # zip_input_on_exit, and an {:exit, _} clause, because one resolver raise used
+  # to take the whole run with it: a FunctionClauseError on npm's string
+  # `repository` form ended a forty-minute measurement at coordinate 900 of
+  # 16,000. A coordinate we could not resolve is a data point, not a reason to
+  # discard the other 15,999.
   defp resolve_all(packages, concurrency) do
     packages
-    |> Task.async_stream(&resolve(&1), max_concurrency: concurrency, timeout: 120_000)
-    |> Enum.map(fn {:ok, result} -> result end)
+    |> Task.async_stream(&resolve(&1),
+      max_concurrency: concurrency,
+      timeout: 120_000,
+      zip_input_on_exit: true
+    )
+    |> Enum.map(fn
+      {:ok, result} -> result
+      {:exit, {entry, reason}} -> Map.put(entry, :repository, {:error, {:crashed, reason}})
+    end)
   end
 
   defp resolve(entry) do

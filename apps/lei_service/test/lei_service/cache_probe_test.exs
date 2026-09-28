@@ -282,4 +282,33 @@ defmodule LeiService.CacheProbeTest do
       assert counts.lookup_failed == 2
     end
   end
+
+  describe "the scheduled measurement" do
+    # The task's own guards (--min-repos, --max-lookup-failures) are what stop a
+    # degraded run from publishing a number. A workflow that stopped passing
+    # them would still be green, and the number in the run summary would still
+    # look like a measurement -- so the flags are part of the contract.
+    @workflow Path.expand("../../../../.github/workflows/cache-baseline.yml", __DIR__)
+
+    setup do
+      %{yaml: File.read!(@workflow)}
+    end
+
+    test "it measures production, not the runner's empty cache", %{yaml: yaml} do
+      assert yaml =~ "--probe-url https://lowendinsight.dev"
+    end
+
+    test "it refuses to report a rate measured over a handful of manifests", %{yaml: yaml} do
+      assert yaml =~ ~r/--min-repos \d+/,
+             "the run would publish a hit rate however few SBOMs it managed to read"
+    end
+
+    test "it fails when our own lookups degraded the coverage", %{yaml: yaml} do
+      assert yaml =~ ~r/--max-lookup-failures \d+/
+    end
+
+    test "a missing key fails the job rather than measuring nothing", %{yaml: yaml} do
+      assert yaml =~ "LEI_ADMIN_API_KEY is not set"
+    end
+  end
 end

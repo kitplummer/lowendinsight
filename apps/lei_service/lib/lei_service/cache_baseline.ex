@@ -109,6 +109,10 @@ defmodule LeiService.CacheBaseline do
   def failure_kind(:not_found), do: :absent
   def failure_kind({:unsupported_ecosystem, _}), do: :absent
   def failure_kind({:unreachable, _}), do: :transient
+  # A resolver that raised tells us nothing about the package. Counting it as
+  # "no repository" would blame the ecosystem for our own bug -- and this one was
+  # real: npm's string `repository` form raised until 2026-09-28.
+  def failure_kind({:crashed, _}), do: :transient
   def failure_kind({:status, status}) when status in [408, 429] or status >= 500, do: :transient
   def failure_kind({:status, _}), do: :absent
   def failure_kind(_other), do: :transient
