@@ -3780,6 +3780,87 @@
       "replace": "        \"error\": {\"code\": -32000, \"message\": \"Method not found: %s\" % method},",
       "guarded_by": "test/lei_service/mcp_server_test.exs",
       "app": "apps/lei_service"
+    },
+    {
+      "id": "probe-folds-dead-redis-into-misses",
+      "bug": "A cache membership probe that answers 'not cached' when Redis is unreachable turns an outage into a hit rate of 0%. The number that ADR-005's pricing rests on would be measured from a cache nobody could read, and it would look like a finding.",
+      "file": "apps/lei_service/lib/lei_service/datastore.ex",
+      "find": "        Logger.warning(\"Redis unavailable probing #{length(urls)} keys: #{inspect(reason)}\")\n        {:error, reason}",
+      "replace": "        Logger.warning(\"Redis unavailable probing #{length(urls)} keys: #{inspect(reason)}\")\n        {:ok, Map.new(urls, &{&1, false})}",
+      "guarded_by": "test/lei_service/cache_probe_test.exs",
+      "app": "apps/lei_service"
+    },
+    {
+      "id": "probe-endpoint-reports-unavailable-as-miss",
+      "bug": "The probe route answering 200 when the cache is unreachable reports every repository uncached. A measurement run would record 0% and a caller deciding whether an analysis is cheap would be told nothing is.",
+      "file": "apps/lei_service/lib/lei_service/endpoint.ex",
+      "find": "          {:error, reason} ->\n            send_json(conn, 503, %{error: \"cache unavailable: #{inspect(reason)}\"})",
+      "replace": "          {:error, _reason} ->\n            send_json(conn, 200, %{total: length(urls), hits: 0, misses: length(urls), results: %{}})",
+      "guarded_by": "test/lei_service/cache_probe_test.exs",
+      "app": "apps/lei_service"
+    },
+    {
+      "id": "probe-limit-removed",
+      "bug": "One probe is one Redis pipeline. An unbounded list is an unbounded pipeline against the cache every analysis depends on, from any key with the cache scope.",
+      "file": "apps/lei_service/lib/lei_service/endpoint.ex",
+      "find": "  @probe_limit 500",
+      "replace": "  @probe_limit 5_000_000",
+      "guarded_by": "test/lei_service/cache_probe_test.exs",
+      "app": "apps/lei_service"
+    },
+    {
+      "id": "baseline-counts-the-repository-as-its-own-dependency",
+      "bug": "GitHub's SBOM lists the subject repository as a package of itself. Counting it credits every manifest measured with one hit for the repository most likely to already be cached, which inflates the hit rate by a fixed amount per manifest.",
+      "file": "apps/lei_service/lib/lei_service/cache_baseline.ex",
+      "find": "    |> Enum.reject(&(String.downcase(to_string(&1[\"name\"])) == self_name))\n",
+      "replace": "",
+      "guarded_by": "test/lei_service/cache_probe_test.exs",
+      "app": "apps/lei_service"
+    },
+    {
+      "id": "baseline-drops-the-purl-namespace",
+      "bug": "Dropping a purl's namespace turns pkg:githubactions/actions/checkout into 'checkout' and @types/node into 'node'. Neither resolves, so the ecosystem reports near-zero coverage -- which reads as a fact about the ecosystem rather than a bug in the parser.",
+      "file": "apps/lei_service/lib/lei_service/cache_baseline.ex",
+      "find": "        [%{ecosystem: type, package: URI.decode(rest), purl: purl, from: from}]",
+      "replace": "        [%{ecosystem: type, package: rest |> URI.decode() |> String.split(\"/\") |> List.last(), purl: purl, from: from}]",
+      "guarded_by": "test/lei_service/cache_probe_test.exs",
+      "app": "apps/lei_service"
+    },
+    {
+      "id": "baseline-reports-zero-percent-over-nothing",
+      "bug": "A rate of 0.0% over zero resolved packages is indistinguishable from a real 0% hit rate. A run whose resolution failed entirely would report the headline number as a measurement.",
+      "file": "apps/lei_service/lib/lei_service/cache_baseline.ex",
+      "find": "  def rate(_n, 0), do: nil",
+      "replace": "  def rate(_n, 0), do: 0.0",
+      "guarded_by": "test/lei_service/cache_probe_test.exs",
+      "app": "apps/lei_service"
+    },
+    {
+      "id": "baseline-hides-lookup-failures-as-missing-repositories",
+      "bug": "A registry that rate-limited us counted as 'this package has no repository' understates coverage and blames the ecosystem for our own network. The run looks like a measurement of npm rather than a degraded run to repeat.",
+      "file": "apps/lei_service/lib/lei_service/cache_baseline.ex",
+      "find": "  def failure_kind({:unreachable, _}), do: :transient",
+      "replace": "  def failure_kind({:unreachable, _}), do: :absent",
+      "guarded_by": "test/lei_service/cache_probe_test.exs",
+      "app": "apps/lei_service"
+    },
+    {
+      "id": "baseline-counts-one-repository-many-times",
+      "bug": "A monorepo publishes many packages from one repository. Counting that repository once per package inflates both the denominator and the hits, and a corpus of monorepos would report a hit rate driven by how many packages each one publishes.",
+      "file": "apps/lei_service/lib/lei_service/cache_baseline.ex",
+      "find": "    repositories = ok |> Enum.map(fn %{repository: {:ok, url}} -> url end) |> Enum.uniq()",
+      "replace": "    repositories = ok |> Enum.map(fn %{repository: {:ok, url}} -> url end)",
+      "guarded_by": "test/lei_service/cache_probe_test.exs",
+      "app": "apps/lei_service"
+    },
+    {
+      "id": "baseline-coverage-counts-repositories-not-packages",
+      "bug": "Computing coverage over distinct repositories rather than resolved packages reports deduplication as a failure to resolve. Measured on 2026-09-28 it showed npm coverage at 68% when only a few percent of packages had no repository -- the rest were many packages sharing one repository. It reads as a finding about the ecosystem and would have been quoted as one.",
+      "file": "apps/lei_service/lib/lei_service/cache_baseline.ex",
+      "find": "      coverage: rate(length(ok), length(distinct))",
+      "replace": "      coverage: rate(length(repositories), length(distinct))",
+      "guarded_by": "test/lei_service/cache_probe_test.exs",
+      "app": "apps/lei_service"
     }
   ]
 }

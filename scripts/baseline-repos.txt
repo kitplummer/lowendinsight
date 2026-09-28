@@ -1,0 +1,76 @@
+# The corpus the cache baseline is measured against.
+#
+# Fifty public repositories, chosen to be what a customer actually scans: an
+# application with a real, resolved dependency set, not a library with four
+# dependencies of its own. GitHub's dependency-graph SBOM gives the transitive
+# closure, which is where misses cluster -- the caller has never heard of those
+# packages and neither have we.
+#
+# Ecosystem mix is deliberate and includes ecosystems we cannot resolve yet
+# (Go, Ruby, Java, .NET). Those come back as {:unsupported_ecosystem, _} and
+# quantify a gap that would otherwise be invisible: a customer scanning a Go
+# service gets nothing from us today, and the baseline should say so in numbers
+# rather than leave it to be discovered.
+#
+# Keep this list stable. Changing it changes the number, and the point of the
+# measurement is to repeat it after a preload and see whether the money moved it.
+
+# --- npm: applications, not libraries
+excalidraw/excalidraw
+immich-app/immich
+n8n-io/n8n
+strapi/strapi
+hoppscotch/hoppscotch
+appwrite/appwrite
+facebook/docusaurus
+grafana/grafana
+mattermost/mattermost
+vercel/next.js
+
+# --- pypi
+apache/airflow
+django/django
+pallets/flask
+psf/requests
+huggingface/transformers
+scikit-learn/scikit-learn
+home-assistant/core
+ansible/ansible
+sqlalchemy/sqlalchemy
+localstack/localstack
+
+# --- hex: our own ecosystem, and the one we can most cheaply preload
+phoenixframework/phoenix
+elixir-ecto/ecto
+plausible/analytics
+firezone/firezone
+livebook-dev/livebook
+thechangelog/changelog.com
+supabase/realtime
+papercups-io/papercups
+oban-bg/oban
+kitplummer/lowendinsight
+
+# --- cargo
+denoland/deno
+BurntSushi/ripgrep
+sharkdp/bat
+tauri-apps/tauri
+starship/starship
+alacritty/alacritty
+zellij-org/zellij
+meilisearch/meilisearch
+rust-lang/cargo
+astral-sh/uv
+
+# --- ecosystems we cannot resolve yet: the size of the gap, in packages
+hashicorp/terraform
+gohugoio/hugo
+prometheus/prometheus
+caddyserver/caddy
+grpc/grpc-go
+discourse/discourse
+fastlane/fastlane
+elastic/elasticsearch
+dotnet/aspnetcore
+getsentry/sentry

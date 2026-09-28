@@ -555,6 +555,76 @@
         }
       }
     },
+    "/v1/cache/probe": {
+      "post": {
+        "summary": "Ask whether repositories are already cached",
+        "description": "Read-only membership check: does the shared cache already hold a report for each of these repositories? Nothing is cloned, nothing is analysed and no credits are charged, so this can be used to size a job before submitting it. Requires the `cache` scope. If the cache cannot be read the response is 503 rather than a list of misses -- an unreachable cache must not be reported as an empty one.",
+        "operationId": "cacheProbe",
+        "tags": [
+          "Cache"
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "urls"
+                ],
+                "properties": {
+                  "urls": {
+                    "type": "array",
+                    "maxItems": 500,
+                    "items": {
+                      "type": "string",
+                      "format": "uri"
+                    },
+                    "description": "Repository URLs, at most 500."
+                  }
+                }
+              },
+              "example": {
+                "urls": [
+                  "https://github.com/kitplummer/lowendinsight",
+                  "https://github.com/elixir-lang/elixir"
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Membership for each URL",
+            "content": {
+              "application/json": {
+                "example": {
+                  "total": 2,
+                  "hits": 1,
+                  "misses": 1,
+                  "results": {
+                    "https://github.com/kitplummer/lowendinsight": true,
+                    "https://github.com/elixir-lang/elixir": false
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "description": "The key does not carry the cache scope"
+          },
+          "422": {
+            "description": "Missing, empty or oversized urls array"
+          },
+          "503": {
+            "description": "The cache could not be read; no rate is reported"
+          }
+        }
+      }
+    },
     "/gh_trending": {
       "get": {
         "summary": "List configured trending languages",
