@@ -120,12 +120,9 @@ the deployment default applies.
   than another doing 200 trivial ones. There is a `max_repo_size_kb` guard on
   the analysis path but no per-org concurrency cap, so a determined beta user can
   cost more than the number suggests.
-- **An anonymous caller is still asked to pay.** `Gate.admit/2` challenges a
-  caller with no org, and beta does not change that: the 402 is an
-  authentication boundary rather than a price. The consequence is that an agent
-  without an account can buy credits it cannot usefully spend, because analysis
-  is free for accounts. Left alone deliberately rather than changed without a
-  decision; see Open Questions.
+- **An account-less agent still pays, but only the floor.** See *An agent has no
+  concept of a beta* below. It is asked for 500 credits ($0.50) once, and those
+  credits are not spent while analysis is free.
 - **Two code paths for charging exist at once**, and only one of them runs in
   production at a time. Mitigated by the beta branch being one `cond` arm and
   one zero, not a parallel implementation.
@@ -140,18 +137,41 @@ the deployment default applies.
   appears from nowhere when beta ends.
 - ADR-002's ledger mechanics are untouched.
 
+### An agent has no concept of a beta
+
+A "beta period" is a human idea. An agent has a 402 handler, and the two obvious
+answers are both wrong:
+
+- **Charge it the usual $15 block.** It pays fifteen dollars and the credits are
+  never spent, because beta zeroes the cost of an analysis. That is taking money
+  for nothing.
+- **Serve it for free.** `acp_checkout_session.ex` already records why there is no
+  free agent SKU: "an org costs nothing to create here, so any allowance per org
+  is an allowance per attacker". Human signup is bounded by a per-IP rate limit;
+  for agents, money was the only friction, and removing it removes the bound.
+
+So during beta an account-less caller is challenged for **the smallest amount the
+rails will settle** -- 500 credits, $0.50, which is Stripe's floor for a crypto
+PaymentIntent (#144). It buys an account rather than analysis: nothing is
+deducted from it while analysis is free, and it remains spendable when charging
+resumes.
+
+The amount is the maximum of the configured `beta_top_up_credits` and every
+configured rail's declared `minimum_purchase_credits`, so it is payable on every
+rail it is offered for and follows a rail that raises its floor without anyone
+updating a constant. A challenge beneath a rail's minimum is one the agent cannot
+settle: it pays nothing, is refused, and retries forever.
+
+`/llms.txt` states the amount, derived from the same function the gate uses.
+Telling an agent analysis is free while asking it for money, or quoting the wrong
+figure, is the drift `AgentGuide` exists to prevent.
+
 ## Open Questions
 
-1. **Should an anonymous caller be challenged for payment during beta?** Today
-   it is, and the credits it buys cannot be spent on anything that is not
-   already free. The alternatives are to point it at free signup instead, or to
-   accept that the payment rails need exercising and this is how they get it.
-   Changing it alters agent-facing behaviour, so it wants a decision rather than
-   an implementation.
-2. **What ends the beta?** A date, a number of orgs, a volume of analyses, or a
+1. **What ends the beta?** A date, a number of orgs, a volume of analyses, or a
    measurement landing. Nothing currently forces the question, which is how a
    beta becomes permanent.
-3. **Does the allowance need a work-based component** — repository size, or
+2. **Does the allowance need a work-based component** — repository size, or
    concurrent analyses per org — rather than a count?
 
 ## References

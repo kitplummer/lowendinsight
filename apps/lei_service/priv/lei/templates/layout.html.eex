@@ -38,6 +38,14 @@
     </div>
   </nav>
 
+  <%= if assigns[:beta?] do %>
+    <div class="notification is-info" style="border-radius:0;margin-bottom:0;text-align:center;">
+      <strong>Beta.</strong> Analysis is free during beta, up to the monthly
+      allowance on each account. The service is provided with no warranty and
+      any use is at your own risk &mdash; see <a href="/terms">terms</a>.
+    </div>
+  <% end %>
+
   <section class="section">
     <div class="container">
       <%= if assigns[:flash_error] do %>

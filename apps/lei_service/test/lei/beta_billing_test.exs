@@ -18,6 +18,14 @@ defmodule Lei.BetaBillingTest do
 
   alias Lei.{Billing, Credits, Repo, UsageTracker, Wallets}
 
+  # A rail whose minimum differs from the configured beta amount. Without one,
+  # the configured 500 and Tempo's 500 coincide and `max` and `min` over them
+  # return the same number -- which is how the first version of
+  # beta-challenge-below-a-rail-floor passed with the bug reintroduced.
+  defmodule HigherFloorRail do
+    def minimum_purchase_credits, do: 1200
+  end
+
   setup do
     :ok = Ecto.Adapters.SQL.Sandbox.checkout(Repo)
     Ecto.Adapters.SQL.Sandbox.mode(Repo, {:shared, self()})
@@ -149,6 +157,70 @@ defmodule Lei.BetaBillingTest do
     end
   end
 
+  describe "what an agent is asked for" do
+    # An agent has no concept of a beta; it has a 402 handler. Charging it the
+    # full $15 block for analysis that is free would be taking money for
+    # nothing, and serving it for nothing would be an allowance per attacker --
+    # acp_checkout_session.ex already records why there is no free agent SKU:
+    # "an org costs nothing to create here, so any allowance per org is an
+    # allowance per attacker".
+    #
+    # So during beta the challenge is the smallest amount the rails can move.
+    # It buys identity rather than analysis.
+    test "the challenge is the rails' floor, not the usual block" do
+      charging!()
+      assert Lei.Payments.Gate.top_up_credits(0, 0) == 15_000
+
+      beta!()
+
+      assert Lei.Payments.Gate.top_up_credits(0, 0) == 500,
+             "an agent is asked for the full block while analysis is free"
+    end
+
+    test "it is never below what a rail will settle" do
+      # Tempo's minimum is $0.50 because Stripe refuses a crypto PaymentIntent
+      # below that (#144). A challenge under a rail's own floor is one the agent
+      # cannot pay, so it would be refused, pay nothing, and retry forever.
+      beta!()
+      floor = Lei.Payments.Gate.top_up_credits(0, 0)
+
+      for rail <- Application.get_env(:lei_service, :payment_rails, []) do
+        case rail.minimum_purchase_credits() do
+          nil ->
+            :ok
+
+          minimum ->
+            assert floor >= minimum,
+                   "#{inspect(rail)} will not settle #{floor} credits; its minimum is #{minimum}"
+        end
+      end
+    end
+
+    test "the floor follows a rail that declares a higher minimum" do
+      # The mechanism, not the number. Asserting only that the floor is >= every
+      # rail's minimum passes whether the rails are consulted or ignored, as
+      # long as the configured amount happens to be large enough.
+      beta!()
+      saved = Application.get_env(:lei_service, :payment_rails)
+      on_exit(fn -> Application.put_env(:lei_service, :payment_rails, saved) end)
+
+      Application.put_env(:lei_service, :payment_rails, [HigherFloorRail])
+
+      assert Lei.Payments.Gate.top_up_credits(0, 0) == 1200,
+             "the challenge ignores a rail that will not settle the configured amount"
+    end
+
+    test "a request needing more than the floor still asks for the shortfall" do
+      # The floor is a minimum, not a cap: an SBOM naming hundreds of uncached
+      # repositories costs more than one block, and asking for less would admit
+      # a request the agent cannot cover.
+      beta!()
+
+      assert Lei.Payments.Gate.top_up_credits(0, 900) == 900
+      assert Lei.Payments.Gate.top_up_credits(200, 900) == 700
+    end
+  end
+
   describe "what a user is told" do
     test "the terms page states the mode the deployment is actually in" do
       beta!()
@@ -178,6 +250,12 @@ defmodule Lei.BetaBillingTest do
       # The rates stay published: when beta ends the numbers must not appear
       # from nowhere.
       assert conn.resp_body =~ "One credit is $0.001"
+
+      # And the amount an account-less agent is actually asked for, because
+      # /llms.txt saying analysis is free while the gate asks for $15 is exactly
+      # the drift the agent guide exists to prevent.
+      assert conn.resp_body =~ "500 credits ($0.50)",
+             "agents are not told what the challenge will actually ask for"
 
       charging!()
       conn = :get |> Plug.Test.conn("/llms.txt") |> LeiService.Endpoint.call([])

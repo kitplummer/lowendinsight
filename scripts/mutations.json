@@ -824,8 +824,8 @@
       "id": "top-up-below-shortfall",
       "bug": "The top-up asked for is the default block even when the request needs more, so an agent pays and is refused again. (#152)",
       "file": "apps/lei_service/lib/lei/payments/gate.ex",
-      "find": "    max(default_top_up() - min(balance, 0), required - balance)",
-      "replace": "    default_top_up() - min(balance, 0)",
+      "find": "    max(base_top_up() - min(balance, 0), required - balance)",
+      "replace": "    base_top_up() - min(balance, 0)",
       "guarded_by": "test/lei_service/unbilled_paths_test.exs",
       "app": "apps/lei_service"
     },
@@ -3635,6 +3635,51 @@
       "find": "      \"lei_billing_mode{mode=\\\"#{Lei.Billing.mode()}\\\"} 1\",",
       "replace": "      \"\",",
       "guarded_by": "test/lei/beta_billing_test.exs",
+      "app": "apps/lei_service"
+    },
+    {
+      "id": "beta-charges-agents-the-full-block",
+      "bug": "An agent has no concept of a beta; it has a 402 handler. Asking it for the full $15 block while analysis is free takes money for nothing -- the agent pays 15 dollars and its credits are never spent, because beta zeroes the cost of an analysis. The challenge during beta buys identity at the least the rails will settle (ADR-007).",
+      "file": "apps/lei_service/lib/lei/payments/gate.ex",
+      "find": "    if Lei.Billing.beta?(), do: beta_top_up(), else: default_top_up()",
+      "replace": "    default_top_up()",
+      "guarded_by": "test/lei/beta_billing_test.exs",
+      "app": "apps/lei_service"
+    },
+    {
+      "id": "beta-challenge-below-a-rail-floor",
+      "bug": "Tempo will not settle under 500 credits, because Stripe refuses a crypto PaymentIntent below $0.50 (#144). A challenge beneath a rail's own minimum is one the agent cannot pay: it settles nothing, is refused again, and retries forever. Taking the maximum of the configured amount and every rail's declared minimum keeps the challenge payable on every rail it is offered for.",
+      "file": "apps/lei_service/lib/lei/payments/gate.ex",
+      "find": "    |> Enum.max(fn -> 0 end)\n    |> max(configured)",
+      "replace": "    |> Enum.max(fn -> 0 end)\n    |> min(configured)",
+      "guarded_by": "test/lei/beta_billing_test.exs",
+      "app": "apps/lei_service"
+    },
+    {
+      "id": "beta-agents-not-told-the-challenge",
+      "bug": "/llms.txt telling an agent analysis is free while the gate asks it for money, or quoting the wrong amount, is the drift AgentGuide exists to prevent -- a page that states a price the service does not charge. During beta the usual block and the actual challenge differ.",
+      "file": "apps/lei_service/lib/lei_service/agent_guide.ex",
+      "find": "      challenge_credits: Lei.Payments.Gate.top_up_credits(0, 0),",
+      "replace": "      challenge_credits: Application.get_env(:lei_service, :default_top_up_credits, 15_000),",
+      "guarded_by": "test/lei/beta_billing_test.exs",
+      "app": "apps/lei_service"
+    },
+    {
+      "id": "beta-pages-unlabelled",
+      "bug": "Beta shipped labelled in /llms.txt and /terms only. The signup form still offered Pro at $29/mo, the homepage still said the service is paid per use and printed a price table, and nothing said beta. Injecting the mode once in render_page/3 is what keeps the banner from being on one page and missing from another.",
+      "file": "apps/lei_service/lib/lei/web/router.ex",
+      "find": "    assigns = Keyword.put_new(assigns, :beta?, Lei.Billing.beta?())",
+      "replace": "    assigns = Keyword.put_new(assigns, :beta?, false)",
+      "guarded_by": "test/lei_service/beta_web_content_test.exs",
+      "app": "apps/lei_service"
+    },
+    {
+      "id": "beta-sells-pro-for-nothing",
+      "bug": "During beta a Pro org gets the same allowance as a free one (ADR-007), so $29/mo buys a rate limit nobody can exhaust at 200 analyses a month. Offering the Pro radio while beta is on takes a subscription for nothing.",
+      "file": "apps/lei_service/priv/lei/templates/signup.html.eex",
+      "find": "        <%= if assigns[:beta?] do %>",
+      "replace": "        <%= if false do %>",
+      "guarded_by": "test/lei_service/beta_web_content_test.exs",
       "app": "apps/lei_service"
     }
   ]
