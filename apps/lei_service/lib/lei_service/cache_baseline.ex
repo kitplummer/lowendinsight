@@ -27,6 +27,52 @@ defmodule LeiService.CacheBaseline do
   def supported_ecosystems, do: @registries ++ Map.keys(@direct)
 
   @doc """
+  Start only what the task actually needs.
+
+  `Mix.Task.run("app.start")` boots lei_service, which wants Postgres, Redis and
+  -- under MIX_ENV=prod -- LEI_JWT_SECRET and the rest. The scheduled measurement
+  runs on a CI runner with none of those. It raised there on 2026-09-28, `| tee`
+  swallowed the exit status, and the job reported success having measured
+  nothing: the failure shape this whole measurement was built to avoid, in the
+  thing built to avoid it.
+
+    * `:redis` - the local cache is being probed, so the app has to be up.
+    * `:http` - the probe is an HTTP call to a deployed service. Nothing local is
+      needed but configuration and an HTTP client, so nothing local is started.
+
+  Returns `:ok`. Raises if what it does need will not start, rather than
+  proceeding to fail obscurely later.
+  """
+  @spec boot(:redis | :http) :: :ok
+  def boot(:redis) do
+    Mix.Task.run("app.start")
+    :ok
+  end
+
+  def boot(:http) do
+    Mix.Task.run("loadpaths")
+
+    # Loaded, not started: Application.get_env needs the app loaded for the
+    # analyzer's thresholds and the cache TTL to resolve to their configured
+    # values rather than to defaults.
+    Enum.each([:lowendinsight, :lei_service], fn app ->
+      case Application.load(app) do
+        :ok -> :ok
+        {:error, {:already_loaded, ^app}} -> :ok
+        {:error, reason} -> raise "could not load #{app}: #{inspect(reason)}"
+      end
+    end)
+
+    # :temp is started because AnalyzerModule calls Temp.track!/0, and :httpoison
+    # for the registries and the probe.
+    Enum.each([:httpoison, :temp], fn app ->
+      {:ok, _} = Application.ensure_all_started(app)
+    end)
+
+    :ok
+  end
+
+  @doc """
   The package coordinates an SPDX SBOM names, excluding the repository itself.
 
   GitHub's dependency-graph SBOM lists the subject repository as a package of

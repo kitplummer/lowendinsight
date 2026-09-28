@@ -3,7 +3,8 @@ defmodule LeiService.CacheProbeTest do
   The read-only cache probe, and the arithmetic built on it.
 
   This exists to measure one number: what fraction of a real manifest is already
-  cached (lei_ops/product/critical-mass.md). Every failure mode here has the same
+  cached, which is what ADR-005's argument rests on. Every failure mode here has
+  the same
   shape -- a plausible number over nothing -- which is the shape this repository
   keeps shipping, so each is driven rather than read.
   """
@@ -368,6 +369,108 @@ defmodule LeiService.CacheProbeTest do
 
     test "a missing key fails the job rather than measuring nothing", %{yaml: yaml} do
       assert yaml =~ "LEI_ADMIN_API_KEY is not set"
+    end
+
+    test "a step that pipes into tee sets pipefail", %{yaml: yaml} do
+      # `| tee` returns tee's status. Without pipefail, mix raised
+      # "LEI_JWT_SECRET env var is required in production", tee exited 0, and
+      # every step of the run reported success having measured nothing
+      # (2026-09-28) -- the failure shape the measurement exists to avoid,
+      # inside the thing built to avoid it. Checked across the whole file rather
+      # than at the two places it is written today, so a pipeline added later is
+      # covered.
+      blocks = String.split(yaml, ~r/^      - name: /m)
+
+      Enum.each(blocks, fn block ->
+        if String.contains?(block, "| tee") do
+          assert String.contains?(block, "set -o pipefail"),
+                 "a step pipes into tee without pipefail, so a failure in it would be invisible:\n#{block}"
+        end
+      end)
+    end
+
+    test "it does not run under MIX_ENV=prod", %{yaml: yaml} do
+      # Starting the app under prod demands LEI_JWT_SECRET and the rest, and a CI
+      # runner has none of them. config/gha.exs is the environment built for CI
+      # with no Postgres and no Redis.
+      refute yaml =~ "MIX_ENV: prod",
+             "the measurement runs in an environment that requires production secrets"
+
+      assert yaml =~ "MIX_ENV: gha"
+    end
+
+    test "a run with no hit rate in it fails the job", %{yaml: yaml} do
+      # The summary step runs `if: always()`. Writing a sad heading and exiting 0
+      # is how a job that measured nothing stays green, which is what happened.
+      # The check reads the JSON, because tee writes the text file even for a run
+      # that raised halfway through.
+      assert yaml =~ ~r/hit_rate != null/,
+             "nothing in the job asserts that a hit rate was actually measured"
+
+      assert yaml =~ "exit 1"
+    end
+  end
+
+  describe "the miss list" do
+    defp entry(package, repository),
+      do: %{ecosystem: "npm", package: package, repository: repository}
+
+    test "is the repositories we resolved and do not hold" do
+      resolved = [
+        entry("a", {:ok, "https://github.com/o/a"}),
+        entry("b", {:ok, "https://github.com/o/b"}),
+        entry("c", {:error, :no_repository})
+      ]
+
+      missing = Baseline.missing(resolved, MapSet.new(["https://github.com/o/a"]))
+
+      assert missing == ["https://github.com/o/b"]
+    end
+
+    test "a repository many packages share appears once" do
+      # It is one clone and one report however many packages point at it.
+      # Counting it per package would inflate the preload cost by the shape of
+      # the manifest rather than the work.
+      resolved = [
+        entry("a", {:ok, "https://github.com/o/mono"}),
+        entry("b", {:ok, "https://github.com/o/mono"})
+      ]
+
+      assert Baseline.missing(resolved, MapSet.new()) == ["https://github.com/o/mono"]
+    end
+
+    test "it is in the summary, because a count cannot be sampled" do
+      resolved = [entry("a", {:ok, "https://github.com/o/a"})]
+
+      summary = Baseline.summarise(resolved, MapSet.new(), ["o/r"], %{}, "all")
+
+      assert summary.repositories_missing == ["https://github.com/o/a"]
+    end
+  end
+
+  describe "the resolver contract" do
+    test "a resolver returning the entry instead of the resolution fails loudly" do
+      # This shipped. The Mix task's resolver returned the entry with :repository
+      # already set, resolve_all set :repository to that whole entry, nothing
+      # matched {:ok, url}, and the run reported "Probing 0 repositories" and a
+      # coverage of 0% as though those were findings. The tests passed throughout
+      # because they supply their own resolver.
+      entries = [%{ecosystem: "npm", package: "a"}]
+
+      resolved =
+        Baseline.resolve_all(entries, fn entry -> Map.put(entry, :repository, {:ok, "x"}) end)
+
+      assert [%{repository: {:error, {:crashed, message}}}] = resolved
+      assert message =~ "expected {:ok, url} or {:error, reason}"
+    end
+
+    test "a well-behaved resolver is untouched" do
+      resolved =
+        Baseline.resolve_all([%{ecosystem: "npm", package: "a"}], fn _ ->
+          {:ok, "https://github.com/o/a"}
+        end)
+
+      assert [%{repository: {:ok, "https://github.com/o/a"}}] = resolved
     end
   end
 end

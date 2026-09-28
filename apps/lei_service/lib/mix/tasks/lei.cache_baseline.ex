@@ -7,8 +7,8 @@ defmodule Mix.Tasks.Lei.CacheBaseline do
       mix lei.cache_baseline --repos repos.txt
 
   ADR-005 argues the shared cache is the asset: the five-hundredth customer
-  holding `jason` costs nothing extra. That is only true at some hit rate, and
-  the hit rate had never been measured.
+  holding `jason` costs nothing extra. That is only true at some hit rate, so the
+  rate is worth measuring rather than assuming.
 
   For each `owner/repo` in `--repos`, this fetches GitHub's dependency-graph
   SBOM -- a *real* resolved dependency set, direct and transitive, not a
@@ -40,7 +40,8 @@ defmodule Mix.Tasks.Lei.CacheBaseline do
   ## Options
 
     * `--repos PATH` - one `owner/repo` (or GitHub URL) per line; `#` comments
-      and blanks ignored. Required.
+      and blanks ignored. Required. Which repositories are worth measuring is a
+      question for whoever runs this, so no list ships here.
     * `--probe-url URL` - service base URL to probe, e.g. production. Needs
       `LEI_API_KEY` with the `cache` scope. Without it the local cache is
       measured, which for a development machine is a 0% you already knew.
@@ -93,7 +94,9 @@ defmodule Mix.Tasks.Lei.CacheBaseline do
         list -> String.split(list, ",", trim: true) |> Enum.map(&String.trim/1)
       end
 
-    Mix.Task.run("app.start")
+    # Probing a deployed service needs no local Redis, and booting the app to
+    # get one is how this failed in CI.
+    Baseline.boot(if opts[:probe_url], do: :http, else: :redis)
 
     shell().info("Reading #{length(repos)} SBOMs from GitHub...")
     {read, failed} = Enum.split_with(Enum.map(repos, &fetch_sbom/1), &match?({:ok, _, _}, &1))

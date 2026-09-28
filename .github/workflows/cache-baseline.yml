@@ -1,34 +1,28 @@
 name: cache-baseline
 
-# What fraction of a real manifest is already in our cache.
+# What fraction of a repository list is already in the cache.
 #
-# ADR-005 argues the shared cache is the asset: the five-hundredth customer
-# holding `jason` costs nothing extra. That is true at some hit rate and false
-# at others, and the number had never been measured. This measures it against
-# production, on a schedule, so it can be compared before and after any preload.
-#
-# Monthly, because the cache TTL is 30 days: a preloaded corpus expires on that
-# cycle whether or not anything changed, so monthly is the period over which the
-# number actually moves.
+# ADR-005 argues the shared cache is the asset, which is true at some hit rate
+# and false at others. This measures it against a list of repositories the caller
+# supplies, so the claim can be checked rather than assumed.
 #
 # Read-only. It calls POST /v1/cache/probe, which clones nothing, analyses
 # nothing and charges nothing. It cannot warm the cache it is measuring -- which
 # is the whole reason the probe route exists.
+#
+# The list of repositories to measure is an input, not a file here: which corpus
+# is worth measuring, and what it would cost to fill, is an operating question
+# rather than part of the service.
 
 on:
   workflow_dispatch:
     inputs:
       repos:
-        description: Repository list to measure against
-        default: scripts/baseline-repos.txt
+        description: Path to a file of owner/repo lines to measure against
+        required: true
       concurrency:
         description: Registry lookups in flight (higher is faster and fails more)
         default: '6'
-      sample:
-        description: Repositories to analyse when costing the miss list
-        default: '25'
-  schedule:
-    - cron: '17 6 1 * *'
 
 permissions:
   contents: read
@@ -64,17 +58,27 @@ jobs:
           fi
 
       - name: Measure the hit rate against production
+        shell: bash
         env:
-          MIX_ENV: prod
+          # gha, not prod: config/gha.exs is the environment built for CI with no
+          # Postgres and no Redis. Under prod, starting the app demanded
+          # LEI_JWT_SECRET and raised -- and the raise was invisible, see below.
+          MIX_ENV: gha
           # Reading another public repository's dependency-graph SBOM. If the
           # job-scoped token is refused for that, every SBOM fetch 403s, the
           # --min-repos guard below fails the run and prints the statuses; the
           # fix is a PAT with public repo read as LEI_GH_TOKEN.
           LEI_GH_TOKEN: ${{ secrets.LEI_GH_TOKEN || secrets.GITHUB_TOKEN }}
           LEI_API_KEY: ${{ secrets.LEI_ADMIN_API_KEY }}
-          REPOS: ${{ inputs.repos || 'scripts/baseline-repos.txt' }}
+          REPOS: ${{ inputs.repos }}
           CONCURRENCY: ${{ inputs.concurrency || '6' }}
         run: |
+          # pipefail, because `| tee` returns tee's status. Without it mix raised
+          # "LEI_JWT_SECRET env var is required in production", tee exited 0, and
+          # every step of this job reported success having measured nothing
+          # (2026-09-28). A measurement job that cannot fail is not a measurement.
+          set -o pipefail
+
           # --min-repos 40 of 50: a run that could read only a handful of SBOMs
           # must fail rather than publish a rate measured over them.
           mix lei.cache_baseline \
@@ -86,28 +90,9 @@ jobs:
             --max-lookup-failures 10 \
             | tee baseline.txt
 
-      # The cost of scanning what we do not hold, from a sample of that same
-      # list. The unit cost record measured fifteen repositories chosen by hand
-      # and found that history size drives the clone, so a mean from a different
-      # population is a mean for a different corpus.
-      #
-      # This analyses repositories but writes nothing to the cache -- it calls
-      # the analyzer directly, and only the service stores reports -- so costing
-      # cannot improve the hit rate it was just measuring.
-      - name: Cost a scan of the miss list
-        if: success()
-        env:
-          MIX_ENV: prod
-          SAMPLE: ${{ inputs.sample || '25' }}
-        run: |
-          mix lei.scan_cost \
-            --baseline baseline.json \
-            --sample "$SAMPLE" \
-            --out cost.json \
-            | tee cost.txt
-
       - name: Put the headline in the run summary
         if: always()
+        shell: bash
         run: |
           if [ -f baseline.txt ]; then
             {
@@ -116,16 +101,17 @@ jobs:
               cat baseline.txt
               echo '```'
             } >> "$GITHUB_STEP_SUMMARY"
-            if [ -f cost.txt ]; then
-              {
-                echo '## Cost to scan what we do not hold'
-                echo '```'
-                cat cost.txt
-                echo '```'
-              } >> "$GITHUB_STEP_SUMMARY"
-            fi
           else
             echo '## Cache baseline did not produce a measurement' >> "$GITHUB_STEP_SUMMARY"
+          fi
+
+          # An `if: always()` step that writes a sad heading and exits 0 is how a
+          # job with no measurement in it stays green. The hit rate has to be in
+          # the JSON, not merely somewhere in stdout: `tee` writes baseline.txt
+          # even for a run that raised halfway through it.
+          if ! jq -e '.overall.hit_rate != null' baseline.json > /dev/null 2>&1; then
+            echo "::error::No hit rate was measured. baseline.json is missing or has none, so this run measured nothing."
+            exit 1
           fi
 
       # The JSON carries the unresolved coordinates as well as the counts, which
@@ -139,7 +125,5 @@ jobs:
           path: |
             baseline.json
             baseline.txt
-            cost.json
-            cost.txt
           retention-days: 90
           if-no-files-found: warn
