@@ -563,10 +563,10 @@ defmodule LeiService.Endpoint do
   # the rest of /v1/cache, because the answer is a description of what the
   # shared corpus holds and an analyze-scoped key has no business enumerating it.
   #
-  # This exists to measure the hit rate against real manifests
-  # (lei_ops/product/critical-mass.md). Measuring it by analysing would populate
-  # the cache as it read it, so the first repository measured is the last one
-  # that reports honestly.
+  # This exists so the hit rate can be measured against real manifests, which is
+  # what ADR-005's argument rests on. Measuring it by analysing would populate the
+  # cache as it read it, so the first repository measured would be the last one
+  # to report honestly.
   post "/v1/cache/probe" do
     case conn.body_params["urls"] do
       urls when is_list(urls) and length(urls) > @probe_limit ->
