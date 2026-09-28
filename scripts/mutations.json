@@ -2552,8 +2552,8 @@
       "id": "monitor-ignores-switched-off-rail",
       "bug": "A payment rail switched off during an incident and never switched back on is revenue quietly declining; a disabled rail refuses cleanly, which looks like no demand.",
       "file": ".github/workflows/monitor.yml",
-      "find": "            echo \"::error::Payment path(s) switched off: ${OFF}.",
-      "replace": "            echo \"::notice::Payment path(s) switched off: ${OFF}.",
+      "find": "            echo \"::error::Payment path(s) switched off: ${UNEXPECTED}.",
+      "replace": "            echo \"::notice::Payment path(s) switched off: ${UNEXPECTED}.",
       "guarded_by": "test/lei_service/payment_monitoring_wiring_test.exs",
       "app": "apps/lei_service"
     },
@@ -3725,6 +3725,33 @@
       "find": "    --from-artifact) SOURCE=\"artifact\"; shift ;;",
       "replace": "    --from-artifact) fail \"not supported\" ;;",
       "guarded_by": "test/lei_service/backup_verification_test.exs",
+      "app": "apps/lei_service"
+    },
+    {
+      "id": "beta-accepts-posted-pro-tier",
+      "bug": "Hiding the Pro radio is a form change, and a form is a suggestion. POST /signup still accepted tier=pro, so anything posting directly could subscribe and receive exactly the allowance a free account gets. Harmless while Stripe is in test mode; not harmless the day it goes live with beta still on.",
+      "file": "apps/lei_service/lib/lei/web/router.ex",
+      "find": "          if Lei.Billing.beta?() do",
+      "replace": "          if false do",
+      "guarded_by": "test/lei_service/beta_web_content_test.exs",
+      "app": "apps/lei_service"
+    },
+    {
+      "id": "monitor-pages-for-a-switch-beta-turned-off",
+      "bug": "acp and pro_checkout are switched off on purpose during beta -- one sells credit bundles, the other a subscription, and analysis is free. Paging every 15 minutes for a state we chose is how an alarm stops being read, which monitor.yml already documents about itself twice.",
+      "file": ".github/workflows/monitor.yml",
+      "find": "          BETA_EXPECTED_OFF=\"acp pro_checkout\"",
+      "replace": "          BETA_EXPECTED_OFF=\"\"",
+      "guarded_by": "test/lei_service/payment_monitoring_wiring_test.exs",
+      "app": "apps/lei_service"
+    },
+    {
+      "id": "monitor-ignores-the-rails-agents-pay-on",
+      "bug": "The one-off $0.50 account charge for an account-less agent settles on mpp and tempo. If those are switched off no agent can get an account, and free analysis hides it because every existing account keeps working. Inferring 'enabled' from the absence of an off signal also passes when the gauge stops being published.",
+      "file": ".github/workflows/monitor.yml",
+      "find": "          REQUIRED_ON=\"mpp tempo\"",
+      "replace": "          REQUIRED_ON=\"\"",
+      "guarded_by": "test/lei_service/payment_monitoring_wiring_test.exs",
       "app": "apps/lei_service"
     }
   ]

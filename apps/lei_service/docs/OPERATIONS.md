@@ -967,6 +967,73 @@ Or via environment:
 LOG_LEVEL=debug ./bin/lei_service foreground
 ```
 
+### Going live while the beta is on
+
+Analysis is free during beta (ADR-007), so the only real money that moves is the
+one-off **$0.50 account charge** an account-less agent pays. Until Stripe is in
+live mode that charge cannot settle, which means **agents cannot get accounts at
+all** -- test-mode PaymentIntents need test instruments. Humans are unaffected:
+signup is free and takes no payment.
+
+So "live beta" means exactly this: live Stripe, free analysis, two paths off.
+
+Order matters. Each step is checked by something, and doing them out of order
+turns the monitor red for a reason that is not a fault.
+
+**1. Switch off the paths that would take money for nothing.** During beta `acp`
+sells credit bundles and `pro_checkout` sells a subscription, and neither buys
+anything analysis does not already give away.
+
+```bash
+scripts/payments.sh switch-off acp --reason "beta: analysis is free, credits buy nothing"
+scripts/payments.sh switch-off pro_checkout --reason "beta: Pro buys no extra allowance"
+```
+
+`monitor.yml` knows these two are expected off **while `lei_billing_mode` is
+beta**, so it will not page for them. It still fails if `mpp` or `tempo` is off,
+because those settle the account charge.
+
+**2. Set the live Stripe secrets**, over stdin, never as arguments:
+
+```bash
+flyctl secrets import -a lowendinsight
+# STRIPE_SECRET_KEY=sk_live_...
+# STRIPE_WEBHOOK_SECRET=whsec_...   from the LIVE endpoint, not the test one
+```
+
+The webhook secret must come from the live endpoint. A test secret against live
+deliveries fails every signature, subscriptions silently stop activating, and the
+symptom appears up to 24 hours later because Stripe keeps the old secret valid --
+the failure `monitor.yml`'s webhook check exists for.
+
+**3. Flip the expectation, last.** `scripts/canary.sh` compares the running mode
+against it, so flipping this before the deploy fails the canary on purpose:
+
+```bash
+gh variable set STRIPE_EXPECTED_MODE --body live
+```
+
+**4. Watch one monitor run.** `lei_stripe_mode{mode="live"} 1`,
+`lei_billing_mode{mode="beta"} 1`, webhook counters all zero, and `mpp`/`tempo`
+enabled. Then send a real webhook from Stripe and confirm
+`lei_stripe_webhook_total{result="ok"}` moves; `unconfigured` or `invalid` moving
+instead means step 2 is wrong.
+
+**What to check before any of it**
+
+- `BACKUP_PASSPHRASE` is in a password manager, and `scripts/backup-pull.sh` has
+  opened a real artifact with it. A live beta is the point at which losing the
+  database stops being an inconvenience.
+- `/terms` is reachable and states no warranty and use at your own risk.
+- The nightly backup verification is green, and the producer trigger ran.
+- `NTFY_TOKEN` is accepted -- the monitor's alert-channel probe is green.
+
+**Leaving beta** is a separate change and is two steps that must happen together
+(ADR-007): `LEI_BILLING_MODE=charge` on the app and `LEI_EXPECTED_BILLING_MODE`
+set to `charge`. The monitor fails while they disagree. Switch `acp` and
+`pro_checkout` back on at the same time, or they stay off and nothing will page
+about it once beta is no longer the reason.
+
 ## Payment kill switches
 
 Each way payment comes in can be switched off at runtime, without a deploy

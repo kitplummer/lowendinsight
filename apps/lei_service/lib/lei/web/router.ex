@@ -82,9 +82,29 @@ defmodule Lei.Web.Router do
       render_page(conn, "signup.html.eex", flash_error: "Organization name is required.")
     else
       case tier do
-        "free" -> signup_free(conn, name)
-        "pro" -> signup_pro(conn, name)
-        _ -> render_page(conn, "signup.html.eex", flash_error: "Invalid tier selected.")
+        "free" ->
+          signup_free(conn, name)
+
+        "pro" ->
+          # Refused here, not only hidden in the form. The signup template stops
+          # offering Pro during beta, but a form is a suggestion: this path still
+          # accepted tier=pro, so anything posting directly could subscribe and
+          # receive exactly the allowance a free account gets (ADR-007). Harmless
+          # while Stripe is in test mode, and not harmless the day it goes live
+          # with beta still on.
+          if Lei.Billing.beta?() do
+            render_page(conn, "signup.html.eex",
+              flash_error:
+                "Paid plans are unavailable during beta -- analysis is free for every " <>
+                  "account, up to the monthly allowance. Create a free account instead; " <>
+                  "we will tell you before anything is charged."
+            )
+          else
+            signup_pro(conn, name)
+          end
+
+        _ ->
+          render_page(conn, "signup.html.eex", flash_error: "Invalid tier selected.")
       end
     end
   end
