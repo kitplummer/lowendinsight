@@ -157,6 +157,44 @@ nightly backup over a human's calendar would make this job red for a reason that
 is not about the backup -- and `monitor.yml` already documents what a
 permanently red check does to the people meant to read it.
 
+### The scheduler never fired, and the restart policy was not why
+
+**This supersedes the section below.** That section inferred `--restart no` as the
+reason Fly's scheduler never started the producer, and said an isolating test had
+been run to confirm it. The test was set up and destroyed before it reported, and
+the inference was wrong.
+
+The machine was recreated on 2026-09-27 with `--restart on-failure` -- Fly's own
+documented default for a scheduled machine. It has still never been started by
+flyd. Every start event across three configurations and two days reads
+`SOURCE=user`: a human forcing one.
+
+| created | schedule | restart | scheduled runs |
+|---|---|---|---|
+| 09-26 02:10 | daily | no | 0 |
+| 09-27 15:48 | daily | on-failure | 0 |
+| 09-27 16:01 | daily | on-failure | 0 |
+
+So `--schedule daily` does not work on this app, for a reason nothing available
+to us explains. There is no API that reports when the next run is due, and the
+machine's own event log shows no attempt, so there is nothing further to read.
+
+**The schedule moved to `backup-trigger.yml`**, a workflow at 02:10 UTC that
+starts the machine and waits for a new exit event with code 0. A workflow either
+ran or it did not, its history is visible, and its failure pages.
+
+This does not undo the separation this ADR is about. CI still holds no database
+credentials and no bucket write key, and takes no dump: it says "run now" to a
+producer that does the work inside Fly's private network with its own
+credentials. What it costs is a dependency -- if GitHub Actions is down the
+backup does not happen -- which is worse than a working scheduler and better
+than a scheduler that has never run.
+
+Retaining `--schedule daily` on the machine costs nothing and would start
+working silently if Fly ever begins honouring it; the trigger starting an
+already-running machine is a no-op, and the freshness check is indifferent to
+which of them produced the object.
+
 ### Retries: the first answer here was wrong, and it stopped the backup running
 
 **Superseded.** This section originally read:

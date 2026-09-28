@@ -1,0 +1,150 @@
+name: backup-trigger
+
+# Start the producer, because Fly's scheduler does not.
+#
+# The machine was created with `--schedule daily` on 2026-09-26 and recreated on
+# 2026-09-27 with `--restart on-failure` -- Fly's own default for a scheduled
+# machine. In neither configuration did flyd ever start it: every start event in
+# its history reads SOURCE=user, a human forcing one. Two days, three
+# configurations, not one scheduled run. ADR-006 inferred that `--restart no`
+# was the cause; that theory did not survive `on-failure` failing the same way.
+#
+# So the schedule lives somewhere observable instead. A workflow either ran or it
+# did not, its history is visible, and its failure pages.
+#
+# THIS DOES NOT TAKE THE BACKUP. ADR-006's separation stands: the dump happens on
+# a machine inside Fly's private network, with the database credentials and the
+# bucket write key, neither of which is here. This says "run now" and reports
+# what happened. If GitHub is down the backup does not happen, which is worse
+# than a working scheduler and better than the nothing we had.
+#
+# Required secret:
+#   FLY_BACKUP_TOKEN   a Fly token scoped to the BACKUP app:
+#                        flyctl tokens create deploy -a lowendinsight-backup
+#                      Deliberately separate from FLY_API_TOKEN and
+#                      FLY_DB_TOKEN. This one may start a machine in one app and
+#                      nothing else.
+
+on:
+  schedule:
+    # 02:10 UTC, before backup.yml verifies at 03:30. A trigger that ran after
+    # its own verification would leave the check reading the previous day's
+    # object and failing on staleness for a day.
+    - cron: '10 2 * * *'
+  workflow_dispatch:
+
+concurrency:
+  group: backup-producer
+  cancel-in-progress: false
+
+jobs:
+  produce:
+    name: Start the producer
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: superfly/flyctl-actions/setup-flyctl@ed8efb33836e8b2096c7fd3ba1c8afe303ebbff1 # master @ 2026-09-25
+        with:
+          version: v0.4.108
+
+      - name: Start it and wait for the result
+        id: produce
+        env:
+          FLY_API_TOKEN: ${{ secrets.FLY_BACKUP_TOKEN }}
+          APP: lowendinsight-backup
+        run: |
+          if [ -z "$FLY_API_TOKEN" ]; then
+            echo "::error::FLY_BACKUP_TOKEN is not set, so no backup was started. Create one with: flyctl tokens create deploy -a lowendinsight-backup"
+            exit 1
+          fi
+
+          # Discovered, not hardcoded. The machine is recreated whenever a secret
+          # changes -- a machine takes its secrets at creation -- and it has been
+          # recreated four times in two days. A hardcoded id becomes a trigger
+          # that starts nothing and says nothing.
+          ID=$(flyctl machine list -a "$APP" --json 2>/dev/null \
+            | jq -r '(map(select(.config.schedule != null)) + .)[0].id // empty')
+
+          if [ -z "$ID" ]; then
+            echo "::error::No machine found in ${APP}. The producer does not exist; see ops/backup/README.md to create it."
+            exit 1
+          fi
+          echo "machine: ${ID}"
+
+          # The newest exit event before we start anything.
+          #
+          # The machine is already `stopped` when we begin -- that is its resting
+          # state -- so a wait loop that only asks "is it stopped?" can be
+          # satisfied by the state it was already in, and then read the *previous*
+          # run's exit code. A prior success would mask a fresh failure. So the
+          # condition is a new exit event, not a state.
+          exits() {
+            flyctl machine list -a "$APP" --json 2>/dev/null \
+              | jq -r --arg id "$ID" \
+                  '[.[] | select(.id == $id) | .events[] | select(.type == "exit") | .timestamp] | max // 0'
+          }
+
+          BEFORE=$(exits)
+          echo "newest exit event before starting: ${BEFORE}"
+
+          flyctl machine start "$ID" -a "$APP" \
+            || { echo "::error::Could not start ${ID}."; exit 1; }
+
+          # Wait for it to finish. The dump takes a few seconds; on-failure
+          # allows up to three attempts, so allow for those too.
+          AFTER="$BEFORE"
+          WAITED=0
+
+          while [ "$AFTER" = "$BEFORE" ] && [ "$WAITED" -lt 300 ]; do
+            sleep 5
+            WAITED=$(( WAITED + 5 ))
+            AFTER=$(exits)
+          done
+
+          echo "newest exit event after: ${AFTER} (waited ${WAITED}s)"
+
+          if [ "$AFTER" = "$BEFORE" ]; then
+            echo "::error::${ID} produced no new exit event in five minutes, so this run has not finished and may not have started. Whether a backup was taken is unknown; check: flyctl logs -a ${APP}"
+            exit 1
+          fi
+
+          # backup.sh exits non-zero on every failure it can detect: an empty
+          # dump, one it cannot read back, an artifact that will not decrypt, an
+          # upload that did not land. So the exit code is the result.
+          #
+          # Read from the newest exit event. `machine list --json` omits the exit
+          # code; the status table carries it.
+          CODE=$(flyctl machine status "$ID" -a "$APP" 2>/dev/null \
+            | grep -m1 "exit_code=" \
+            | sed -n 's/.*exit_code=\([0-9]*\).*/\1/p')
+
+          echo "exit code: ${CODE:-unreadable}"
+
+          if [ -z "$CODE" ]; then
+            echo "::error::Could not read an exit code for ${ID}. It ran, and whether the backup succeeded is unknown -- which is not the same as fine."
+            exit 1
+          fi
+
+          if [ "$CODE" != "0" ]; then
+            echo "::error::The producer exited ${CODE}: the backup failed. Its own log says why, and it has already paged. Check: flyctl logs -a ${APP}"
+            exit 1
+          fi
+
+          echo "The producer ran and exited 0."
+
+      # backup.yml verifies the object independently at 03:30. This pages for the
+      # narrower thing: the producer did not run, or ran and failed. Without it,
+      # a producer that stopped being started is only noticed by the freshness
+      # check a day later.
+      - name: Page on a failed backup
+        if: failure()
+        env:
+          NTFY_TOKEN: ${{ secrets.NTFY_TOKEN }}
+          NTFY_TOPIC: ${{ secrets.NTFY_TOPIC }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          scripts/notify.sh \
+            --title "LEI: backup producer did not run" --priority 4 --tags floppy_disk \
+            --click "$RUN_URL" \
+            "Starting the nightly dump failed. No new backup was taken; the newest is whatever the last successful run left. Verification at 03:30 will fail on staleness if this is not fixed."

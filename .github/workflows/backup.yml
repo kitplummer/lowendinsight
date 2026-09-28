@@ -122,8 +122,28 @@ jobs:
           # meta/latest is written last by the producer, after the object it
           # names is confirmed present, so it never points at a half-written
           # upload. Reading a sorted listing instead would.
-          if ! S3 s3 cp "s3://${BUCKET}/meta/latest" latest.txt --only-show-errors; then
-            echo "::error::No meta/latest in ${BUCKET}. Either the producer has never run, or it cannot write. Check: flyctl logs -a lowendinsight-backup"
+          # Say which of the two it was.
+          #
+          # This reported "No meta/latest" for any failure, so a rotated CI key
+          # that could no longer read the bucket looked exactly like a producer
+          # that had never run -- and on 2026-09-28 that is precisely what
+          # happened: the object was present and correct, the credentials were
+          # not, and the error sent the reader to the producer's logs.
+          if ! ERR=$(S3 s3 cp "s3://${BUCKET}/meta/latest" latest.txt 2>&1); then
+            printf '%s\n' "$ERR" | sed 's/^/    /'
+
+            case "$ERR" in
+              *AccessDenied* | *InvalidAccessKeyId* | *SignatureDoesNotMatch* | *Forbidden*)
+                echo "::error::Cannot read ${BUCKET}: the credentials in TIGRIS_READ_ACCESS_KEY_ID are rejected. The backup itself may be fine -- this is CI's read key, not the producer. Check the key exists in the Tigris dashboard and still has read access to this bucket."
+                ;;
+              *NoSuchKey* | *NotFound* | *"does not exist"* | *404*)
+                echo "::error::No meta/latest in ${BUCKET}, and the credentials worked. Either the producer has never run or it cannot write. Check: flyctl logs -a lowendinsight-backup"
+                ;;
+              *)
+                echo "::error::Could not read meta/latest from ${BUCKET}; aws said the above. Neither the credentials nor the object can be assumed good."
+                ;;
+            esac
+
             exit 1
           fi
 
