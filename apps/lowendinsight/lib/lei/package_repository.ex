@@ -125,8 +125,7 @@ defmodule Lei.PackageRepository do
   defp declared(_ecosystem, _body), do: nil
 
   defp registry("npm", package) do
-    {:ok, "https://registry.npmjs.org/" <> URI.encode(package),
-     fn body -> get_in(body, ["repository", "url"]) end}
+    {:ok, "https://registry.npmjs.org/" <> URI.encode(package), &npm_repository/1}
   end
 
   defp registry("hex", package) do
@@ -158,6 +157,19 @@ defmodule Lei.PackageRepository do
   end
 
   defp registry(ecosystem, _package), do: {:error, {:unsupported_ecosystem, ecosystem}}
+  # npm's `repository` is a string as often as an object -- package.json permits
+  # both and both are published. `get_in(body, ["repository", "url"])` raised
+  # FunctionClauseError on the string form, inside a Task, which took the whole
+  # batch job down rather than failing the one package. Found on 2026-09-28 by
+  # running a manifest scan: `@nodelib/fs.stat` publishes a string, and it is a
+  # transitive dependency of most npm projects.
+  defp npm_repository(body) do
+    case Map.get(body, "repository") do
+      %{"url" => url} -> url
+      url when is_binary(url) -> url
+      _ -> nil
+    end
+  end
 
   @retry_defaults [max_attempts: 3, wait: 2_000]
 
@@ -188,18 +200,26 @@ defmodule Lei.PackageRepository do
     HTTPoison.get(url, [{"User-Agent", "lowendinsight"}], recv_timeout: 30_000)
   end
 
+  # The three hosts a shorthand can mean, and the three whose URLs have a known
+  # owner/repository shape.
+  @shorthand %{
+    "github" => "https://github.com",
+    "gitlab" => "https://gitlab.com",
+    "bitbucket" => "https://bitbucket.org"
+  }
+
   # Registries record repositories in whatever form the package author wrote:
-  # git+ssh, git://, a trailing .git. The analyzer clones over https.
+  # git+ssh, git://, a trailing .git, npm's `owner/repo` shorthand, or a URL
+  # pointing at a directory inside a monorepo. The analyzer clones over https.
   defp normalize(url) when is_binary(url) do
     normalized =
       url
       |> String.trim()
+      |> expand_shorthand()
       |> String.replace_prefix("git+", "")
       |> String.replace_prefix("git://", "https://")
       |> String.replace_prefix("ssh://git@", "https://")
       |> String.replace_prefix("git@", "https://")
-      |> String.replace_suffix(".git", "")
-      |> String.replace_suffix("/", "")
 
     normalized =
       case normalized do
@@ -207,10 +227,62 @@ defmodule Lei.PackageRepository do
         other -> other
       end
 
+    normalized =
+      normalized
+      # git@github.com:owner/repo -- scp syntax, where the colon is a path
+      # separator and not a port.
+      |> String.replace(~r{^https://([^/:]+):(?=\D)}, "https://\\1/")
+      |> repository_root()
+      |> String.replace_suffix(".git", "")
+      |> String.replace_suffix("/", "")
+
     if repository?(normalized), do: {:ok, normalized}, else: {:error, :no_repository}
   end
 
   defp normalize(_), do: {:error, :no_repository}
+
+  # `github:owner/repo` and the bare `owner/repo` npm accepts in package.json.
+  defp expand_shorthand(url) do
+    case String.split(url, ":", parts: 2) do
+      [prefix, rest] when is_binary(rest) ->
+        case Map.fetch(@shorthand, prefix) do
+          {:ok, host} -> host <> "/" <> String.trim_leading(rest, "/")
+          :error -> url
+        end
+
+      _ ->
+        # Two segments, no scheme, no host: npm means GitHub.
+        case String.split(url, "/") do
+          [owner, repo] when owner != "" and repo != "" ->
+            if String.contains?(owner, "."), do: url, else: "https://github.com/#{owner}/#{repo}"
+
+          _ ->
+            url
+        end
+    end
+  end
+
+  # A URL into a monorepo directory -- `.../tree/main/packages/thing` -- names a
+  # path, not a repository. Cloning it fails, and keying the cache on it makes a
+  # second entry for a repository we may already hold: the customer pays for a
+  # miss on an answer we have. Only the three hosts whose owner/repository shape
+  # is known are trimmed; anything else is left exactly as published.
+  # A fragment or query needs no separate handling: URI.parse puts #readme and
+  # ?tab=readme outside the path, and this rebuilds from the path. An explicit
+  # strip was written first and no test could tell whether it was there.
+  defp repository_root(url) do
+    uri = URI.parse(url)
+    host = uri.host |> to_string() |> String.downcase()
+
+    if host in ["github.com", "gitlab.com", "bitbucket.org", "www.github.com"] do
+      case (uri.path || "") |> String.split("/", trim: true) do
+        [owner, repo | _] -> "https://#{host}/#{owner}/#{repo}"
+        _ -> url
+      end
+    else
+      url
+    end
+  end
 
   # A homepage is only worth analysing when it names a repository host.
   defp repository?(url) when is_binary(url) do

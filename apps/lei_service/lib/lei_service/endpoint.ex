@@ -56,6 +56,9 @@ defmodule LeiService.Endpoint do
 
   @content_type "application/json"
 
+  # One probe is one Redis pipeline; an unbounded list is an unbounded pipeline.
+  @probe_limit 500
+
   def child_spec(opts) do
     %{
       id: __MODULE__,
@@ -552,6 +555,47 @@ defmodule LeiService.Endpoint do
         conn
         |> put_resp_content_type(@content_type)
         |> send_resp(400, Poison.encode!(%{error: "missing required field: url"}))
+    end
+  end
+
+  # POST /v1/cache/probe - is each of these repositories already cached?
+  # Read-only and free: no clone, no analysis, no credits. `cache` scope, like
+  # the rest of /v1/cache, because the answer is a description of what the
+  # shared corpus holds and an analyze-scoped key has no business enumerating it.
+  #
+  # This exists to measure the hit rate against real manifests
+  # (lei_ops/product/critical-mass.md). Measuring it by analysing would populate
+  # the cache as it read it, so the first repository measured is the last one
+  # that reports honestly.
+  post "/v1/cache/probe" do
+    case conn.body_params["urls"] do
+      urls when is_list(urls) and length(urls) > @probe_limit ->
+        send_json(conn, 422, %{
+          error: "too many urls",
+          limit: @probe_limit,
+          received: length(urls)
+        })
+
+      [_ | _] = urls ->
+        case LeiService.Datastore.probe_cache(urls) do
+          {:ok, results} ->
+            hits = Enum.count(results, fn {_url, cached} -> cached end)
+
+            send_json(conn, 200, %{
+              total: map_size(results),
+              hits: hits,
+              misses: map_size(results) - hits,
+              results: results
+            })
+
+          # Not "everything missed". A hit rate computed from a dead Redis is
+          # worse than no hit rate, because it looks like an answer.
+          {:error, reason} ->
+            send_json(conn, 503, %{error: "cache unavailable: #{inspect(reason)}"})
+        end
+
+      _ ->
+        send_json(conn, 422, %{error: "POST body must contain a non-empty 'urls' array"})
     end
   end
 

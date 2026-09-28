@@ -3780,6 +3780,150 @@
       "replace": "        \"error\": {\"code\": -32000, \"message\": \"Method not found: %s\" % method},",
       "guarded_by": "test/lei_service/mcp_server_test.exs",
       "app": "apps/lei_service"
+    },
+    {
+      "id": "probe-folds-dead-redis-into-misses",
+      "bug": "A cache membership probe that answers 'not cached' when Redis is unreachable turns an outage into a hit rate of 0%. The number that ADR-005's pricing rests on would be measured from a cache nobody could read, and it would look like a finding.",
+      "file": "apps/lei_service/lib/lei_service/datastore.ex",
+      "find": "        Logger.warning(\"Redis unavailable probing #{length(urls)} keys: #{inspect(reason)}\")\n        {:error, reason}",
+      "replace": "        Logger.warning(\"Redis unavailable probing #{length(urls)} keys: #{inspect(reason)}\")\n        {:ok, Map.new(urls, &{&1, false})}",
+      "guarded_by": "test/lei_service/cache_probe_test.exs",
+      "app": "apps/lei_service"
+    },
+    {
+      "id": "probe-endpoint-reports-unavailable-as-miss",
+      "bug": "The probe route answering 200 when the cache is unreachable reports every repository uncached. A measurement run would record 0% and a caller deciding whether an analysis is cheap would be told nothing is.",
+      "file": "apps/lei_service/lib/lei_service/endpoint.ex",
+      "find": "          {:error, reason} ->\n            send_json(conn, 503, %{error: \"cache unavailable: #{inspect(reason)}\"})",
+      "replace": "          {:error, _reason} ->\n            send_json(conn, 200, %{total: length(urls), hits: 0, misses: length(urls), results: %{}})",
+      "guarded_by": "test/lei_service/cache_probe_test.exs",
+      "app": "apps/lei_service"
+    },
+    {
+      "id": "probe-limit-removed",
+      "bug": "One probe is one Redis pipeline. An unbounded list is an unbounded pipeline against the cache every analysis depends on, from any key with the cache scope.",
+      "file": "apps/lei_service/lib/lei_service/endpoint.ex",
+      "find": "  @probe_limit 500",
+      "replace": "  @probe_limit 5_000_000",
+      "guarded_by": "test/lei_service/cache_probe_test.exs",
+      "app": "apps/lei_service"
+    },
+    {
+      "id": "baseline-counts-the-repository-as-its-own-dependency",
+      "bug": "GitHub's SBOM lists the subject repository as a package of itself. Counting it credits every manifest measured with one hit for the repository most likely to already be cached, which inflates the hit rate by a fixed amount per manifest.",
+      "file": "apps/lei_service/lib/lei_service/cache_baseline.ex",
+      "find": "    |> Enum.reject(&(String.downcase(to_string(&1[\"name\"])) == self_name))\n",
+      "replace": "",
+      "guarded_by": "test/lei_service/cache_probe_test.exs",
+      "app": "apps/lei_service"
+    },
+    {
+      "id": "baseline-drops-the-purl-namespace",
+      "bug": "Dropping a purl's namespace turns pkg:githubactions/actions/checkout into 'checkout' and @types/node into 'node'. Neither resolves, so the ecosystem reports near-zero coverage -- which reads as a fact about the ecosystem rather than a bug in the parser.",
+      "file": "apps/lei_service/lib/lei_service/cache_baseline.ex",
+      "find": "        [%{ecosystem: type, package: URI.decode(rest), purl: purl, from: from}]",
+      "replace": "        [%{ecosystem: type, package: rest |> URI.decode() |> String.split(\"/\") |> List.last(), purl: purl, from: from}]",
+      "guarded_by": "test/lei_service/cache_probe_test.exs",
+      "app": "apps/lei_service"
+    },
+    {
+      "id": "baseline-reports-zero-percent-over-nothing",
+      "bug": "A rate of 0.0% over zero resolved packages is indistinguishable from a real 0% hit rate. A run whose resolution failed entirely would report the headline number as a measurement.",
+      "file": "apps/lei_service/lib/lei_service/cache_baseline.ex",
+      "find": "  def rate(_n, 0), do: nil",
+      "replace": "  def rate(_n, 0), do: 0.0",
+      "guarded_by": "test/lei_service/cache_probe_test.exs",
+      "app": "apps/lei_service"
+    },
+    {
+      "id": "baseline-hides-lookup-failures-as-missing-repositories",
+      "bug": "A registry that rate-limited us counted as 'this package has no repository' understates coverage and blames the ecosystem for our own network. The run looks like a measurement of npm rather than a degraded run to repeat.",
+      "file": "apps/lei_service/lib/lei_service/cache_baseline.ex",
+      "find": "  def failure_kind({:unreachable, _}), do: :transient",
+      "replace": "  def failure_kind({:unreachable, _}), do: :absent",
+      "guarded_by": "test/lei_service/cache_probe_test.exs",
+      "app": "apps/lei_service"
+    },
+    {
+      "id": "baseline-counts-one-repository-many-times",
+      "bug": "A monorepo publishes many packages from one repository. Counting that repository once per package inflates both the denominator and the hits, and a corpus of monorepos would report a hit rate driven by how many packages each one publishes.",
+      "file": "apps/lei_service/lib/lei_service/cache_baseline.ex",
+      "find": "    repositories = ok |> Enum.map(fn %{repository: {:ok, url}} -> url end) |> Enum.uniq()",
+      "replace": "    repositories = ok |> Enum.map(fn %{repository: {:ok, url}} -> url end)",
+      "guarded_by": "test/lei_service/cache_probe_test.exs",
+      "app": "apps/lei_service"
+    },
+    {
+      "id": "baseline-coverage-counts-repositories-not-packages",
+      "bug": "Computing coverage over distinct repositories rather than resolved packages reports deduplication as a failure to resolve. Measured on 2026-09-28 it showed npm coverage at 68% when only a few percent of packages had no repository -- the rest were many packages sharing one repository. It reads as a finding about the ecosystem and would have been quoted as one.",
+      "file": "apps/lei_service/lib/lei_service/cache_baseline.ex",
+      "find": "      coverage: rate(length(ok), length(distinct))",
+      "replace": "      coverage: rate(length(repositories), length(distinct))",
+      "guarded_by": "test/lei_service/cache_probe_test.exs",
+      "app": "apps/lei_service"
+    },
+    {
+      "id": "npm-string-repository-raises",
+      "bug": "npm's `repository` is a string as often as an object, and get_in/2 on the string raises FunctionClauseError inside a Task -- taking the whole batch job down rather than failing one package. @nodelib/fs.stat publishes this form and is a transitive dependency of most npm projects.",
+      "file": "apps/lowendinsight/lib/lei/package_repository.ex",
+      "find": "      %{\"url\" => url} -> url\n      url when is_binary(url) -> url\n      _ -> nil",
+      "replace": "      %{\"url\" => url} -> url\n      _ -> nil",
+      "guarded_by": "test/lei/package_repository_test.exs",
+      "app": "apps/lowendinsight"
+    },
+    {
+      "id": "monorepo-path-treated-as-a-repository",
+      "bug": "A registry URL pointing into a monorepo directory is a path, not a clone target. Cloning it fails, and keying the cache on it makes a second entry for a repository we may already hold -- so the customer is billed for a miss on an answer we are holding and cannot find.",
+      "file": "apps/lowendinsight/lib/lei/package_repository.ex",
+      "find": "      case (uri.path || \"\") |> String.split(\"/\", trim: true) do\n        [owner, repo | _] -> \"https://#{host}/#{owner}/#{repo}\"\n        _ -> url\n      end",
+      "replace": "      url",
+      "guarded_by": "test/lei/package_repository_test.exs",
+      "app": "apps/lowendinsight"
+    },
+    {
+      "id": "npm-shorthand-repository-unresolved",
+      "bug": "package.json permits `github:owner/repo` and a bare `owner/repo`, and npm publishes both. Not expanding them makes the package look like it has no repository, which understates coverage and silently drops real dependencies from a manifest scan.",
+      "file": "apps/lowendinsight/lib/lei/package_repository.ex",
+      "find": "  defp expand_shorthand(url) do",
+      "replace": "  defp expand_shorthand(url) when is_binary(url), do: url\n\n  defp expand_shorthand_unused(url) do",
+      "guarded_by": "test/lei/package_repository_test.exs",
+      "app": "apps/lowendinsight"
+    },
+    {
+      "id": "scp-form-repository-unresolved",
+      "bug": "git@github.com:owner/repo is scp syntax: the colon is a path separator, not a port. Left alone it produces https://github.com:owner/repo, which matches no repository, so a package published that way looks like it has none and is dropped from a manifest scan.",
+      "file": "apps/lowendinsight/lib/lei/package_repository.ex",
+      "find": "      |> String.replace(~r{^https://([^/:]+):(?=\\D)}, \"https://\\\\1/\")\n",
+      "replace": "",
+      "guarded_by": "test/lei/package_repository_test.exs",
+      "app": "apps/lowendinsight"
+    },
+    {
+      "id": "baseline-timeout-kills-the-run",
+      "bug": "Task.async_stream defaults to on_timeout: :exit, which kills the stream. One registry request that outlasted the per-element timeout ended a forty-minute measurement over fifteen thousand coordinates at the last step, after every SBOM had already been fetched.",
+      "file": "apps/lei_service/lib/lei_service/cache_baseline.ex",
+      "find": "      on_timeout: :kill_task,\n",
+      "replace": "",
+      "guarded_by": "test/lei_service/cache_probe_test.exs",
+      "app": "apps/lei_service"
+    },
+    {
+      "id": "baseline-loses-the-coordinate-that-failed",
+      "bug": "Without zip_input_on_exit the entry that timed out is not in the result at all, so a coordinate we could not look up silently disappears from the denominator instead of being counted as a lookup failure. A run degraded by timeouts would report better coverage than a clean one.",
+      "file": "apps/lei_service/lib/lei_service/cache_baseline.ex",
+      "find": "      zip_input_on_exit: true\n    )\n    |> Enum.map(fn\n      {:ok, result} -> result\n      {:exit, {entry, reason}} -> Map.put(entry, :repository, {:error, {:crashed, reason}})\n    end)",
+      "replace": "      zip_input_on_exit: true\n    )\n    |> Enum.map(fn\n      {:ok, result} -> result\n      {:exit, {_entry, _reason}} -> nil\n    end)\n    |> Enum.reject(&is_nil/1)",
+      "guarded_by": "test/lei_service/cache_probe_test.exs",
+      "app": "apps/lei_service"
+    },
+    {
+      "id": "baseline-resolver-raise-kills-the-run",
+      "bug": "A raise inside Task.async_stream is not an {:exit, _} the stream reports: the task is linked, so it takes the caller with it. Unrescued, one malformed registry response ends the whole measurement -- which is exactly how npm's string `repository` field ended one at coordinate 900 of 16,000.",
+      "file": "apps/lei_service/lib/lei_service/cache_baseline.ex",
+      "find": "    try do\n      resolve.(entry)\n    rescue\n      error -> {:error, {:crashed, Exception.message(error)}}\n    catch\n      kind, reason -> {:error, {:crashed, {kind, reason}}}\n    end",
+      "replace": "    resolve.(entry)",
+      "guarded_by": "test/lei_service/cache_probe_test.exs",
+      "app": "apps/lei_service"
     }
   ]
 }

@@ -126,6 +126,66 @@ defmodule Lei.PackageRepositoryTest do
     end
   end
 
+  describe "the forms npm actually publishes" do
+    # All four found on 2026-09-28 by resolving 16,000 real coordinates from
+    # fifty public manifests. Reasoning from the registry documentation would
+    # have produced none of them.
+
+    test "a string repository resolves instead of raising" do
+      # `get_in(body, ["repository", "url"])` on a string raised
+      # FunctionClauseError inside a Task, which took the whole batch job down
+      # rather than failing this one package. @nodelib/fs.stat publishes this
+      # form and is a transitive dependency of most npm projects, so a manifest
+      # scan hit it immediately.
+      body = ~s({"repository":"https://github.com/o/r"})
+
+      assert PackageRepository.resolve("npm", "x", get: responder(200, body)) ==
+               {:ok, "https://github.com/o/r"}
+    end
+
+    test "a url into a monorepo directory resolves to the repository" do
+      # A path is not a clone target. It also makes a second cache key for a
+      # repository we may already hold, so the customer pays for a miss on an
+      # answer we have.
+      body =
+        ~s({"repository":"https://github.com/nodelib/nodelib/tree/master/packages/fs/fs.stat"})
+
+      assert PackageRepository.resolve("npm", "x", get: responder(200, body)) ==
+               {:ok, "https://github.com/nodelib/nodelib"}
+    end
+
+    test "the shorthand forms package.json permits resolve" do
+      for {given, want} <- [
+            {"github:o/r", "https://github.com/o/r"},
+            {"gitlab:o/r", "https://gitlab.com/o/r"},
+            {"bitbucket:o/r", "https://bitbucket.org/o/r"},
+            {"o/r", "https://github.com/o/r"},
+            {"git@github.com:o/r.git", "https://github.com/o/r"}
+          ] do
+        body = ~s({"repository":{"url":"#{given}"}})
+
+        assert PackageRepository.resolve("npm", "x", get: responder(200, body)) == {:ok, want},
+               "#{given} did not resolve to #{want}"
+      end
+    end
+
+    test "a fragment or query is dropped" do
+      body = ~s({"repository":"https://github.com/o/r#readme"})
+
+      assert PackageRepository.resolve("npm", "x", get: responder(200, body)) ==
+               {:ok, "https://github.com/o/r"}
+    end
+
+    test "a repository field of some other shape still does not resolve" do
+      # Not "anything non-nil is a URL": a number or a list must fail cleanly,
+      # the same as a missing field.
+      for body <- [~s({"repository":42}), ~s({"repository":[]}), ~s({"repository":{}})] do
+        assert PackageRepository.resolve("npm", "x", get: responder(200, body)) ==
+                 {:error, :no_repository}
+      end
+    end
+  end
+
   @tag :network
   test "the live registries resolve a real package in each ecosystem" do
     assert {:ok, npm} = PackageRepository.resolve("npm", "left-pad")

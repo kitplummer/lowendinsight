@@ -294,6 +294,46 @@ defmodule LeiService.Datastore do
   end
 
   @doc """
+  probe_cache/1: membership for many URLs in one round trip, read-only.
+
+  `in_cache?/1` answers `false` when Redis is unreachable, which is right for
+  the analysis path -- an unknown means do the work -- and wrong for anything
+  *measuring* the cache. Folded into a hit-rate it reads as "nothing is cached",
+  which is the shape this codebase keeps shipping: a check that passes by
+  examining nothing. So this returns `{:error, reason}` rather than a map of
+  falses, and the caller has to decide.
+
+  `{:ok, %{url => boolean}}` or `{:error, reason}`. Duplicate URLs and URLs that
+  differ only in the case a host folds collapse to one key, so the map is keyed
+  by the URL as given and two keys may share an answer.
+  """
+  @spec probe_cache([String.t()]) :: {:ok, %{String.t() => boolean()}} | {:error, term()}
+  def probe_cache([]), do: {:ok, %{}}
+
+  def probe_cache(urls) when is_list(urls) do
+    urls = Enum.filter(urls, &is_binary/1)
+    commands = Enum.map(urls, fn url -> ["EXISTS", cache_key(url)] end)
+
+    case Redix.pipeline(conn(), commands) do
+      {:ok, answers} when length(answers) == length(urls) ->
+        # A pipeline reports per-command errors in the list rather than failing
+        # the call, so one bad reply must not be counted as a miss either.
+        if Enum.all?(answers, &is_integer/1) do
+          {:ok, urls |> Enum.zip(Enum.map(answers, &(&1 == 1))) |> Map.new()}
+        else
+          {:error, Enum.find(answers, &(not is_integer(&1)))}
+        end
+
+      {:ok, answers} ->
+        {:error, {:unexpected_reply_count, length(answers), length(urls)}}
+
+      {:error, reason} ->
+        Logger.warning("Redis unavailable probing #{length(urls)} keys: #{inspect(reason)}")
+        {:error, reason}
+    end
+  end
+
+  @doc """
   too_old?/2: takes in a repo report and age in days and returns 'true' if the diff
   between the current datetime and the report end_time is greater than the
   provided age - or return 'false'
