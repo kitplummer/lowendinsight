@@ -93,7 +93,9 @@ defmodule Mix.Tasks.Lei.CacheBaseline do
         list -> String.split(list, ",", trim: true) |> Enum.map(&String.trim/1)
       end
 
-    Mix.Task.run("app.start")
+    # Probing a deployed service needs no local Redis, and booting the app to
+    # get one is how this failed in CI.
+    Baseline.boot(if opts[:probe_url], do: :http, else: :redis)
 
     shell().info("Reading #{length(repos)} SBOMs from GitHub...")
     {read, failed} = Enum.split_with(Enum.map(repos, &fetch_sbom/1), &match?({:ok, _, _}, &1))

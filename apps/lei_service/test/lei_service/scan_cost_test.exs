@@ -213,6 +213,45 @@ defmodule LeiService.ScanCostTest do
       assert yaml =~ "--baseline baseline.json"
     end
 
+    test "a step that pipes into tee sets pipefail", %{yaml: yaml} do
+      # `| tee` returns tee's status. Without pipefail, mix raised
+      # "LEI_JWT_SECRET env var is required in production", tee exited 0, and
+      # every step of the run reported success having measured nothing
+      # (2026-09-28) -- the failure shape the measurement exists to avoid,
+      # inside the thing built to avoid it. Checked across the whole file rather
+      # than at the two places it is written today, so a pipeline added later is
+      # covered.
+      blocks = String.split(yaml, ~r/^      - name: /m)
+
+      Enum.each(blocks, fn block ->
+        if String.contains?(block, "| tee") do
+          assert String.contains?(block, "set -o pipefail"),
+                 "a step pipes into tee without pipefail, so a failure in it would be invisible:\n#{block}"
+        end
+      end)
+    end
+
+    test "it does not run under MIX_ENV=prod", %{yaml: yaml} do
+      # Starting the app under prod demands LEI_JWT_SECRET and the rest, and a CI
+      # runner has none of them. config/gha.exs is the environment built for CI
+      # with no Postgres and no Redis.
+      refute yaml =~ "MIX_ENV: prod",
+             "the measurement runs in an environment that requires production secrets"
+
+      assert yaml =~ "MIX_ENV: gha"
+    end
+
+    test "a run with no hit rate in it fails the job", %{yaml: yaml} do
+      # The summary step runs `if: always()`. Writing a sad heading and exiting 0
+      # is how a job that measured nothing stays green, which is what happened.
+      # The check reads the JSON, because tee writes the text file even for a run
+      # that raised halfway through.
+      assert yaml =~ ~r/hit_rate != null/,
+             "nothing in the job asserts that a hit rate was actually measured"
+
+      assert yaml =~ "exit 1"
+    end
+
     test "the cost output is kept, not just printed", %{yaml: yaml} do
       # The JSON carries the per-repository sample. Without it, a cost that looks
       # wrong six weeks later cannot be checked against what it was measured on.

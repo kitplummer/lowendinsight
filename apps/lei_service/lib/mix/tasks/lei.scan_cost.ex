@@ -97,7 +97,8 @@ defmodule Mix.Tasks.Lei.ScanCost do
           )
       end
 
-    Mix.Task.run("app.start")
+    # Clones and analyses; writes nothing to Redis and reads nothing from it.
+    LeiService.CacheBaseline.boot(:http)
 
     :rand.seed(:exsss, {opts[:seed] || 42, 0, 0})
     sample = missing |> Enum.shuffle() |> Enum.take(wanted)

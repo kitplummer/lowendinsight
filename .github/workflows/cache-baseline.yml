@@ -64,8 +64,12 @@ jobs:
           fi
 
       - name: Measure the hit rate against production
+        shell: bash
         env:
-          MIX_ENV: prod
+          # gha, not prod: config/gha.exs is the environment built for CI with no
+          # Postgres and no Redis. Under prod, starting the app demanded
+          # LEI_JWT_SECRET and raised -- and the raise was invisible, see below.
+          MIX_ENV: gha
           # Reading another public repository's dependency-graph SBOM. If the
           # job-scoped token is refused for that, every SBOM fetch 403s, the
           # --min-repos guard below fails the run and prints the statuses; the
@@ -75,6 +79,12 @@ jobs:
           REPOS: ${{ inputs.repos || 'scripts/baseline-repos.txt' }}
           CONCURRENCY: ${{ inputs.concurrency || '6' }}
         run: |
+          # pipefail, because `| tee` returns tee's status. Without it mix raised
+          # "LEI_JWT_SECRET env var is required in production", tee exited 0, and
+          # every step of this job reported success having measured nothing
+          # (2026-09-28). A measurement job that cannot fail is not a measurement.
+          set -o pipefail
+
           # --min-repos 40 of 50: a run that could read only a handful of SBOMs
           # must fail rather than publish a rate measured over them.
           mix lei.cache_baseline \
@@ -96,10 +106,13 @@ jobs:
       # cannot improve the hit rate it was just measuring.
       - name: Cost a scan of the miss list
         if: success()
+        shell: bash
         env:
-          MIX_ENV: prod
+          MIX_ENV: gha
           SAMPLE: ${{ inputs.sample || '25' }}
         run: |
+          set -o pipefail
+
           mix lei.scan_cost \
             --baseline baseline.json \
             --sample "$SAMPLE" \
@@ -108,6 +121,7 @@ jobs:
 
       - name: Put the headline in the run summary
         if: always()
+        shell: bash
         run: |
           if [ -f baseline.txt ]; then
             {
@@ -126,6 +140,15 @@ jobs:
             fi
           else
             echo '## Cache baseline did not produce a measurement' >> "$GITHUB_STEP_SUMMARY"
+          fi
+
+          # An `if: always()` step that writes a sad heading and exits 0 is how a
+          # job with no measurement in it stays green. The hit rate has to be in
+          # the JSON, not merely somewhere in stdout: `tee` writes baseline.txt
+          # even for a run that raised halfway through it.
+          if ! jq -e '.overall.hit_rate != null' baseline.json > /dev/null 2>&1; then
+            echo "::error::No hit rate was measured. baseline.json is missing or has none, so this run measured nothing."
+            exit 1
           fi
 
       # The JSON carries the unresolved coordinates as well as the counts, which
