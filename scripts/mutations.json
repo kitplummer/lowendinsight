@@ -3918,11 +3918,65 @@
     },
     {
       "id": "baseline-resolver-raise-kills-the-run",
-      "bug": "A raise inside Task.async_stream is not an {:exit, _} the stream reports: the task is linked, so it takes the caller with it. Unrescued, one malformed registry response ends the whole measurement -- which is exactly how npm's string `repository` field ended one at coordinate 900 of 16,000.",
+      "bug": "A raise inside Task.async_stream is not an {:exit, _} the stream reports: the task is linked, so it takes the caller with it, and no option changes that. Unrescued, one malformed registry response ends the whole measurement -- which is exactly how npm's string `repository` field ended one at coordinate 900 of 16,000.",
       "file": "apps/lei_service/lib/lei_service/cache_baseline.ex",
-      "find": "    try do\n      resolve.(entry)\n    rescue\n      error -> {:error, {:crashed, Exception.message(error)}}\n    catch\n      kind, reason -> {:error, {:crashed, {kind, reason}}}\n    end",
-      "replace": "    resolve.(entry)",
+      "find": "    rescue\n      error -> {:error, {:crashed, Exception.message(error)}}",
+      "replace": "    rescue\n      error -> reraise error, __STACKTRACE__",
       "guarded_by": "test/lei_service/cache_probe_test.exs",
+      "app": "apps/lei_service"
+    },
+    {
+      "id": "cost-extrapolates-from-nothing",
+      "bug": "An estimate built on zero sampled repositories reports a corpus cost of zero. It is a number where there is no measurement, and a cost estimate gets quoted into a plan rather than re-derived.",
+      "file": "apps/lei_service/lib/lei_service/scan_cost.ex",
+      "find": "    if is_nil(mean_seconds) do\n      %{repositories: count, measurable: false}\n    else",
+      "replace": "    if false do\n      %{repositories: count, measurable: false}\n    else",
+      "guarded_by": "test/lei_service/scan_cost_test.exs",
+      "app": "apps/lei_service"
+    },
+    {
+      "id": "cost-hides-sample-failures",
+      "bug": "A sample whose clones failed has a flattering mean, because the failures contribute nothing to it. Dropping the failure count from the per-repository figures removes the only signal that the sample was degraded.",
+      "file": "apps/lei_service/lib/lei_service/scan_cost.ex",
+      "find": "      failed: failed,\n      failure_rate: rate(failed, length(samples) + failed),",
+      "replace": "      failed: 0,\n      failure_rate: rate(0, length(samples) + failed),",
+      "guarded_by": "test/lei_service/scan_cost_test.exs",
+      "app": "apps/lei_service"
+    },
+    {
+      "id": "cost-missing-rate-counts-as-free",
+      "bug": "A rate card missing a line, treated as zero, silently removes a cost from a total that still presents as a total. The estimate then reads cheaper than the truth with nothing to indicate it.",
+      "file": "apps/lei_service/lib/lei_service/scan_cost.ex",
+      "find": "      |> Enum.reject(fn {_name, rate, _qty} -> is_nil(rate) end)",
+      "replace": "      |> Enum.map(fn {name, rate, qty} -> {name, rate || 0.0, qty} end)",
+      "guarded_by": "test/lei_service/scan_cost_test.exs",
+      "app": "apps/lei_service"
+    },
+    {
+      "id": "cost-watched-month-reanalyses-everything",
+      "bug": "The watched month exists to show that only the share of the corpus that moved needs re-analysis. Costing it as the whole corpus erases the difference between the two monthly figures, which is the entire argument for building the watch model.",
+      "file": "apps/lei_service/lib/lei_service/scan_cost.ex",
+      "find": "    changed = round(count * churn)",
+      "replace": "    changed = count",
+      "guarded_by": "test/lei_service/scan_cost_test.exs",
+      "app": "apps/lei_service"
+    },
+    {
+      "id": "baseline-miss-list-counts-a-repo-per-package",
+      "bug": "A repository many packages share is one clone and one report. Listing it once per package inflates the preload cost by the shape of the manifest rather than the work to be done.",
+      "file": "apps/lei_service/lib/lei_service/cache_baseline.ex",
+      "find": "    |> Enum.map(fn %{repository: {:ok, url}} -> url end)\n    |> Enum.uniq()\n    |> Enum.reject(&MapSet.member?(cached, &1))",
+      "replace": "    |> Enum.map(fn %{repository: {:ok, url}} -> url end)\n    |> Enum.reject(&MapSet.member?(cached, &1))",
+      "guarded_by": "test/lei_service/scan_cost_test.exs",
+      "app": "apps/lei_service"
+    },
+    {
+      "id": "resolver-contract-not-enforced",
+      "bug": "A resolver returning something other than {:ok, url} or {:error, reason} was stored as the resolution, so every coordinate counted as unresolved and the run reported 'Probing 0 repositories' with a coverage of 0% as though those were findings. This shipped to main green on 2026-09-28: the tests supply their own resolver, so the Mix task's was the one nobody drove.",
+      "file": "apps/lei_service/lib/lei_service/cache_baseline.ex",
+      "find": "        other ->\n          raise ArgumentError,\n                \"resolver returned #{inspect(other)}; expected {:ok, url} or {:error, reason}\"",
+      "replace": "        other ->\n          other",
+      "guarded_by": "test/lei_service/scan_cost_test.exs",
       "app": "apps/lei_service"
     }
   ]

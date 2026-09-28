@@ -24,6 +24,9 @@ on:
       concurrency:
         description: Registry lookups in flight (higher is faster and fails more)
         default: '6'
+      sample:
+        description: Repositories to analyse when costing the miss list
+        default: '25'
   schedule:
     - cron: '17 6 1 * *'
 
@@ -83,6 +86,26 @@ jobs:
             --max-lookup-failures 10 \
             | tee baseline.txt
 
+      # The cost of scanning what we do not hold, from a sample of that same
+      # list. The unit cost record measured fifteen repositories chosen by hand
+      # and found that history size drives the clone, so a mean from a different
+      # population is a mean for a different corpus.
+      #
+      # This analyses repositories but writes nothing to the cache -- it calls
+      # the analyzer directly, and only the service stores reports -- so costing
+      # cannot improve the hit rate it was just measuring.
+      - name: Cost a scan of the miss list
+        if: success()
+        env:
+          MIX_ENV: prod
+          SAMPLE: ${{ inputs.sample || '25' }}
+        run: |
+          mix lei.scan_cost \
+            --baseline baseline.json \
+            --sample "$SAMPLE" \
+            --out cost.json \
+            | tee cost.txt
+
       - name: Put the headline in the run summary
         if: always()
         run: |
@@ -93,6 +116,14 @@ jobs:
               cat baseline.txt
               echo '```'
             } >> "$GITHUB_STEP_SUMMARY"
+            if [ -f cost.txt ]; then
+              {
+                echo '## Cost to scan what we do not hold'
+                echo '```'
+                cat cost.txt
+                echo '```'
+              } >> "$GITHUB_STEP_SUMMARY"
+            fi
           else
             echo '## Cache baseline did not produce a measurement' >> "$GITHUB_STEP_SUMMARY"
           fi
@@ -108,5 +139,7 @@ jobs:
           path: |
             baseline.json
             baseline.txt
+            cost.json
+            cost.txt
           retention-days: 90
           if-no-files-found: warn
