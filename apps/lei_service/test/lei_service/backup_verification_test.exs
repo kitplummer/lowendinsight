@@ -276,6 +276,91 @@ defmodule LeiService.BackupVerificationTest do
     end
   end
 
+  describe "the artifact verifier reads the bucket" do
+    defp verifier, do: File.read!(Path.join(@root, "scripts/verify-backup-artifact.sh"))
+
+    # Run, not grepped.
+    #
+    # The first version of these two asserted that the bucket code and the
+    # `--from-artifact` flag were *present* in the file. Both mutations left
+    # every one of those strings in place while changing what the script does --
+    # a default flipped, a flag wired to a failure -- and both guards passed. A
+    # source selection is behaviour, so it is tested by running it.
+    defp run_verifier(args, env \\ []) do
+      {out, status} =
+        System.cmd("bash", ["scripts/verify-backup-artifact.sh" | args],
+          cd: @root,
+          stderr_to_stdout: true,
+          env:
+            [
+              {"BACKUP_PASSCODE", "not-the-real-one"},
+              {"AWS_ACCESS_KEY_ID", ""},
+              {"AWS_SECRET_ACCESS_KEY", ""},
+              {"AWS_PROFILE", ""}
+            ] ++ env
+        )
+
+      {out, status}
+    end
+
+    test "the bucket is the default source" do
+      # With no credentials it gets as far as naming the bucket and then fails,
+      # which is enough to show which source it chose.
+      {out, status} = run_verifier([])
+
+      refute status == 0, "it succeeded with no credentials and a wrong passphrase"
+
+      assert out =~ "Reading s3://",
+             "the default source is not the bucket:\n#{out}"
+
+      refute out =~ "Reading a GitHub Actions artifact",
+             "it defaulted to the 90-day CI copy rather than the store of record"
+    end
+
+    test "--from-artifact selects the artifact path" do
+      # Pointed at a repository that does not exist, so it fails immediately
+      # rather than downloading anything.
+      {out, _status} =
+        run_verifier(["--from-artifact"], [{"LEI_REPO", "kitplummer/definitely-not-a-real-repo"}])
+
+      assert out =~ "Reading a GitHub Actions artifact",
+             "--from-artifact does not reach the artifact path:\n#{out}"
+
+      refute out =~ "Reading s3://",
+             "--from-artifact still read the bucket"
+    end
+
+    test "it decrypts with the operator's passphrase, not CI's" do
+      src = verifier()
+
+      assert src =~ "BACKUP_PASSCODE",
+             "it uses CI's secret, so it proves only that CI agrees with itself"
+
+      refute src =~ "BACKUP_PASSPHRASE",
+             "it reads CI's secret name"
+    end
+
+    test "it needs no write access to the bucket" do
+      src = verifier()
+
+      refute src =~ ~r/s3 (cp|mv) "[^"]*" "s3:\/\//,
+             "it copies into the bucket, so a read-only key will not do"
+
+      refute src =~ "put-object"
+      refute src =~ ~r/s3 rm/
+    end
+
+    test "a source it cannot read is a failure, and says which" do
+      src = verifier()
+
+      assert src =~ "could not read",
+             "an unreachable source is not reported as one"
+
+      refute src =~ ~r/s3 cp[^\n]*2>\/dev\/null/,
+             "aws's stderr is discarded, so the reason is lost"
+    end
+  end
+
   test "the files this test reads all exist" do
     # Every assertion above is a string match against a file. A renamed or
     # deleted file would make File.read! raise rather than pass vacuously,
