@@ -26,10 +26,18 @@ A request is priced before it runs, from which repositories already have cached 
 
 ## Pricing
 <%= if guide.beta? do %>
-**LowEndInsight is in beta and analysis is free.** No credits are spent, no card
-is charged, and no usage is billed. Accounts are limited to
+**LowEndInsight is in beta and analysis is free.** No credits are spent for an
+analysis, no usage is billed, and accounts are limited to
 <%= LeiService.AgentGuide.number(guide.free_monthly_analyses) %> analyses a
-month, which is what bounds the beta rather than a price.
+month -- the allowance, not a price, is what bounds the beta.
+
+**If you have no account you will still be asked for
+<%= LeiService.AgentGuide.number(guide.challenge_credits) %> credits
+(<%= guide.challenge_usd %>) once.** That is the smallest amount these payment
+rails will settle, and during beta it buys an account rather than analysis: the
+credits are not spent while analysis is free, and they remain yours to spend when
+it is not. An account costs nothing to create, so without this every allowance
+would be an allowance per attacker.
 
 The rates below are what will apply when beta ends. They are published now so
 nothing changes silently later; today they are not charged.
@@ -37,7 +45,7 @@ nothing changes silently later; today they are not charged.
 - One credit is $0.001.
 - A repository with a cached report: <%= LeiService.AgentGuide.number(guide.hit_credits) %> credits (<%= guide.hit_usd %>).
 - A repository analyzed fresh: <%= LeiService.AgentGuide.number(guide.miss_credits) %> credits (<%= guide.miss_usd %>).
-- An agent buys a block of <%= LeiService.AgentGuide.number(guide.top_up_credits) %> credits (<%= guide.top_up_usd %>) when its balance runs out.
+- An agent buys a block of <%= LeiService.AgentGuide.number(guide.top_up_credits) %> credits (<%= guide.top_up_usd %>) when its balance runs out.<%= if guide.beta?, do: " During beta the first challenge is #{LeiService.AgentGuide.number(guide.challenge_credits)} credits (#{guide.challenge_usd}) instead, and nothing is spent from it.", else: "" %>
 
 ## Ways to pay
 

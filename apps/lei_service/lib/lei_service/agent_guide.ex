@@ -35,6 +35,12 @@ defmodule LeiService.AgentGuide do
       # a price the ledger does not take.
       beta?: Lei.Billing.beta?(),
       billing_mode: Lei.Billing.mode(),
+      # What an account-less caller is actually asked for. Derived, because a
+      # page telling an agent it will be asked for $15 while the gate asks for
+      # $0.50 is the drift this module exists to prevent -- and during beta the
+      # two differ.
+      challenge_credits: Lei.Payments.Gate.top_up_credits(0, 0),
+      challenge_usd: usd(Lei.Payments.Gate.top_up_credits(0, 0)),
       hit_credits: hit,
       hit_usd: usd(hit),
       miss_credits: miss,

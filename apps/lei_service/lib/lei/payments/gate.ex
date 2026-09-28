@@ -159,8 +159,45 @@ defmodule Lei.Payments.Gate do
   # monthly credit. A negative balance is added back, or an org in debt would
   # be topped up to less than zero and refused again. And never less than the
   # request needs, or the agent pays and is refused again.
-  defp top_up(balance, required) do
-    max(default_top_up() - min(balance, 0), required - balance)
+  @doc """
+  What a caller is asked to buy: a block, the shortfall, or beta's floor.
+
+  Public because the amount is a decision rather than a detail -- it is the
+  difference between an agent that can pay and one that retries forever -- and
+  a decision worth testing without configuring a payment rail.
+  """
+  def top_up_credits(balance, required) do
+    max(base_top_up() - min(balance, 0), required - balance)
+  end
+
+  defp top_up(balance, required), do: top_up_credits(balance, required)
+
+  # In beta, the smallest amount the rails will settle. Otherwise a block.
+  #
+  # An agent has no concept of a beta; it has a 402 handler. Asking it for the
+  # full $15 block while analysis is free would be taking money for nothing, and
+  # serving it for nothing would hand an allowance to every attacker who can
+  # create an org -- which is why there is no free agent SKU
+  # (acp_checkout_session.ex). The floor buys identity rather than analysis, at
+  # the least the rails can move (ADR-007).
+  defp base_top_up do
+    if Lei.Billing.beta?(), do: beta_top_up(), else: default_top_up()
+  end
+
+  # Never below a rail's own minimum. Tempo's is $0.50 because Stripe refuses a
+  # crypto PaymentIntent under that (#144), and a challenge below a rail's floor
+  # is one the agent cannot settle: it would pay nothing and be refused again on
+  # every retry. Taking the maximum means the amount is payable on every rail it
+  # is offered for, and follows a rail that raises its floor without anyone
+  # remembering to update a constant.
+  defp beta_top_up do
+    configured = Application.get_env(:lei_service, :beta_top_up_credits, 500)
+
+    Application.get_env(:lei_service, :payment_rails, [])
+    |> Enum.map(& &1.minimum_purchase_credits())
+    |> Enum.reject(&is_nil/1)
+    |> Enum.max(fn -> 0 end)
+    |> max(configured)
   end
 
   # Where this service tells a customer it lives. The same setting the Stripe

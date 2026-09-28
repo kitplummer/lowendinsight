@@ -188,6 +188,12 @@ config :lei_service,
   # unconfigured deployment bills: free service that nobody chose is the failure
   # that goes unnoticed for a month, while charging that should not happen is
   # reported by a customer within the hour. Production sets LEI_BILLING_MODE.
+  # What an agent with no account is asked to buy during beta (ADR-007). The
+  # smallest amount the rails will settle -- $0.50, which is Stripe's floor for a
+  # crypto PaymentIntent -- so the challenge buys identity rather than analysis.
+  # Raised automatically if a rail declares a higher minimum; see
+  # Gate.beta_top_up/0.
+  beta_top_up_credits: 500,
   billing_mode: :charge,
   rate_limits: %{
     free: 60,
