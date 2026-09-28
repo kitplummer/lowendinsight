@@ -101,6 +101,13 @@ flyctl machine run <image-ref> \
   -a lowendinsight-backup --vm-memory 512 --region iad
 ```
 
+**Fly's `--schedule daily` does not start this machine.** Across three
+configurations over two days it never fired once; every start event reads
+`SOURCE=user`. `backup-trigger.yml` starts it at 02:10 UTC instead, and waits for
+a new exit event with code 0. The schedule stays on the machine in case Fly ever
+begins honouring it -- two triggers would be a harmless no-op -- but it is not
+what runs the backup. See the superseding section in ADR-006.
+
 `--restart on-failure` is Fly's own default for a scheduled machine, and
 overriding it with `--restart no` stopped the scheduler starting the machine at
 all -- the backup neither retried nor ran, for 36 hours, while the config

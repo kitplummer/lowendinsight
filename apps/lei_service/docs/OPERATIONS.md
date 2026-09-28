@@ -527,7 +527,8 @@ Setting this up was involved. Running it is not. In normal operation:
 
 | | who | when | how you learn it broke |
 |---|---|---|---|
-| take the dump, upload it | the Fly machine | daily, Fly picks the minute | no object arrives; the check below fails |
+| start the producer | `backup-trigger.yml` | daily 02:10 UTC | the run fails and pages |
+| take the dump, upload it | the Fly machine | when the trigger starts it | no object arrives; the check below fails |
 | verify it restores | `backup.yml` | daily 03:30 UTC | the run fails and pages |
 | keep a copy off Fly | `backup.yml` artifact | every green run, 90-day retention | the run fails |
 | **pull a copy to a machine you control** | **you** | **whenever, and after every passphrase rotation** | the nightly warns past 30 days |
