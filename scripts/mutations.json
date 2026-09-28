@@ -3918,10 +3918,10 @@
     },
     {
       "id": "baseline-resolver-raise-kills-the-run",
-      "bug": "A raise inside Task.async_stream is not an {:exit, _} the stream reports: the task is linked, so it takes the caller with it. Unrescued, one malformed registry response ends the whole measurement -- which is exactly how npm's string `repository` field ended one at coordinate 900 of 16,000.",
+      "bug": "A raise inside Task.async_stream is not an {:exit, _} the stream reports: the task is linked, so it takes the caller with it, and no option changes that. Unrescued, one malformed registry response ends the whole measurement -- which is exactly how npm's string `repository` field ended one at coordinate 900 of 16,000.",
       "file": "apps/lei_service/lib/lei_service/cache_baseline.ex",
-      "find": "    try do\n      resolve.(entry)\n    rescue\n      error -> {:error, {:crashed, Exception.message(error)}}\n    catch\n      kind, reason -> {:error, {:crashed, {kind, reason}}}\n    end",
-      "replace": "    resolve.(entry)",
+      "find": "    rescue\n      error -> {:error, {:crashed, Exception.message(error)}}",
+      "replace": "    rescue\n      error -> reraise error, __STACKTRACE__",
       "guarded_by": "test/lei_service/cache_probe_test.exs",
       "app": "apps/lei_service"
     },
