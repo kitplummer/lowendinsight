@@ -93,11 +93,31 @@ defmodule LeiService.PaymentMonitoringWiringTest do
     test "a path switched off on purpose during beta does not page" do
       monitor = monitor()
 
-      assert monitor =~ "BETA_EXPECTED_OFF",
+      assert monitor =~ "BETA_REQUIRED_OFF",
              "every switched-off path pages, including the ones beta switches off"
 
       assert monitor =~ ~r/acp[^\n]*pro_checkout|pro_checkout[^\n]*acp/,
-             "the paths beta expects to be off are not named"
+             "the paths beta must have off are not named"
+    end
+
+    test "a path that must be off during beta pages when it is on" do
+      # The list was a permission only, and the requirement half was missing:
+      # acp and pro_checkout sat enabled in production for the whole beta while
+      # this check stayed green, because it only ever inspected paths that were
+      # off (2026-09-28). A list of what is allowed is not a check.
+      #
+      # Asserted as a read of the gauge, not as absence from the off-list: a
+      # gauge that stopped being published is also absent from it.
+      monitor = monitor()
+
+      assert monitor =~ "switched ON during beta",
+             "a path that must not take money during beta does not page when enabled"
+
+      assert monitor =~ ~r/for path in \$BETA_REQUIRED_OFF; do\s*\n\s+VALUE=/,
+             "the beta-off paths are not read out of the metrics response"
+
+      assert monitor =~ "must not take money during beta is enabled cannot be read",
+             "a vanished gauge for a beta-off path reads as satisfied"
     end
 
     test "the rails that take the beta account charge must stay on" do
