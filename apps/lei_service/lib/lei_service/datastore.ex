@@ -294,6 +294,78 @@ defmodule LeiService.Datastore do
   end
 
   @doc """
+  memory_info/0: what Redis says about its own memory.
+
+  `{:ok, map}` with `:used_bytes`, `:rss_bytes`, `:maxmemory_bytes`,
+  `:maxmemory_policy` and `:fragmentation_ratio`, or `{:error, reason}`.
+
+  Exists because the corpus is held in memory and, with `maxmemory` unlimited
+  and `maxmemory_policy` `noeviction`, the ceiling arrives as refused *writes*
+  while reads keep working: analyses still succeed, nothing caches, every
+  request becomes a full clone at miss price, and each individual request looks
+  fine (ADR-008).
+
+  Fields Redis does not report are absent from the map rather than zero. A
+  `maxmemory` of 0 is Redis's own way of saying unlimited and is passed through
+  as 0 -- callers must not read it as "no memory".
+  """
+  @spec memory_info() :: {:ok, map()} | {:error, term()}
+  def memory_info do
+    case Redix.command(conn(), ["INFO", "memory"]) do
+      {:ok, info} when is_binary(info) ->
+        fields = parse_info(info)
+
+        {:ok,
+         %{
+           used_bytes: fields["used_memory"],
+           rss_bytes: fields["used_memory_rss"],
+           maxmemory_bytes: fields["maxmemory"],
+           maxmemory_policy: fields["maxmemory_policy"],
+           fragmentation_ratio: fields["mem_fragmentation_ratio"]
+         }
+         |> Enum.reject(fn {_k, v} -> is_nil(v) end)
+         |> Map.new()}
+
+      {:ok, other} ->
+        {:error, {:unexpected_reply, other}}
+
+      {:error, reason} ->
+        Logger.warning("Redis unavailable reading INFO memory: #{inspect(reason)}")
+        {:error, reason}
+    end
+  end
+
+  # INFO is `field:value` per line, CRLF separated, with `# Section` headings.
+  # Numbers are returned as numbers and everything else as a string, so a caller
+  # cannot accidentally do arithmetic on a policy name.
+  defp parse_info(info) do
+    info
+    |> String.split(~r/\r?\n/, trim: true)
+    |> Enum.reject(&String.starts_with?(&1, "#"))
+    |> Enum.reduce(%{}, fn line, acc ->
+      case String.split(line, ":", parts: 2) do
+        [key, value] -> Map.put(acc, key, cast_info_value(value))
+        _ -> acc
+      end
+    end)
+  end
+
+  defp cast_info_value(value) do
+    value = String.trim(value)
+
+    case Integer.parse(value) do
+      {n, ""} ->
+        n
+
+      _ ->
+        case Float.parse(value) do
+          {f, ""} -> f
+          _ -> value
+        end
+    end
+  end
+
+  @doc """
   probe_cache/1: membership for many URLs in one round trip, read-only.
 
   `in_cache?/1` answers `false` when Redis is unreachable, which is right for
