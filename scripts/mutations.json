@@ -3740,8 +3740,8 @@
       "id": "monitor-pages-for-a-switch-beta-turned-off",
       "bug": "acp and pro_checkout are switched off on purpose during beta -- one sells credit bundles, the other a subscription, and analysis is free. Paging every 15 minutes for a state we chose is how an alarm stops being read, which monitor.yml already documents about itself twice.",
       "file": ".github/workflows/monitor.yml",
-      "find": "          BETA_EXPECTED_OFF=\"acp pro_checkout\"",
-      "replace": "          BETA_EXPECTED_OFF=\"\"",
+      "find": "          BETA_REQUIRED_OFF=\"acp pro_checkout\"",
+      "replace": "          BETA_REQUIRED_OFF=\"\"",
       "guarded_by": "test/lei_service/payment_monitoring_wiring_test.exs",
       "app": "apps/lei_service"
     },
