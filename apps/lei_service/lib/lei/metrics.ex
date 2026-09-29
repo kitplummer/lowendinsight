@@ -66,6 +66,14 @@ defmodule Lei.Metrics do
       # beta left switched on after launch is a red run rather than a month of
       # service nobody billed for. Without this, "we are in beta" and "billing
       # has silently stopped working" are the same observable state.
+      # The corpus lives in memory, so memory is the ceiling on the corpus. With
+      # maxmemory unlimited and the policy noeviction, that ceiling arrives as
+      # refused writes while reads keep working -- analyses succeed, nothing
+      # caches, every request becomes a full clone at miss price, and each
+      # request individually looks fine (ADR-008). Nothing could see it coming
+      # before this.
+      redis_memory_metrics(),
+      "",
       "# HELP lei_billing_mode Whether analysis is charged for, or free during beta",
       "# TYPE lei_billing_mode gauge",
       "lei_billing_mode{mode=\"#{Lei.Billing.mode()}\"} 1",
@@ -426,6 +434,66 @@ defmodule Lei.Metrics do
       Logger.error("Metering metrics failed: #{inspect(error)}")
       ["lei_stripe_metering{measure=\"error\"} 1"]
   end
+
+  # `lei_redis_memory_readable` is emitted whether or not Redis answered, and the
+  # byte gauges only when it did. A zero would be the wrong answer twice over:
+  # "0 bytes used" reads as plenty of headroom, and it is indistinguishable from
+  # a Redis that is simply not there.
+  defp redis_memory_metrics do
+    case LeiService.Datastore.memory_info() do
+      {:ok, info} ->
+        [
+          "",
+          "# HELP lei_redis_memory_readable Whether Redis answered INFO memory",
+          "# TYPE lei_redis_memory_readable gauge",
+          "lei_redis_memory_readable 1",
+          "",
+          "# HELP lei_redis_memory_bytes Memory Redis reports for itself",
+          "# TYPE lei_redis_memory_bytes gauge"
+        ] ++
+          gauge("lei_redis_memory_bytes{type=\"used\"}", info[:used_bytes]) ++
+          gauge("lei_redis_memory_bytes{type=\"rss\"}", info[:rss_bytes]) ++
+          [
+            "",
+            # 0 is Redis's own way of saying unlimited, which is what production
+            # runs. Passed through rather than translated, so the gauge says what
+            # Redis says.
+            "# HELP lei_redis_maxmemory_bytes Configured maxmemory, 0 meaning unlimited",
+            "# TYPE lei_redis_maxmemory_bytes gauge"
+          ] ++
+          gauge("lei_redis_maxmemory_bytes", info[:maxmemory_bytes]) ++
+          [
+            "",
+            "# HELP lei_redis_maxmemory_policy The eviction policy in force",
+            "# TYPE lei_redis_maxmemory_policy gauge"
+          ] ++
+          policy_gauge(info[:maxmemory_policy]) ++
+          [
+            "",
+            "# HELP lei_redis_memory_fragmentation_ratio RSS over used memory",
+            "# TYPE lei_redis_memory_fragmentation_ratio gauge"
+          ] ++
+          gauge("lei_redis_memory_fragmentation_ratio", info[:fragmentation_ratio])
+
+      {:error, _reason} ->
+        [
+          "",
+          "# HELP lei_redis_memory_readable Whether Redis answered INFO memory",
+          "# TYPE lei_redis_memory_readable gauge",
+          "lei_redis_memory_readable 0"
+        ]
+    end
+  end
+
+  # A field Redis did not report is left out, not emitted as zero.
+  defp gauge(_name, nil), do: []
+  defp gauge(name, value) when is_number(value), do: ["#{name} #{value}"]
+  defp gauge(_name, _value), do: []
+
+  defp policy_gauge(policy) when is_binary(policy),
+    do: ["lei_redis_maxmemory_policy{policy=\"#{policy}\"} 1"]
+
+  defp policy_gauge(_), do: []
 
   defp format_ecosystem_metrics(ecosystems) when map_size(ecosystems) == 0, do: []
 

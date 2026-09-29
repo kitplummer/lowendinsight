@@ -3987,6 +3987,33 @@
       "replace": "              if [ -z \"$VALUE\" ]; then\n                echo \"  ${path}: no gauge, assuming off\"\n              elif [ \"$VALUE\" != \"0\" ]; then",
       "guarded_by": "test/lei_service/payment_monitoring_wiring_test.exs",
       "app": "apps/lei_service"
+    },
+    {
+      "id": "redis-memory-unreadable-reports-zero",
+      "bug": "An unreadable Redis publishing `lei_redis_memory_bytes{type=\"used\"} 0` reads as a cache with all the headroom in the world, and is indistinguishable from a healthy Redis holding nothing. The metric exists to see a ceiling coming; reporting zero when it cannot be read is worse than publishing nothing.",
+      "file": "apps/lei_service/lib/lei/metrics.ex",
+      "find": "      {:error, _reason} ->\n        [\n          \"\",\n          \"# HELP lei_redis_memory_readable Whether Redis answered INFO memory\",\n          \"# TYPE lei_redis_memory_readable gauge\",\n          \"lei_redis_memory_readable 0\"\n        ]",
+      "replace": "      {:error, _reason} ->\n        [\n          \"\",\n          \"# HELP lei_redis_memory_readable Whether Redis answered INFO memory\",\n          \"# TYPE lei_redis_memory_readable gauge\",\n          \"lei_redis_memory_readable 0\",\n          \"\",\n          \"# HELP lei_redis_memory_bytes Memory Redis reports for itself\",\n          \"# TYPE lei_redis_memory_bytes gauge\",\n          \"lei_redis_memory_bytes{type=\\\"used\\\"} 0\"\n        ]",
+      "guarded_by": "test/lei_service/redis_memory_metric_test.exs",
+      "app": "apps/lei_service"
+    },
+    {
+      "id": "redis-memory-info-fabricates-on-failure",
+      "bug": "memory_info/0 returning a map of zeros when Redis is unreachable makes every caller believe it read something. The connection error is the finding; a zeroed map hides it behind plausible numbers.",
+      "file": "apps/lei_service/lib/lei_service/datastore.ex",
+      "find": "      {:error, reason} ->\n        Logger.warning(\"Redis unavailable reading INFO memory: #{inspect(reason)}\")\n        {:error, reason}",
+      "replace": "      {:error, reason} ->\n        Logger.warning(\"Redis unavailable reading INFO memory: #{inspect(reason)}\")\n        {:ok, %{used_bytes: 0, rss_bytes: 0, maxmemory_bytes: 0}}",
+      "guarded_by": "test/lei_service/redis_memory_metric_test.exs",
+      "app": "apps/lei_service"
+    },
+    {
+      "id": "redis-memory-readable-gauge-dropped",
+      "bug": "Without a gauge that is published either way, 'Redis could not be read' is a silence, and a silence cannot be told apart from a scrape that failed or a metric that was renamed. The readability has to be a value.",
+      "file": "apps/lei_service/lib/lei/metrics.ex",
+      "find": "          \"lei_redis_memory_readable 0\"\n        ]",
+      "replace": "        ]",
+      "guarded_by": "test/lei_service/redis_memory_metric_test.exs",
+      "app": "apps/lei_service"
     }
   ]
 }
