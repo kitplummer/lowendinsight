@@ -96,15 +96,31 @@ price for an answer we were holding and that was still true.
 
 **None yet. This ADR exists to stop the corpus growing before these are settled.**
 
-The four questions, and the options as they stand:
+The three questions, and the options as they stand:
 
-### 1. Where do reports live?
+### 1. Where do reports live, and how does the ceiling announce itself?
+
+One question, not two: the storage choice and the failure behaviour are the same
+decision. Any answer that leaves the ceiling invisible is not an answer, because
+a service that has quietly stopped caching is indistinguishable from one with a
+poor hit rate — same latency, same bill, same green dashboard.
 
 | option | cost shape | failure mode |
 |---|---|---|
 | **Redis only** (today) | memory, growing with the corpus | silent write failure at the ceiling |
-| **Redis + a memory budget** | memory, capped | needs an eviction policy, which reintroduces the noisy-neighbour problem the current config avoids |
-| **Durable store, Redis as index** | disk or object storage, an order of magnitude below memory | a second read path, and a latency budget to prove |
+| **Redis with a memory budget** | memory, capped | needs an eviction policy, which reintroduces the noisy-neighbour problem the current config avoids |
+
+Moving reports to a durable store with Redis as an index was considered and
+**dropped**. It is the option that stops the corpus being priced as memory, and
+at some size it becomes the right one — but it buys a second read path and a
+latency budget to defend against a sub-10ms hit, to solve a problem we do not yet
+have at our actual corpus size. Listing it as a peer option would have implied
+the choice is live. It is not; revisit it when memory, measured, says otherwise.
+
+So the corpus stays priced as memory, deliberately, and the binding requirement
+on whichever option wins is that **the ceiling is visible before it is reached**:
+Redis memory as a metric, an alarm with headroom, and a cache write failure that
+is loud rather than absorbed.
 
 ### 2. What bounds a single job?
 
@@ -112,14 +128,7 @@ A hard cap on repositories per request, independent of quota, so capacity is not
 controlled by billing. The number should come from what a machine can hold at the
 configured concurrency, not from a round figure.
 
-### 3. What happens at the ceiling?
-
-Whatever is decided in (1), the ceiling must be **visible before it is reached**:
-Redis memory as a metric, an alarm with headroom, and a cache write failure that
-is loud rather than absorbed. A service that quietly stops caching looks exactly
-like one with a poor hit rate.
-
-### 4. Does the TTL survive?
+### 3. Does the TTL survive?
 
 Proposed replacement: **lazy revalidation on read**. Serve from cache; when an
 entry is older than some age, `ls-remote` its stored `data.git.hash` against
@@ -129,7 +138,8 @@ proportional to what is actually asked for, and the corpus grows only where it i
 used.
 
 This makes (1) more pressing, not less: entries would stop expiring, so the
-corpus would only ever grow.
+corpus would only ever grow — and with the durable-store option dropped, it grows
+in memory.
 
 ## Consequences
 
@@ -139,14 +149,15 @@ Until this is decided:
 - the existing TTL keeps deleting good work, which is wasteful but bounded and
   keeps memory flat;
 - a large job is bounded only by quota, which is acceptable only while beta's
-  free-tier limit is the binding constraint.
+  free-tier limit is the binding constraint;
+- the corpus stays priced as memory, which is now an accepted consequence rather
+  than an open option, and the reason Redis memory needs a metric whichever way
+  (1) is answered.
 
 ## Not verified
 
 - **Actual Redis memory in production.** Not exposed in `/metrics`. Payload size
   is not resident memory: the operations notes record 10-14x fragmentation at
   small dataset sizes, and nobody has measured it at corpus scale.
-- **The latency cost of a durable store.** Cache hits currently answer in under
-  10 ms, and that budget is what makes a manifest scan tolerable.
 - **What concurrency the machine actually survives** with the long tail of clone
   sizes. #158 is the only evidence, and it concerned trending, not customer jobs.
