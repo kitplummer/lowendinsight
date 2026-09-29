@@ -3740,8 +3740,8 @@
       "id": "monitor-pages-for-a-switch-beta-turned-off",
       "bug": "acp and pro_checkout are switched off on purpose during beta -- one sells credit bundles, the other a subscription, and analysis is free. Paging every 15 minutes for a state we chose is how an alarm stops being read, which monitor.yml already documents about itself twice.",
       "file": ".github/workflows/monitor.yml",
-      "find": "          BETA_EXPECTED_OFF=\"acp pro_checkout\"",
-      "replace": "          BETA_EXPECTED_OFF=\"\"",
+      "find": "          BETA_REQUIRED_OFF=\"acp pro_checkout\"",
+      "replace": "          BETA_REQUIRED_OFF=\"\"",
       "guarded_by": "test/lei_service/payment_monitoring_wiring_test.exs",
       "app": "apps/lei_service"
     },
@@ -3968,6 +3968,24 @@
       "find": "          if ! jq -e '.overall.hit_rate != null' baseline.json > /dev/null 2>&1; then\n            echo \"::error::No hit rate was measured. baseline.json is missing or has none, so this run measured nothing.\"\n            exit 1\n          fi",
       "replace": "          echo \"summary written\"",
       "guarded_by": "test/lei_service/cache_probe_test.exs",
+      "app": "apps/lei_service"
+    },
+    {
+      "id": "monitor-beta-off-list-is-only-a-permission",
+      "bug": "BETA_REQUIRED_OFF was a permission list with no requirement behind it: the check only ever inspected paths that were already off, so acp and pro_checkout sat enabled in production for the whole beta -- able to take money while analysis was free -- and the monitor stayed green every fifteen minutes. A list of what is allowed is not a check.",
+      "file": ".github/workflows/monitor.yml",
+      "find": "          if [ \"$BILLING\" = \"beta\" ]; then\n            for path in $BETA_REQUIRED_OFF; do\n              VALUE=$(echo \"$METRICS\" | sed -n \"s/^lei_payment_switch_enabled{path=\\\"${path}\\\"} \\([01]\\)$/\\1/p\" | head -1)\n\n              if [ -z \"$VALUE\" ]; then\n                echo \"::error::No switch gauge for '${path}'. Whether a path that must not take money during beta is enabled cannot be read.\"\n                FAILED=1\n              elif [ \"$VALUE\" != \"0\" ]; then\n                echo \"::error::'${path}' is switched ON during beta, so it can take money while analysis is free. Switch it off with: scripts/payments.sh switch-off ${path} --reason ...\"\n                FAILED=1\n              fi\n            done\n          fi\n\n",
+      "replace": "",
+      "guarded_by": "test/lei_service/payment_monitoring_wiring_test.exs",
+      "app": "apps/lei_service"
+    },
+    {
+      "id": "monitor-beta-off-vanished-gauge-reads-as-satisfied",
+      "bug": "A gauge that stopped being published is absent from the off-list just as a path that is off is. Inferring 'off' from absence rather than reading the value means a metrics regression silently satisfies the check.",
+      "file": ".github/workflows/monitor.yml",
+      "find": "              if [ -z \"$VALUE\" ]; then\n                echo \"::error::No switch gauge for '${path}'. Whether a path that must not take money during beta is enabled cannot be read.\"\n                FAILED=1\n              elif [ \"$VALUE\" != \"0\" ]; then",
+      "replace": "              if [ -z \"$VALUE\" ]; then\n                echo \"  ${path}: no gauge, assuming off\"\n              elif [ \"$VALUE\" != \"0\" ]; then",
+      "guarded_by": "test/lei_service/payment_monitoring_wiring_test.exs",
       "app": "apps/lei_service"
     }
   ]

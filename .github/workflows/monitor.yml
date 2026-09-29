@@ -393,11 +393,17 @@ jobs:
           # revenue silently declining, and nothing else reports it: a rail that
           # is off refuses cleanly, which looks like no demand.
           #
-          # Two paths are off on purpose during beta (ADR-007). acp sells credit
-          # bundles and pro_checkout sells a subscription, and analysis is free,
-          # so neither should take money. Paging every 15 minutes for a state we
-          # chose is how an alarm stops being read.
-          BETA_EXPECTED_OFF="acp pro_checkout"
+          # Two paths must be off during beta (ADR-007). acp sells credit bundles
+          # and pro_checkout sells a subscription, and analysis is free, so
+          # neither should take money. Paging every 15 minutes for a state we
+          # chose is how an alarm stops being read -- so these do not page when
+          # off, and they DO page when on.
+          #
+          # This was a permission list only, and the requirement half was
+          # missing: both paths sat enabled in production for the whole beta
+          # while this check stayed green, because it only ever looked at paths
+          # that were off (2026-09-28). A list of what is allowed is not a check.
+          BETA_REQUIRED_OFF="acp pro_checkout"
 
           # And two must stay on, because the one-off $0.50 account charge for an
           # account-less agent settles on them. If those are off, no agent can
@@ -415,7 +421,7 @@ jobs:
             EXPECTED=no
 
             if [ "$BILLING" = "beta" ]; then
-              for ok in $BETA_EXPECTED_OFF; do
+              for ok in $BETA_REQUIRED_OFF; do
                 [ "$path" = "$ok" ] && EXPECTED=yes
               done
             fi
@@ -430,6 +436,24 @@ jobs:
           if [ -n "$UNEXPECTED" ]; then
             echo "::error::Payment path(s) switched off: ${UNEXPECTED}. If an incident is over, re-enable with: scripts/payments.sh switch-on <path> --reason ..."
             FAILED=1
+          fi
+
+          # The other direction, asserted the same way: during beta these must be
+          # present and 0. Read out of the response rather than inferred from not
+          # appearing in $OFF, because a gauge that stopped being published would
+          # also not appear there.
+          if [ "$BILLING" = "beta" ]; then
+            for path in $BETA_REQUIRED_OFF; do
+              VALUE=$(echo "$METRICS" | sed -n "s/^lei_payment_switch_enabled{path=\"${path}\"} \([01]\)$/\1/p" | head -1)
+
+              if [ -z "$VALUE" ]; then
+                echo "::error::No switch gauge for '${path}'. Whether a path that must not take money during beta is enabled cannot be read."
+                FAILED=1
+              elif [ "$VALUE" != "0" ]; then
+                echo "::error::'${path}' is switched ON during beta, so it can take money while analysis is free. Switch it off with: scripts/payments.sh switch-off ${path} --reason ..."
+                FAILED=1
+              fi
+            done
           fi
 
           # Asserted present and enabled, rather than inferred from the absence
