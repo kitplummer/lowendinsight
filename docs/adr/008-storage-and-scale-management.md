@@ -30,31 +30,52 @@ plausibly hold is a fraction of a gigabyte of JSON.
 The constraint is entirely where those bytes sit, and what happens when that
 place is full.
 
-### Reports live in Redis, and Redis is unbounded with no eviction
+### Reports live in Redis, which has a budget and evicts them
 
-From `apps/lei_service/docs/OPERATIONS.md`:
+**Corrected 2026-09-29.** The first version of this ADR described production from
+`apps/lei_service/docs/OPERATIONS.md`:
 
 ```
 maxmemory:        unlimited (default)
 maxmemory_policy: noeviction
 ```
 
-Two consequences, and the second is the one that matters.
+and reasoned from it that no eviction is right, that a large job cannot push
+another customer's entries out, and that the shared corpus is not a
+noisy-neighbour lottery. **Every part of that was wrong about production.**
 
-**No eviction is right.** A large job cannot push another customer's entries out.
-The shared corpus is not a noisy-neighbour lottery, and it should stay that way.
+The memory metric added after this ADR was written read production on its first
+scrape:
 
-**Unbounded with `noeviction` fails invisibly.** At the memory ceiling Redis
-begins refusing *writes* while continuing to serve *reads*. Analyses keep
-succeeding. Nothing caches. Every subsequent request is a miss — full clone, full
-price, full latency — and the service reports itself healthy throughout, because
-every individual request works. It is the failure shape this codebase has shipped
-nine times: something reporting success while broken. Today nothing measures
-Redis memory, nothing alarms on it, and `/readyz` checks only that Redis answers.
+```
+lei_redis_maxmemory_bytes 1073741824
+lei_redis_maxmemory_policy{policy="optimistic-volatile"} 1
+```
 
-The corpus is therefore priced as **memory**, roughly an order of magnitude above
-disk, and it does not degrade gracefully — it works, then it silently stops
-caching.
+A budget of 1 GiB, and a **volatile eviction policy** — one that evicts keys
+carrying a TTL when memory is tight. Every report is written with `SETEX`
+(`datastore.ex:145`), so **every report we hold is evictable**. The operations
+note appears to describe a Redis run locally, not the one production uses.
+
+So the shared corpus already *is* the lottery the ADR said it was not. A large
+job that fills memory does not refuse its own writes; it silently evicts entries
+belonging to whoever else is in there. Nobody decided that. It arrived with the
+provider's default.
+
+Three things follow, and they change the questions rather than just the facts:
+
+**There is a ceiling, and it is close.** 1 GiB is the budget, not an abstraction.
+
+**The failure mode is eviction, not refusal.** Refused writes would at least be
+loud at the write site. Silent eviction is invisible from both ends: the evicted
+customer's next request is a cache miss that looks like an ordinary miss, and the
+evicting job succeeds. There is nothing to notice.
+
+**Production is holding almost nothing.** Used memory at the same scrape was
+**7,490 bytes**. Whatever the corpus is assumed to be elsewhere, today it is
+empty, so none of the above is presently biting — and any reasoning about corpus
+composition needs rechecking against a measurement rather than against an
+earlier document.
 
 ### What bounds a large job today
 
@@ -107,8 +128,9 @@ poor hit rate — same latency, same bill, same green dashboard.
 
 | option | cost shape | failure mode |
 |---|---|---|
-| **Redis only** (today) | memory, growing with the corpus | silent write failure at the ceiling |
-| **Redis with a memory budget** | memory, capped | needs an eviction policy, which reintroduces the noisy-neighbour problem the current config avoids |
+| **A budget with volatile eviction** (today, by default rather than by choice) | memory, capped at 1 GiB | entries silently evicted; the evicted customer sees an ordinary-looking miss and the evicting job succeeds |
+| **A budget with `noeviction`** | memory, capped | writes refused at the ceiling — loud at the write site, but the service stops caching entirely until someone intervenes |
+| **A larger budget** | memory, capped higher | moves the ceiling; changes nothing about which failure happens at it |
 
 Moving reports to a durable store with Redis as an index was considered and
 **dropped**. It is the option that stops the corpus being priced as memory, and
@@ -117,10 +139,15 @@ latency budget to defend against a sub-10ms hit, to solve a problem we do not ye
 have at our actual corpus size. Listing it as a peer option would have implied
 the choice is live. It is not; revisit it when memory, measured, says otherwise.
 
-So the corpus stays priced as memory, deliberately, and the binding requirement
-on whichever option wins is that **the ceiling is visible before it is reached**:
-Redis memory as a metric, an alarm with headroom, and a cache write failure that
-is loud rather than absorbed.
+So the corpus stays priced as memory, deliberately. The binding requirement on
+whichever option wins is that **the ceiling is visible before it is reached**.
+The metric now exists (`lei_redis_memory_bytes`, `lei_redis_maxmemory_bytes`,
+`lei_redis_maxmemory_policy`); an alarm with headroom does not, and its threshold
+is a policy value rather than an engineering one.
+
+Note that the eviction question is no longer hypothetical: whichever way it is
+answered, it is a **change** from what production does today, including the
+answer "leave it alone". That should be a decision rather than an inheritance.
 
 ### 2. What bounds a single job?
 
@@ -141,13 +168,23 @@ This makes (1) more pressing, not less: entries would stop expiring, so the
 corpus would only ever grow — and with the durable-store option dropped, it grows
 in memory.
 
+**And it changes which failure happens at the ceiling.** A `volatile-*` policy
+can only evict keys that carry a TTL. The 30-day `SETEX` is therefore the only
+reason production's eviction policy has anything to act on. Store entries
+without a TTL and eviction finds nothing to evict, so the ceiling arrives as
+refused writes instead — the failure this ADR originally, wrongly, believed was
+already in force. Revalidating on read while still writing with a TTL keeps them
+evictable; persisting them does not. That is a choice inside question 3, not a
+detail of it.
+
 ## Consequences
 
 Until this is decided:
 
 - corpus build-up stays paused, and nothing preloads;
-- the existing TTL keeps deleting good work, which is wasteful but bounded and
-  keeps memory flat;
+- the existing TTL keeps deleting good work, which is wasteful but bounded, keeps
+  memory flat, and — given a volatile eviction policy — is also the only thing
+  making entries evictable rather than the cache filling until something breaks;
 - a large job is bounded only by quota, which is acceptable only while beta's
   free-tier limit is the binding constraint;
 - the corpus stays priced as memory, which is now an accepted consequence rather
@@ -156,8 +193,12 @@ Until this is decided:
 
 ## Not verified
 
-- **Actual Redis memory in production.** Not exposed in `/metrics`. Payload size
-  is not resident memory: the operations notes record 10-14x fragmentation at
-  small dataset sizes, and nobody has measured it at corpus scale.
+- **How production's Redis came to be configured this way**, and whether the
+  policy was chosen or inherited. The operations note documents something else
+  entirely, so at least one of the two was never true.
+- **Resident memory at corpus scale.** The provider does not report
+  `used_memory_rss` or a fragmentation ratio, so the 10-14x fragmentation in the
+  operations notes cannot be confirmed against production. Payload is still not
+  resident memory, and the gap is now unmeasurable from here.
 - **What concurrency the machine actually survives** with the long tail of clone
   sizes. #158 is the only evidence, and it concerned trending, not customer jobs.
