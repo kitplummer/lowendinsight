@@ -96,6 +96,40 @@ defmodule Lei.TestHygieneTest do
            """
   end
 
+  test "a cached fixture dates itself from the clock, not from a literal" do
+    # The same failure as the test above, in a second shape the first could not
+    # see. `Datastore.too_old?/2` compares a report's header.end_time against
+    # DateTime.utc_now() with a 30-day window, so a fixture carrying a literal
+    # date is inside the window until real time walks past it.
+    #
+    # report_page_injection_test.exs hardcoded 2026-09-01 and passed for a
+    # month. On 2026-10-02 -- thirty-one days later -- the cached report read as
+    # stale, the page fell through to a real analysis of a repository that does
+    # not exist, and the suite failed for everyone with nothing behind it. It
+    # also broke guard verification, which refuses to credit a mutation when the
+    # guarding test was already red.
+    #
+    # Every other test that writes to the cache already derives its dates from
+    # DateTime.utc_now(). This is the convention those files follow, asserted.
+    offenders =
+      for path <- test_files(),
+          source = File.read!(path),
+          String.contains?(source, "write_to_cache"),
+          Regex.match?(~r/"end_time" => "\d{4}-\d{2}-\d{2}/, source),
+          do: Path.relative_to(path, @test_root)
+
+    assert offenders == [],
+           """
+           These test files write a report to the cache with a literal end_time:
+
+             #{Enum.join(offenders, "\n  ")}
+
+           Derive it from DateTime.utc_now(). A literal is inside the cache's
+           age window until the calendar passes it, and then the test fails on a
+           day nobody touched it.
+           """
+  end
+
   test "the hygiene check can actually see the suite" do
     # A wildcard that resolves to nothing would make both checks above pass
     # vacuously -- the same class of bug they exist to catch.

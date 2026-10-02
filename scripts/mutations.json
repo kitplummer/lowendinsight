@@ -4014,6 +4014,51 @@
       "replace": "        ]",
       "guarded_by": "test/lei_service/redis_memory_metric_test.exs",
       "app": "apps/lei_service"
+    },
+    {
+      "id": "repo-cap-missing-from-the-shared-url-path",
+      "bug": "Without the cap in urls_analyzable/1, /v1/analyze and /v1/analyze/sbom are bounded only by the org's quota -- a billing control doing a capacity control's job. One request naming thousands of repositories occupies the whole analysis queue while every other customer waits, and nothing reports it because each request eventually succeeds (ADR-008).",
+      "file": "apps/lei_service/lib/lei_service/endpoint.ex",
+      "find": "    with :ok <- Lei.RequestScope.check(urls),\n         true <- :ok == Helpers.validate_urls(urls),",
+      "replace": "    with true <- :ok == Helpers.validate_urls(urls),",
+      "guarded_by": "test/lei_service/request_scope_test.exs",
+      "app": "apps/lei_service"
+    },
+    {
+      "id": "repo-cap-missing-from-the-batch-path",
+      "bug": "The batch route has its own validation rather than sharing urls_analyzable/1, which is exactly how a cap ends up applying to two entry points out of three. A cap missing from one route is a cap nobody has.",
+      "file": "apps/lei_service/lib/lei/web/router.ex",
+      "find": "    with :ok <- Lei.RequestScope.check(List.wrap(dependencies)) do\n      validate_batch_dependencies(dependencies, params)\n    else\n      {:error, body} -> {:too_many, body}\n    end",
+      "replace": "    validate_batch_dependencies(dependencies, params)",
+      "guarded_by": "test/lei_service/request_scope_test.exs",
+      "app": "apps/lei_service"
+    },
+    {
+      "id": "repo-cap-refuses-a-request-at-the-limit",
+      "bug": "An off-by-one in the refusing direction rejects work that was accepted yesterday, for callers who had sized their batches to the documented limit.",
+      "file": "apps/lei_service/lib/lei/request_scope.ex",
+      "find": "      count > cap ->",
+      "replace": "      count >= cap ->",
+      "guarded_by": "test/lei_service/request_scope_test.exs",
+      "app": "apps/lei_service"
+    },
+    {
+      "id": "repo-cap-default-exceeds-its-derivation",
+      "bug": "The cap is the point where one request can no longer hold the analysis queue longer than the service already permits a single request to take: concurrency x idle timeout over the p90 analysis. Raising the default past that derivation, without raising the concurrency, just lets one caller wait longer while starving everyone else.",
+      "file": "apps/lei_service/lib/lei/request_scope.ex",
+      "find": "    Application.get_env(:lei_service, :max_repositories_per_request, 500)",
+      "replace": "    Application.get_env(:lei_service, :max_repositories_per_request, 5_000)",
+      "guarded_by": "test/lei_service/request_scope_test.exs",
+      "app": "apps/lei_service"
+    },
+    {
+      "id": "cached-fixture-dates-itself-from-a-literal",
+      "bug": "A report fixture written to the cache with a literal end_time is inside Datastore.too_old?/2's 30-day window until real time walks past it. report_page_injection_test.exs hardcoded 2026-09-01, passed for a month, and on 2026-10-02 the cached report read as stale, /url= fell through to a real analysis of a repository that does not exist, and the suite failed for everyone with no change behind it -- taking guard verification with it, since a mutation cannot be credited when its guarding test was already red.",
+      "file": "apps/lei_service/test/lei_service/report_page_injection_test.exs",
+      "find": "        \"start_time\" => cached_at(),\n        \"end_time\" => cached_at()",
+      "replace": "        \"start_time\" => \"2026-09-01T00:00:00Z\",\n        \"end_time\" => \"2026-09-01T00:00:00Z\"",
+      "guarded_by": "test/lei/test_hygiene_test.exs",
+      "app": "apps/lei_service"
     }
   ]
 }

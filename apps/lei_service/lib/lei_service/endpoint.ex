@@ -301,11 +301,18 @@ defmodule LeiService.Endpoint do
 
   # The same body process_urls/4 answers with, so moving the check ahead of
   # admission does not change the API's response.
+  # The cap is checked here rather than per route, because this is what both
+  # /v1/analyze and /v1/analyze/sbom already call. A limit applied at two of
+  # three entry points is not a limit (ADR-008).
   defp urls_analyzable(urls) do
-    if :ok == Helpers.validate_urls(urls) and
-         :ok == LeiService.RemoteUrl.validate_all(urls),
-       do: :ok,
-       else: {:invalid, %{error: "invalid URLs list"}}
+    with :ok <- Lei.RequestScope.check(urls),
+         true <- :ok == Helpers.validate_urls(urls),
+         true <- :ok == LeiService.RemoteUrl.validate_all(urls) do
+      :ok
+    else
+      {:error, %{} = over_cap} -> {:invalid, over_cap}
+      _ -> {:invalid, %{error: "invalid URLs list"}}
+    end
   end
 
   defp analyze_urls(conn, billing, uuid, start_time) do

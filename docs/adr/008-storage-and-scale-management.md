@@ -115,9 +115,8 @@ price for an answer we were holding and that was still true.
 
 ## Decision
 
-**None yet. This ADR exists to stop the corpus growing before these are settled.**
-
-The three questions, and the options as they stand:
+**Question 2 is decided. Questions 1 and 3 are not, and the corpus stays paused
+until they are.**
 
 ### 1. Where do reports live, and how does the ceiling announce itself?
 
@@ -149,11 +148,36 @@ Note that the eviction question is no longer hypothetical: whichever way it is
 answered, it is a **change** from what production does today, including the
 answer "leave it alone". That should be a decision rather than an inheritance.
 
-### 2. What bounds a single job?
+### 2. What bounds a single job? — **Decided 2026-10-02**
 
-A hard cap on repositories per request, independent of quota, so capacity is not
-controlled by billing. The number should come from what a machine can hold at the
-configured concurrency, not from a round figure.
+A hard cap on repositories per request, independent of quota, configured as
+`LEI_MAX_REPOS_PER_REQUEST` and enforced in `Lei.RequestScope`.
+
+**Derived from the queue, not from disk or memory.** Neither of those scales
+with the size of a request: clones go through the analysis queue a few at a
+time, so peak disk is concurrency times per-clone whatever a request names, and
+a thousand reports is a low single-digit percentage of the cache budget. What
+scales is how long one request owns the queue. At `OBAN_ANALYSIS_CONCURRENCY`
+(5), a request naming N repositories holds all of it for about `N / 5 ×
+per-analysis`, and everything behind it waits.
+
+So the cap is the point where one request can no longer hold the queue longer
+than the service already permits any single request to take:
+
+    concurrency 5 × idle_timeout 180 s ÷ p90 analysis 1.62 s  ≈  555
+
+`idle_timeout` is Cowboy's, already chosen for blocking analysis. The default is
+**500** — that figure rounded down for headroom rather than up for generosity —
+and a test asserts the default never exceeds its own derivation, so raising the
+cap without raising the concurrency fails rather than quietly starving people.
+
+Applied at all three entry points that name a list: `/v1/analyze` and
+`/v1/analyze/sbom` share `urls_analyzable/1`, and `/v1/analyze/batch` has its own
+validation. Every one of them is driven in the guard test, because a cap applied
+to two routes out of three is how this would otherwise be "done".
+
+Zero or less means unlimited, for a self-hosted deployment whose queue and
+capacity are its own business (ADR-003).
 
 ### 3. Does the TTL survive?
 
@@ -185,8 +209,8 @@ Until this is decided:
 - the existing TTL keeps deleting good work, which is wasteful but bounded, keeps
   memory flat, and — given a volatile eviction policy — is also the only thing
   making entries evictable rather than the cache filling until something breaks;
-- a large job is bounded only by quota, which is acceptable only while beta's
-  free-tier limit is the binding constraint;
+- a large job is capped independently of billing, so the remaining exposure is
+  the cache rather than the queue;
 - the corpus stays priced as memory, which is now an accepted consequence rather
   than an open option, and the reason Redis memory needs a metric whichever way
   (1) is answered.

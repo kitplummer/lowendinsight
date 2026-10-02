@@ -40,6 +40,16 @@ defmodule LeiService.ReportPageInjectionTest do
     :ok
   end
 
+  # Dates relative to now, not absolute. These were fixed at 2026-09-01, and the
+  # cache's 30-day age window turned this into a time bomb: `too_old?/2` compares
+  # `header.end_time` against the clock, so on 2026-10-02 -- thirty-one days
+  # later -- the cached report read as stale, `/url=` fell through to a real
+  # analysis of a repository that does not exist, and the page 401'd with
+  # "Invalid url". The test had nothing to do with cache ages; it just inherited
+  # one. It passed for a month and then failed for everyone, on a day nobody
+  # changed anything.
+  defp cached_at, do: DateTime.utc_now() |> DateTime.add(-1, :day) |> DateTime.to_iso8601()
+
   defp hostile_report(url) do
     %{
       "data" => %{
@@ -48,7 +58,7 @@ defmodule LeiService.ReportPageInjectionTest do
         "repo_size" => @breakout,
         "git" => %{
           "default_branch" => @quote_breakout <> @breakout,
-          "last_commit_date" => "2026-09-01T00:00:00Z",
+          "last_commit_date" => cached_at(),
           "total_commits_on_default_branch" => 10
         },
         "results" => %{
@@ -66,8 +76,8 @@ defmodule LeiService.ReportPageInjectionTest do
       },
       "header" => %{
         "uuid" => "u",
-        "start_time" => "2026-09-01T00:00:00Z",
-        "end_time" => "2026-09-01T00:00:00Z"
+        "start_time" => cached_at(),
+        "end_time" => cached_at()
       }
     }
   end
@@ -81,7 +91,7 @@ defmodule LeiService.ReportPageInjectionTest do
     uuid = "zz-injection-report-#{System.unique_integer([:positive])}"
 
     report = %{
-      "metadata" => %{"times" => %{"end_time" => "2026-09-01T00:00:00Z"}},
+      "metadata" => %{"times" => %{"end_time" => cached_at()}},
       "report" => %{"uuid" => uuid, "repos" => repos}
     }
 

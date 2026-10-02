@@ -38,6 +38,13 @@ config :lei_service,
   max_repo_size_kb: String.to_integer(System.get_env("LEI_MAX_REPO_SIZE_KB") || "250000"),
   default_cache_timeout:
     String.to_integer(System.get_env("LEI_DEFAULT_CACHE_TIMEOUT") || "30000"),
+  # How many repositories one request may name (ADR-008). Derived from what one
+  # request may do to the analysis queue, not from disk or memory: see
+  # Lei.RequestScope for the derivation, and re-derive it if the queue's
+  # concurrency changes. 0 or less is unlimited, for a self-hosted deployment
+  # whose capacity is its own business.
+  max_repositories_per_request:
+    String.to_integer(System.get_env("LEI_MAX_REPOS_PER_REQUEST") || "500"),
   wait_time: String.to_integer(System.get_env("LEI_WAIT_TIME") || "7200000"),
   gh_token: System.get_env("LEI_GH_TOKEN") || "",
   num_of_repos: System.get_env("LEI_NUM_OF_REPOS") || "10",
