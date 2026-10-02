@@ -4050,6 +4050,15 @@
       "replace": "    Application.get_env(:lei_service, :max_repositories_per_request, 5_000)",
       "guarded_by": "test/lei_service/request_scope_test.exs",
       "app": "apps/lei_service"
+    },
+    {
+      "id": "cached-fixture-dates-itself-from-a-literal",
+      "bug": "A report fixture written to the cache with a literal end_time is inside Datastore.too_old?/2's 30-day window until real time walks past it. report_page_injection_test.exs hardcoded 2026-09-01, passed for a month, and on 2026-10-02 the cached report read as stale, /url= fell through to a real analysis of a repository that does not exist, and the suite failed for everyone with no change behind it -- taking guard verification with it, since a mutation cannot be credited when its guarding test was already red.",
+      "file": "apps/lei_service/test/lei_service/report_page_injection_test.exs",
+      "find": "        \"start_time\" => cached_at(),\n        \"end_time\" => cached_at()",
+      "replace": "        \"start_time\" => \"2026-09-01T00:00:00Z\",\n        \"end_time\" => \"2026-09-01T00:00:00Z\"",
+      "guarded_by": "test/lei/test_hygiene_test.exs",
+      "app": "apps/lei_service"
     }
   ]
 }
