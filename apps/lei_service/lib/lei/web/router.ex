@@ -424,6 +424,11 @@ defmodule Lei.Web.Router do
             |> send_resp(200, Poison.encode!(enriched))
         end
 
+      {:too_many, body} ->
+        conn
+        |> put_resp_content_type("application/json")
+        |> send_resp(422, Poison.encode!(body))
+
       {:error, message} ->
         conn
         |> put_resp_content_type("application/json")
@@ -838,6 +843,19 @@ defmodule Lei.Web.Router do
   defp validate_batch_request(params) do
     dependencies = params["dependencies"]
 
+    # The third entry point that names a list of repositories. The other two
+    # share urls_analyzable/1 in the endpoint; this one has its own validation,
+    # and a cap missing from one route is a cap nobody has (ADR-008). Returned
+    # as its own tag so it renders as a 422 with the count and the limit, like
+    # the other two, rather than as a bare 400 string.
+    with :ok <- Lei.RequestScope.check(List.wrap(dependencies)) do
+      validate_batch_dependencies(dependencies, params)
+    else
+      {:error, body} -> {:too_many, body}
+    end
+  end
+
+  defp validate_batch_dependencies(dependencies, params) do
     cond do
       is_nil(dependencies) ->
         {:error, "missing required field: dependencies"}
