@@ -76,3 +76,63 @@ jobs:
         else
           scripts/dependency-audit.sh --strict
         fi
+
+    # What is published, against what the tree says is published.
+    #
+    # Sixteen commits sat unreleased from 2026-09-16 to 2026-10-03, including
+    # the three modules that are the library's differentiation. Nothing noticed:
+    # every other check reads the tree, and the tree was fine. It surfaced only
+    # when the published package was consumed from outside the repository, and a
+    # survey built on it produced 329 analysed repositories with zero
+    # functional_commit_currency_weeks.
+    #
+    # Two contradictions, both cheap to detect:
+    #
+    #   * hex has a version the CHANGELOG still calls unreleased
+    #   * the tree's version is already published, and the tree has moved since
+    #     its tag -- which means the next release has no number allocated, and
+    #     that is the state in which commits accumulate unnoticed
+    #
+    # Here rather than in the suite because it needs the network, and
+    # `@tag :network` is excluded everywhere including CI: a guard that never
+    # runs is not a guard. On a PR it reports; on the daily run it fails.
+    - name: The published version and the tree agree
+      if: always()
+      shell: bash
+      run: |
+        set -o pipefail
+
+        VERSION=$(sed -n 's/.*version: "\([^"]*\)".*/\1/p' apps/lowendinsight/mix.exs | head -1)
+        HEX=$(curl -sf --max-time 30 https://hex.pm/api/packages/lowendinsight \
+          | jq -r '.releases[0].version') || HEX=""
+
+        if [ -z "$HEX" ]; then
+          echo "::warning::could not read the published version from hex; not concluding anything"
+          exit 0
+        fi
+
+        echo "tree: $VERSION   hex: $HEX"
+        FAILED=0
+
+        # A published version whose section still says unreleased.
+        if grep -qiE "^## +${HEX//./\\.} .*unreleased" apps/lowendinsight/CHANGELOG.md; then
+          echo "::error::CHANGELOG calls ${HEX} unreleased, but it is published on hex. Give it the date it shipped."
+          FAILED=1
+        fi
+
+        # The tree's version is already out, and the tree has moved since.
+        if [ "$VERSION" = "$HEX" ]; then
+          BEHIND=$(git log "v${VERSION}..HEAD" --oneline -- apps/lowendinsight | wc -l | tr -d ' ')
+
+          if [ "$BEHIND" != "0" ]; then
+            echo "::error::${BEHIND} commit(s) touch the library since v${VERSION}, which is already published. Bump the version and add a CHANGELOG section, or they ship to nobody."
+            FAILED=1
+          fi
+        fi
+
+        if [ "$FAILED" = "1" ] && [ "${{ github.event_name }}" != "pull_request" ]; then
+          exit 1
+        fi
+
+        [ "$FAILED" = "1" ] && echo "::warning::reported on a pull request; the daily run fails on this"
+        exit 0
