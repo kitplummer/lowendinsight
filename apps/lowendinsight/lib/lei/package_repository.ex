@@ -103,6 +103,18 @@ defmodule Lei.PackageRepository do
   # `describe/3` and `dependencies/3` still take the full document, because they
   # read `dist-tags` and `versions` which only exist there. Hence two functions:
   # one URL per question, rather than one URL used for both.
+  # "Source Code", "source-code" and "source_code" are one key written three
+  # ways. Homepage is looked up the same way, for the same reason.
+  defp normalize_url_key(key) do
+    key |> String.downcase() |> String.replace(~r{[\s-]+}, "_")
+  end
+
+  defp homepage(urls) do
+    Enum.find_value(urls, fn {key, value} ->
+      if normalize_url_key(key) in ~w(homepage home_page home), do: value
+    end)
+  end
+
   # Two vanity prefixes are mechanical, documented conventions rather than
   # guesses, and they are not a rounding error: of the 100 most-depended-upon Go
   # modules, 70 are already `github.com/...`, **12 are `golang.org/x/...`** and
@@ -255,10 +267,26 @@ defmodule Lei.PackageRepository do
      fn body ->
        urls = get_in(body, ["info", "project_urls"]) || %{}
 
-       ["Code", "Source Code", "Source", "Repository"]
-       |> Enum.find_value(&urls[&1])
+       # Matched without regard to case, because PyPI does not normalise these
+       # keys -- the package author writes them freely. Looking for "Source"
+       # exactly dropped numpy (`source`), pandas (`repository`), scipy
+       # (`source`) and tqdm (`repository`): the core of scientific Python,
+       # measured as 10 of the 50 most-depended-upon PyPI packages failing.
+       #
+       # And it failed as `:no_repository`, which reads as "this package
+       # declares no repository" rather than "we did not look properly". The
+       # package was fine; the lookup was wrong, and nothing said so.
+       #
+       # `sources` is here because pytest-cov uses the plural and no amount of
+       # case folding would have found it.
+       source_like = ~w(code source sources source_code repository repo git github)
+
+       urls
+       |> Enum.find_value(fn {key, value} ->
+         if normalize_url_key(key) in source_like, do: value
+       end)
        |> case do
-         nil -> if repository?(urls["Homepage"]), do: urls["Homepage"]
+         nil -> if repository?(homepage(urls)), do: homepage(urls)
          url -> url
        end
      end}

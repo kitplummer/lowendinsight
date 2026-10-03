@@ -226,6 +226,76 @@ defmodule Lei.PackageRepositoryTest do
     end
   end
 
+  describe "pypi project_urls, which authors write however they like" do
+    test "a source key is found whatever its case" do
+      # PyPI does not normalise these keys. Looking for "Source" exactly dropped
+      # numpy, pandas, scipy and tqdm -- 10 of the 50 most-depended-upon PyPI
+      # packages -- and reported `:no_repository`, which reads as "the package
+      # declares no repository" rather than "we did not look properly".
+      for key <- ["source", "Source", "SOURCE", "Source Code", "source-code", "source_code"] do
+        body = ~s({"info":{"project_urls":{"#{key}":"https://github.com/numpy/numpy"}}})
+
+        assert PackageRepository.resolve("pypi", "numpy", get: responder(200, body)) ==
+                 {:ok, "https://github.com/numpy/numpy"},
+               "the key #{inspect(key)} was not matched"
+      end
+    end
+
+    test "repository, repo and github are source keys too" do
+      # pandas and tqdm both use `repository`.
+      for key <- ["repository", "Repository", "repo", "github", "GitHub", "git"] do
+        body = ~s({"info":{"project_urls":{"#{key}":"https://github.com/o/p"}}})
+
+        assert PackageRepository.resolve("pypi", "p", get: responder(200, body)) ==
+                 {:ok, "https://github.com/o/p"},
+               "the key #{inspect(key)} was not matched"
+      end
+    end
+
+    test "the plural Sources is matched" do
+      # pytest-cov uses it, and no amount of case folding would have found it.
+      body = ~s({"info":{"project_urls":{"Sources":"https://github.com/pytest-dev/pytest-cov"}}})
+
+      assert PackageRepository.resolve("pypi", "pytest-cov", get: responder(200, body)) ==
+               {:ok, "https://github.com/pytest-dev/pytest-cov"}
+    end
+
+    test "a homepage is accepted in any case, but only when it is a repository" do
+      for key <- ["Homepage", "homepage", "home_page"] do
+        body = ~s({"info":{"project_urls":{"#{key}":"https://github.com/o/p"}}})
+
+        assert PackageRepository.resolve("pypi", "p", get: responder(200, body)) ==
+                 {:ok, "https://github.com/o/p"},
+               "the key #{inspect(key)} was not matched"
+      end
+
+      # odoo declares only a homepage, and it is not somewhere to clone. It
+      # must stay refused: this fix widens the lookup, not what counts as a
+      # repository.
+      body = ~s({"info":{"project_urls":{"Homepage":"https://www.odoo.com"}}})
+
+      assert PackageRepository.resolve("pypi", "odoo", get: responder(200, body)) ==
+               {:error, :no_repository}
+    end
+
+    test "a documentation or tracker url is not mistaken for the source" do
+      # A wrong repository is worse than a refused one -- it produces a
+      # confident analysis of the wrong history. Only source-like keys count,
+      # so a package whose docs happen to live on someone else's GitHub is not
+      # resolved to that someone else.
+      body =
+        ~s({"info":{"project_urls":{"Documentation":"https://github.com/sphinx-doc/sphinx","Changelog":"https://example.com/c"}}})
+
+      assert PackageRepository.resolve("pypi", "p", get: responder(200, body)) ==
+               {:error, :no_repository}
+    end
+
+    test "no project_urls at all is refused, not crashed on" do
+      assert PackageRepository.resolve("pypi", "p", get: responder(200, ~s({"info":{}}))) ==
+               {:error, :no_repository}
+    end
+  end
+
   describe "go, which has no registry to ask" do
     test "a module path is its own location" do
       # No request at all: the first three segments of a module path are the
