@@ -4145,7 +4145,7 @@
       "id": "go-module-path-not-normalized",
       "bug": "A Go module path is not a clone target until it is normalized: a `/v2` major version, a `/service/s3` submodule path and a vanity host all have to be dealt with. Using the path as given produces URLs that do not exist and keys the cache on them, so a customer pays for a miss on a repository we may already hold.",
       "file": "apps/lowendinsight/lib/lei/package_repository.ex",
-      "find": "    normalize(\"https://\" <> module)",
+      "find": "    module |> go_canonical() |> then(&normalize(\"https://\" <> &1))",
       "replace": "    {:ok, \"https://\" <> module}",
       "guarded_by": "test/lei/package_repository_test.exs",
       "app": "apps/lowendinsight"
