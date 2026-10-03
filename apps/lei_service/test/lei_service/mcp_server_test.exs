@@ -127,6 +127,46 @@ defmodule LeiService.McpServerTest do
 
       assert text =~ "dependency" or text =~ "depend"
     end
+
+    test "each description opens with the trigger, not with what it returns" do
+      # An agent scanning its tool list mid-task is matching "does this apply to
+      # what I am about to do". It does not know it needs this data -- that is
+      # the whole failure: a package healthy in training gets recommended
+      # confidently, because nothing in the model flags that its knowledge is
+      # dated. A description that opens "Facts about a source repository..."
+      # reads as a catalogue entry and is skipped by an agent that does not
+      # think it is doing security work.
+      [_init, reply] =
+        rpc([initialize(), %{jsonrpc: "2.0", id: 2, method: "tools/list", params: %{}}])
+
+      for tool <- reply["result"]["tools"] do
+        opening = tool["description"] |> String.slice(0, 80) |> String.downcase()
+
+        assert opening =~ ~r/\b(call this|use this|you)\b/,
+               """
+               #{tool["name"]}'s description opens by describing itself rather than
+               addressing the agent:
+
+                 #{opening}
+
+               Lead with when to reach for it.
+               """
+      end
+    end
+
+    test "the stale-knowledge failure is named, not just the cutoff" do
+      # "Has a cutoff" is a fact about the model. What changes behaviour is the
+      # consequence: it will be confident and wrong. Naming the failure is what
+      # makes this a reason to act rather than a disclaimer.
+      [_init, reply] =
+        rpc([initialize(), %{jsonrpc: "2.0", id: 2, method: "tools/list", params: %{}}])
+
+      text =
+        reply["result"]["tools"] |> Enum.map_join(" ", & &1["description"]) |> String.downcase()
+
+      assert text =~ "maintainer" or text =~ "gone quiet" or text =~ "abandoned",
+             "the description says knowledge is dated without saying what goes wrong"
+    end
   end
 
   describe "it fails in ways an agent can act on" do

@@ -36,24 +36,34 @@ import urllib.request
 
 PROTOCOL_VERSION = "2024-11-05"
 SERVER_NAME = "lowendinsight"
-SERVER_VERSION = "0.1.0"
+SERVER_VERSION = "0.2.0"
 
 BASE_URL = os.environ.get("LEI_BASE_URL", "https://lowendinsight.dev").rstrip("/")
 API_KEY = os.environ.get("LEI_API_KEY", "").strip()
 TIMEOUT = float(os.environ.get("LEI_TIMEOUT_SECONDS", "120"))
 
-# Written for the agent choosing a tool, not for a catalogue. The reason to call
-# it is the reason it exists: a cutoff.
+# Written for the agent choosing a tool, not for a catalogue.
+#
+# The trigger comes first, before anything about what is returned. An agent
+# scanning its tool list mid-task is matching "does this apply to what I am
+# about to do", and the problem here is that it does not know it needs the data:
+# a package that looked healthy in training is recommended confidently, because
+# nothing in the model flags that its knowledge is dated. So the description
+# names that reflex and says the confidence is the bug. The payload is second,
+# which is the opposite of how a catalogue entry would be written.
 TOOLS = [
     {
         "name": "analyze_repository",
         "description": (
-            "Facts about a source repository as it stands today: when it was last "
-            "committed to, how many people actually maintain it, how much of its "
-            "recent work looks AI-generated, and a risk rating derived from those. "
-            "Use this before suggesting or adding a dependency, or when asked "
-            "whether a library is maintained -- your training data has a cutoff and "
-            "cannot know the current state of a project."
+            "Call this before you recommend, add, or vouch for a dependency, and "
+            "whenever you are about to say whether a library is maintained. Your "
+            "training data has a cutoff: a package that looked healthy in it may "
+            "have lost its maintainer, gone quiet, or started being written by "
+            "machines since, and nothing in you will flag that -- you will simply "
+            "be confident and wrong. Returns the state today: the date of the last "
+            "commit that carried real work rather than a bot bump, how many people "
+            "actually maintain it, how much recent work looks AI-generated, and a "
+            "risk rating derived from those."
         ),
         "inputSchema": {
             "type": "object",
@@ -69,10 +79,12 @@ TOOLS = [
     {
         "name": "analyze_dependencies",
         "description": (
-            "The same facts for several repositories at once -- the dependencies of "
-            "a project, a shortlist of candidate libraries, or the packages named in "
-            "a manifest. Prefer this over repeated single calls: results are shared "
-            "and cached, so a batch is cheaper and faster than its parts."
+            "Use this when choosing between candidate libraries, or to check a "
+            "project's existing dependencies in one pass -- a manifest, a lockfile, "
+            "a shortlist. Comparing candidates is where it matters most: picking "
+            "the other one costs nothing before you adopt it, and a migration "
+            "afterwards. Prefer one batch over repeated single calls; results are "
+            "shared and cached, so the batch is cheaper and faster than its parts."
         ),
         "inputSchema": {
             "type": "object",
