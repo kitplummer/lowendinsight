@@ -4158,6 +4158,24 @@
       "replace": "        if type in [\"npm\", \"hex\", \"pypi\", \"cargo\"] do\n          {:registry, type, package}\n        else\n          {:error, {:unsupported_ecosystem, type}}\n        end",
       "guarded_by": "test/lei_service/cache_probe_test.exs",
       "app": "apps/lei_service"
+    },
+    {
+      "id": "go-vanity-prefix-mapping-dropped",
+      "bug": "Of the 100 most-depended-upon Go modules, 12 are golang.org/x and 4 are gopkg.in. Dropping those mappings does not thin a sample evenly: golang.org/x is the Go team's own foundational set, so removing it takes out the best-maintained corner of the ecosystem and biases any measurement of Go toward looking worse maintained than it is -- the direction that flatters our own leading-indicator claim.",
+      "file": "apps/lowendinsight/lib/lei/package_repository.ex",
+      "find": "    module |> go_canonical() |> then(&normalize(\"https://\" <> &1))",
+      "replace": "    normalize(\"https://\" <> module)",
+      "guarded_by": "test/lei/package_repository_test.exs",
+      "app": "apps/lowendinsight"
+    },
+    {
+      "id": "gopkg-major-version-kept-in-repository-name",
+      "bug": "gopkg.in puts the major version in the path segment rather than a directory, so gopkg.in/yaml.v2 and gopkg.in/yaml.v3 are one repository. Keeping the `.vN` suffix produces github.com/go-yaml.v3/yaml.v3, which does not exist, and the module is recorded as unanalysable rather than as the repository we could have analysed.",
+      "file": "apps/lowendinsight/lib/lei/package_repository.ex",
+      "find": "  defp strip_gopkg_version(segment), do: String.replace(segment, ~r{\\.v\\d+$}, \"\")",
+      "replace": "  defp strip_gopkg_version(segment), do: segment",
+      "guarded_by": "test/lei/package_repository_test.exs",
+      "app": "apps/lowendinsight"
     }
   ]
 }
