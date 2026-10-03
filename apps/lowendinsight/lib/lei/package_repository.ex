@@ -11,6 +11,20 @@ defmodule Lei.PackageRepository do
   does not know is refused rather than resolved by pattern.
   """
 
+  # The ecosystems this can resolve. One list, in the module that does the
+  # resolving: `LeiService.CacheBaseline` kept a second copy, so adding a
+  # resolver here left every caller of that still refusing the ecosystem.
+  @ecosystems ~w(npm hex pypi cargo go composer gem)
+
+  @doc """
+  The ecosystems `resolve/3` understands.
+
+  Ask rather than assume: a caller that keeps its own list drifts the moment one
+  is added here, and refuses an ecosystem the library supports.
+  """
+  @spec ecosystems() :: [String.t()]
+  def ecosystems, do: @ecosystems
+
   @doc """
   Resolve `package` in `ecosystem` to an https repository URL.
 
@@ -29,7 +43,44 @@ defmodule Lei.PackageRepository do
              | {:unsupported_ecosystem, String.t()}
              | {:unreachable, term()}
              | {:status, integer()}}
-  def resolve(ecosystem, package, opts \\ []) do
+  def resolve(ecosystem, package, opts \\ [])
+
+  # Go has no registry to ask. A module path *is* its location: the first three
+  # segments of `github.com/owner/repo/service/s3` are the repository, and a
+  # `/v2` or `/v3` suffix is the major version rather than a directory.
+  #
+  # Resolved by parsing rather than by asking anyone, so it costs no request and
+  # cannot be wrong about a module whose path is already the answer.
+  #
+  # A vanity path -- `k8s.io/client-go`, `golang.org/x/net`, `gopkg.in/yaml.v3`
+  # -- is refused rather than guessed. Go's own `?go-get=1` mechanism resolves
+  # those, and it was tested: `golang.org/x/net` gives
+  # `go.googlesource.com/net` and `gopkg.in/yaml.v3` gives itself. Both are real
+  # repositories on hosts `repository?/1` does not accept, so following the
+  # protocol would add a request per module and still end in `:no_repository`.
+  # Refusing immediately says the same thing for free.
+  def resolve("go", module, _opts) when is_binary(module) do
+    # A module path *is* its location, so this costs no request: prefix it with
+    # a scheme and let `normalize/1` do the rest. It already restricts to hosts
+    # we can clone, trims to owner/repository, and drops a `/v2` major version
+    # or a `/service/s3` submodule path along with it.
+    #
+    # This was three clauses matching host, owner and repository before the
+    # mutations for each came back unguarded -- normalize was already doing all
+    # of it, and the extra matching was belt with no trousers missing. The tests
+    # below are unchanged and still pass, which is what makes the deletion safe.
+    #
+    # A vanity path -- `k8s.io/client-go`, `golang.org/x/net` -- falls out as
+    # `:no_repository` because its host is not one we accept. Go's own
+    # `?go-get=1` mechanism does resolve those, and it was tested:
+    # `golang.org/x/net` gives `go.googlesource.com/net` and `gopkg.in/yaml.v3`
+    # gives itself. Both are real repositories on hosts `repository?/1` refuses,
+    # so following the protocol would cost a request per module and end here
+    # anyway.
+    normalize("https://" <> module)
+  end
+
+  def resolve(ecosystem, package, opts) do
     with {:ok, url, extract} <- resolve_registry(ecosystem, package),
          {:ok, body} <- fetch(url, opts) do
       case extract.(body) do
@@ -174,6 +225,33 @@ defmodule Lei.PackageRepository do
   defp registry("cargo", package) do
     {:ok, "https://crates.io/api/v1/crates/" <> URI.encode(package),
      fn body -> get_in(body, ["crate", "repository"]) end}
+  end
+
+  defp registry("composer", package) do
+    {:ok, "https://repo.packagist.org/p2/" <> package <> ".json",
+     fn body ->
+       # `packages` is keyed by the vendor/name asked for, newest release first.
+       body
+       |> Map.get("packages", %{})
+       |> Map.values()
+       |> List.first()
+       |> List.wrap()
+       |> List.first()
+       |> case do
+         %{"source" => %{"url" => url}} -> url
+         %{"homepage" => homepage} -> if repository?(homepage), do: homepage
+         _ -> nil
+       end
+     end}
+  end
+
+  defp registry("gem", package) do
+    {:ok, "https://rubygems.org/api/v1/gems/" <> URI.encode(package) <> ".json",
+     fn body ->
+       # source_code_uri is the declared one and often points at a tag --
+       # `.../rails/tree/v8.1.4` -- which normalize/1 trims to the repository.
+       body["source_code_uri"] || body["homepage_uri"] |> then(&if repository?(&1), do: &1)
+     end}
   end
 
   defp registry(ecosystem, _package), do: {:error, {:unsupported_ecosystem, ecosystem}}

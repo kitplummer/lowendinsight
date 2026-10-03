@@ -11,8 +11,20 @@ defmodule LeiService.CacheBaseline do
   both are exercised directly.
   """
 
-  # Registry purl types `Lei.PackageRepository` can resolve.
-  @registries ~w(npm hex pypi cargo)
+  # Purl ecosystem names are not resolver names: a Go package is `golang` in a
+  # purl and `go` to the resolver. Mapping them here, and taking the resolvable
+  # set from the library rather than keeping a copy -- this module held its own
+  # list of four, so adding Go, Composer and RubyGems to the library left the
+  # survey still refusing them.
+  @purl_to_resolver %{
+    "npm" => "npm",
+    "hex" => "hex",
+    "pypi" => "pypi",
+    "cargo" => "cargo",
+    "golang" => "go",
+    "composer" => "composer",
+    "gem" => "gem"
+  }
 
   # Purl types that name a repository outright: no registry lookup needed.
   @direct %{
@@ -22,9 +34,9 @@ defmodule LeiService.CacheBaseline do
     "bitbucket" => "https://bitbucket.org"
   }
 
-  def registries, do: @registries
+  def registries, do: Map.keys(@purl_to_resolver)
   def direct, do: @direct
-  def supported_ecosystems, do: @registries ++ Map.keys(@direct)
+  def supported_ecosystems, do: Map.keys(@purl_to_resolver) ++ Map.keys(@direct)
 
   @doc """
   Start only what the task actually needs.
@@ -134,10 +146,9 @@ defmodule LeiService.CacheBaseline do
         end
 
       :error ->
-        if type in @registries do
-          {:registry, type, package}
-        else
-          {:error, {:unsupported_ecosystem, type}}
+        case Map.fetch(@purl_to_resolver, type) do
+          {:ok, resolver} -> {:registry, resolver, package}
+          :error -> {:error, {:unsupported_ecosystem, type}}
         end
     end
   end
