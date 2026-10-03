@@ -4095,6 +4095,24 @@
       "replace": "          |> Enum.reduce(%{}, fn {{bucket, _key}, value}, acc ->\n            Map.update(acc, bucket, to_count(value), &(&1 + to_count(value)))\n          end)\n          |> Enum.reject(fn {_b, n} -> n == 0 end)\n          |> Map.new()",
       "guarded_by": "test/lei_service/adoption_test.exs",
       "app": "apps/lei_service"
+    },
+    {
+      "id": "mcp-description-leads-with-itself",
+      "bug": "A tool description that opens by describing what it returns reads as a catalogue entry. An agent scanning its tool list is matching 'does this apply to what I am about to do', and it does not know it needs this data -- that is the failure. Leading with 'Facts about a source repository...' gets the tool skipped by an agent that does not think it is doing security work.",
+      "file": "clients/mcp/lei_mcp.py",
+      "find": "            \"Call this before you recommend, add, or vouch for a dependency, and \"\n            \"whenever you are about to say whether a library is maintained. Your \"",
+      "replace": "            \"Facts about a source repository as it stands today, and a risk rating \"\n            \"derived from them. Your \"",
+      "guarded_by": "test/lei_service/mcp_server_test.exs",
+      "app": "apps/lei_service"
+    },
+    {
+      "id": "mcp-description-states-the-cutoff-without-the-consequence",
+      "bug": "'Your training data has a cutoff' is a fact about the model and reads as a disclaimer. What changes behaviour is the consequence -- a lost maintainer, a project gone quiet, and the model being confident and wrong anyway. Without the failure named, there is no reason to act.",
+      "file": "clients/mcp/lei_mcp.py",
+      "find": "            \"training data has a cutoff: a package that looked healthy in it may \"\n            \"have lost its maintainer, gone quiet, or started being written by \"\n            \"machines since, and nothing in you will flag that -- you will simply \"\n            \"be confident and wrong. Returns the state today: the date of the last \"",
+      "replace": "            \"training data has a cutoff. Returns the state today: the date of the last \"",
+      "guarded_by": "test/lei_service/mcp_server_test.exs",
+      "app": "apps/lei_service"
     }
   ]
 }
