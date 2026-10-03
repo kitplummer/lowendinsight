@@ -4212,6 +4212,15 @@
       "replace": "        case Regex.run(~r{^https://never-matches-anything/([^/]+)/([^/]+)}, url) do",
       "guarded_by": "test/lei/package_repository_test.exs",
       "app": "apps/lowendinsight"
+    },
+    {
+      "id": "git-author-lookup-treats-a-name-as-a-regex",
+      "bug": "`git log --author` is a regex, and a contributor name is data from the repository. apache/arrow has a commit authored by `[5~David Li`, whose unterminated `[` is an invalid character class: git exits 128 with 'Unmatched [', Lei.Git.run!/3 raises, and the entire repository is lost rather than one contributor. pyarrow is in the top twenty PyPI packages and that is exactly what happened to it during the 2026-10-03 study run. Not an injection -- System.cmd/3 passes an argument list, so there is no shell -- but data interpreted as a pattern where a literal match is what the function means.",
+      "file": "apps/lowendinsight/lib/git_module.ex",
+      "find": "        git_log_split(repo, [\"-F\", \"--author=#{contributor}\", \"-1\", \"--pretty=format:%cI\"])",
+      "replace": "        git_log_split(repo, [\"--author=#{contributor}\", \"-1\", \"--pretty=format:%cI\"])",
+      "guarded_by": "test/git_module_local_test.exs",
+      "app": "apps/lowendinsight"
     }
   ]
 }

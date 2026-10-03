@@ -393,8 +393,31 @@ defmodule GitModule do
   """
   def get_last_contribution_date_by_contributor(repo, contributor) do
     ## Using author here, as even if there is a different committer, the author is the contributor
+    #
+    # `-F` because `--author` is a **regex**, and a contributor name is data from
+    # the repository. apache/arrow has a commit authored by `<ESC>[5~David Li` --
+    # a real name, with a terminal control sequence someone's git config picked
+    # up -- and the unterminated `[` is an invalid character class:
+    #
+    #     fatal: header, '?[5~David Li': Unmatched [, [^, [:, [., or [=
+    #
+    # git exits 128, `run!/3` raises, and the whole repository is lost. pyarrow
+    # is in the top twenty PyPI packages and that is exactly what happened to it.
+    #
+    # Narrower than it first looks, and measured rather than assumed: git uses
+    # basic regular expressions, so `A[1] Dev`, `Foo (Bar`, `C++ Dev`,
+    # `Jo* Smith` and `Ann? Lee` are all either valid or literal and exit 0. An
+    # unterminated `[` is the case that breaks.
+    #
+    # This is not an injection. `Lei.Git.run/3` uses `System.cmd/3` with an
+    # argument list, so there is no shell and the bytes reach git as data. The
+    # bug is that the data was being interpreted as a pattern when a literal
+    # match is what this function means -- which is why the Co-Authored-By
+    # search below already passes `-F`.
     author_date =
-      List.last(git_log_split(repo, ["--author=#{contributor}", "-1", "--pretty=format:%cI"]))
+      List.last(
+        git_log_split(repo, ["-F", "--author=#{contributor}", "-1", "--pretty=format:%cI"])
+      )
 
     author_date
   end

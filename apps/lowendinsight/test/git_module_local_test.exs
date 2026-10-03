@@ -280,4 +280,100 @@ defmodule GitModuleLocalTest do
       assert String.length(hash) == 40
     end
   end
+
+  describe "a contributor name is data, not a pattern" do
+    # `--author` is a regex. apache/arrow has a commit authored by
+    # `<ESC>[5~David Li` -- a real name, with a terminal control sequence
+    # someone's git config picked up at some point. The unterminated `[` is an
+    # invalid character class:
+    #
+    #     fatal: header, '?[5~David Li': Unmatched [, [^, [:, [., or [=
+    #
+    # git exits 128, `Lei.Git.run!/3` raises, and the entire repository is lost.
+    # pyarrow is in the top twenty PyPI packages and that is what happened to it
+    # during the 2026-10-03 study run.
+    #
+    # The name here has no ESC, and that is deliberate. A first version of this
+    # test used the byte-for-byte name from the failure and asserted a date; it
+    # failed, because **git strips the ESC when storing the author** --
+    # `%an` comes back as `[5~David Li`. Searching for the ESC form then matches
+    # nothing, so the test was asserting a condition `git commit` cannot create.
+    #
+    # The `[` is the bug and git stores it faithfully, so this is the
+    # reproducible form:
+    #
+    #     --author=[5~David Li        exit 128, Unmatched [
+    #     -F --author=[5~David Li     exit 0, returns the date
+    @awkward "[5~David Li"
+
+    defp repo_authored_by(name) do
+      dir =
+        Path.join(
+          System.tmp_dir!(),
+          "author-#{System.pid()}-#{System.unique_integer([:positive])}"
+        )
+
+      File.mkdir_p!(dir)
+      on_exit(fn -> File.rm_rf!(dir) end)
+
+      env = [
+        {"GIT_AUTHOR_NAME", name},
+        {"GIT_AUTHOR_EMAIL", "awkward@example.com"},
+        {"GIT_COMMITTER_NAME", name},
+        {"GIT_COMMITTER_EMAIL", "awkward@example.com"}
+      ]
+
+      for args <- [
+            ["init", "-q", "-b", "main"],
+            ["config", "user.email", "awkward@example.com"],
+            ["config", "user.name", name]
+          ] do
+        {_, 0} = System.cmd("git", args, cd: dir, env: env, stderr_to_stdout: true)
+      end
+
+      File.write!(Path.join(dir, "f"), "x\n")
+      {_, 0} = System.cmd("git", ["add", "f"], cd: dir, env: env, stderr_to_stdout: true)
+
+      {_, 0} =
+        System.cmd("git", ["commit", "-q", "-m", "one"],
+          cd: dir,
+          env: env,
+          stderr_to_stdout: true
+        )
+
+      {:ok, repo} = GitModule.get_repo(dir)
+      repo
+    end
+
+    test "an unterminated bracket in a name does not lose the repository" do
+      repo = repo_authored_by(@awkward)
+
+      date = GitModule.get_last_contribution_date_by_contributor(repo, @awkward)
+
+      assert is_binary(date), "expected a date, got #{inspect(date)}"
+      assert String.contains?(date, "T"), "expected an ISO8601 date, got #{inspect(date)}"
+    end
+
+    test "an ordinary name still matches" do
+      # The fix must not make the lookup match nothing: a literal search that
+      # finds no commits would return an empty string for every contributor,
+      # and every repository would look like it had no recent contribution.
+      repo = repo_authored_by("Ordinary Person")
+
+      date = GitModule.get_last_contribution_date_by_contributor(repo, "Ordinary Person")
+
+      assert is_binary(date)
+      assert String.contains?(date, "T")
+    end
+
+    test "a name that is not a contributor returns nothing, rather than matching loosely" do
+      # With `--author` as a regex, "Ordinary" would match "Ordinary Person" as a
+      # substring; so would a crafted pattern like `.*`. A literal search still
+      # matches on substring -- git's -F means fixed string, not whole field --
+      # so what this pins is that an absent contributor finds no commit.
+      repo = repo_authored_by("Ordinary Person")
+
+      assert GitModule.get_last_contribution_date_by_contributor(repo, "Nobody At All") == ""
+    end
+  end
 end
