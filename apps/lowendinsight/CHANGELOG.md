@@ -4,7 +4,7 @@ Notable changes to the `lowendinsight` library and the hosted service in this
 repository. The library is published to Hex; the service is deployed from the
 same tree (ADR-003).
 
-## 0.11.0 — unreleased
+## 0.11.0 — 2026-10-03
 
 Sixteen commits since 0.10.0 were never released, and the gap was found by
 depending on the published package from outside this tree: a survey built on
@@ -168,12 +168,12 @@ Deferred work ran four ways and only one survived a restart; 79 analyses sat
 
 - Security release for the 0.9 line; see GHSA-mqqj-2vjh-xw24.
 
-## 0.9.1
+## 0.9.1 — 2026-03-07
 
 - Maintenance and documentation cleanup.
 - Standardized project references to GitHub.
 
-## 0.9.0
+## 0.9.0 — 2026-02-05
 
 - **SARIF output** for the GitHub Security tab (`mix lei.sarif`).
 - **ZarfGate**: quality gate for CI/CD pipelines with configurable thresholds.
