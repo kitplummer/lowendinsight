@@ -4194,6 +4194,24 @@
       "replace": "         if repository?(value), do: value",
       "guarded_by": "test/lei/package_repository_test.exs",
       "app": "apps/lowendinsight"
+    },
+    {
+      "id": "pages-owner-page-mistaken-for-source",
+      "bug": "A bare `<owner>.github.io` is a user or organisation page whose repository is `<owner>/<owner>.github.io` -- the project's website, not its source. That URL is a valid repository shape, so it passes every downstream check and resolves: the package is then analysed as its own marketing site, with real contributor counts and a real commit currency belonging to a docs repo. The regex requiring a path segment is what prevents it.",
+      "file": "apps/lowendinsight/lib/lei/package_repository.ex",
+      "find": "        case Regex.run(~r{^https://([^./]+)\\.github\\.io/([^/?#]+)}, url) do\n          [_, owner, repo] -> \"https://github.com/#{owner}/#{repo}\"\n          _ -> nil\n        end",
+      "replace": "        case Regex.run(~r{^https://([^./]+)\\.github\\.io(?:/([^/?#]+))?}, url) do\n          [_, owner, repo] -> \"https://github.com/#{owner}/#{repo}\"\n          [_, owner] -> \"https://github.com/#{owner}/#{owner}.github.io\"\n          _ -> nil\n        end",
+      "guarded_by": "test/lei/package_repository_test.exs",
+      "app": "apps/lowendinsight"
+    },
+    {
+      "id": "pages-homepage-not-mapped-at-all",
+      "bug": "Three of the 34 genuine top RubyGems -- coveralls, vcr, guard -- declare no source_code_uri and only a GitHub Pages homepage. Without the mapping they are recorded as having no repository, which reads as a property of the gem rather than a lookup we did not perform.",
+      "file": "apps/lowendinsight/lib/lei/package_repository.ex",
+      "find": "        case Regex.run(~r{^https://([^./]+)\\.github\\.io/([^/?#]+)}, url) do",
+      "replace": "        case Regex.run(~r{^https://never-matches-anything/([^/]+)/([^/]+)}, url) do",
+      "guarded_by": "test/lei/package_repository_test.exs",
+      "app": "apps/lowendinsight"
     }
   ]
 }

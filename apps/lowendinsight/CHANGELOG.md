@@ -4,6 +4,36 @@ Notable changes to the `lowendinsight` library and the hosted service in this
 repository. The library is published to Hex; the service is deployed from the
 same tree (ADR-003).
 
+## 0.13.0 — unreleased
+
+### Fixed
+
+- **numpy, pandas and scipy did not resolve.** 10 of the 50 most-depended-upon
+  PyPI packages failed, and the list was the core of scientific Python. PyPI
+  does not normalise `project_urls` keys and the extractor matched `"Source"`
+  exactly; numpy writes `source`, pandas writes `repository`, pytest-cov writes
+  `Sources`. Keys are now matched case- and separator-insensitively, so
+  `Source Code`, `source-code` and `source_code` are one key. 80% → 96%.
+
+  It failed as `:no_repository`, which reads as "this package declares no
+  repository" rather than "we did not look properly", so the gap looked like a
+  property of PyPI rather than a bug in us.
+
+  Still deliberately narrow: only source-like keys count. Accepting any
+  repository-looking value would resolve a package to whatever GitHub project
+  its documentation points at — a confident analysis of the wrong history.
+
+- **A GitHub Pages homepage now maps to its repository.** Pages serves
+  `<owner>.github.io/<repo>/` from that repository, so the first path segment
+  *is* the repository name. Three of the 34 genuine top RubyGems — `coveralls`,
+  `vcr`, `guard` — declare no `source_code_uri` at all and only a Pages
+  homepage. Applied to PyPI and Composer homepages too.
+
+  A bare `<owner>.github.io` is **not** mapped: that is a user or organisation
+  page whose repository is the website, not the package's source. It is a valid
+  repository shape, so it would pass every downstream check and resolve the
+  package to its own marketing site.
+
 ## 0.12.0 — 2026-10-03
 
 ### New

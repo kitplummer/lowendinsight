@@ -286,7 +286,7 @@ defmodule Lei.PackageRepository do
          if normalize_url_key(key) in source_like, do: value
        end)
        |> case do
-         nil -> if repository?(homepage(urls)), do: homepage(urls)
+         nil -> homepage_repository(homepage(urls))
          url -> url
        end
      end}
@@ -309,7 +309,7 @@ defmodule Lei.PackageRepository do
        |> List.first()
        |> case do
          %{"source" => %{"url" => url}} -> url
-         %{"homepage" => homepage} -> if repository?(homepage), do: homepage
+         %{"homepage" => homepage} -> homepage_repository(homepage)
          _ -> nil
        end
      end}
@@ -320,7 +320,7 @@ defmodule Lei.PackageRepository do
      fn body ->
        # source_code_uri is the declared one and often points at a tag --
        # `.../rails/tree/v8.1.4` -- which normalize/1 trims to the repository.
-       body["source_code_uri"] || body["homepage_uri"] |> then(&if repository?(&1), do: &1)
+       body["source_code_uri"] || homepage_repository(body["homepage_uri"])
      end}
   end
 
@@ -453,6 +453,37 @@ defmodule Lei.PackageRepository do
   end
 
   # A homepage is only worth analysing when it names a repository host.
+  # A homepage that is, or implies, a repository.
+  #
+  # GitHub Pages project sites are served at `<owner>.github.io/<repo>/`, where
+  # the first path segment *is* the repository name -- that is how Pages
+  # resolves them, so the mapping is mechanical rather than a guess. Verified
+  # against the GitHub API: guard.github.io/guard gives guard/guard and
+  # benoittgt.github.io/vcr gives benoittgt/vcr.
+  #
+  # It matters because three of the 34 genuine top RubyGems -- coveralls, vcr,
+  # guard -- declare no `source_code_uri` at all and only a Pages homepage.
+  #
+  # **A bare `<owner>.github.io` is deliberately not mapped.** That is a user or
+  # organisation page, whose repository is `<owner>/<owner>.github.io` -- the
+  # website, not the package's source. Resolving a gem to its own marketing site
+  # would produce a confident analysis of the wrong history, which is the thing
+  # this module refuses to do elsewhere.
+  defp homepage_repository(url) when is_binary(url) do
+    cond do
+      repository?(url) ->
+        url
+
+      true ->
+        case Regex.run(~r{^https://([^./]+)\.github\.io/([^/?#]+)}, url) do
+          [_, owner, repo] -> "https://github.com/#{owner}/#{repo}"
+          _ -> nil
+        end
+    end
+  end
+
+  defp homepage_repository(_), do: nil
+
   defp repository?(url) when is_binary(url) do
     String.match?(url, ~r{^https://(www\.)?(github\.com|gitlab\.com|bitbucket\.org)/[^/]+/[^/]+}) and
       not String.contains?(url, " ")

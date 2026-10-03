@@ -392,6 +392,66 @@ defmodule Lei.PackageRepositoryTest do
     end
   end
 
+  describe "a github pages homepage" do
+    test "a project page maps to the repository it is served from" do
+      # Pages serves `<owner>.github.io/<repo>/` from that repository, so the
+      # first path segment is the repository name by construction. Verified
+      # against the GitHub API: guard/guard and benoittgt/vcr both exist.
+      #
+      # It matters because three of the 34 genuine top RubyGems -- coveralls,
+      # vcr, guard -- declare no source_code_uri at all.
+      body = ~s({"source_code_uri":null,"homepage_uri":"https://guard.github.io/guard/"})
+
+      assert PackageRepository.resolve("gem", "guard", get: responder(200, body)) ==
+               {:ok, "https://github.com/guard/guard"}
+    end
+
+    test "extra path segments below the repository are dropped" do
+      body = ~s({"source_code_uri":null,"homepage_uri":"https://psf.github.io/black/stable/"})
+
+      assert PackageRepository.resolve("gem", "black", get: responder(200, body)) ==
+               {:ok, "https://github.com/psf/black"}
+    end
+
+    test "a bare owner page is NOT mapped" do
+      # `<owner>.github.io` with no path is a user or organisation page, whose
+      # repository is `<owner>/<owner>.github.io` -- the website, not the
+      # package's source. Resolving a package to its own marketing site would
+      # produce a confident analysis of the wrong history.
+      body = ~s({"source_code_uri":null,"homepage_uri":"https://someone.github.io"})
+
+      assert PackageRepository.resolve("gem", "g", get: responder(200, body)) ==
+               {:error, :no_repository}
+
+      body = ~s({"source_code_uri":null,"homepage_uri":"https://someone.github.io/"})
+
+      assert PackageRepository.resolve("gem", "g", get: responder(200, body)) ==
+               {:error, :no_repository}
+    end
+
+    test "an ordinary product homepage is still refused" do
+      # coveralls' homepage is coveralls.io, a real product site and not
+      # somewhere to clone. This mapping widens what counts as a *hint*, not
+      # what counts as a repository.
+      body = ~s({"source_code_uri":null,"homepage_uri":"https://coveralls.io"})
+
+      assert PackageRepository.resolve("gem", "coveralls", get: responder(200, body)) ==
+               {:error, :no_repository}
+    end
+
+    test "the mapping applies to pypi and composer too" do
+      pypi = ~s({"info":{"project_urls":{"Homepage":"https://owner.github.io/proj/"}}})
+
+      assert PackageRepository.resolve("pypi", "proj", get: responder(200, pypi)) ==
+               {:ok, "https://github.com/owner/proj"}
+
+      composer = ~s({"packages":{"o/p":[{"homepage":"https://owner.github.io/proj"}]}})
+
+      assert PackageRepository.resolve("composer", "o/p", get: responder(200, composer)) ==
+               {:ok, "https://github.com/owner/proj"}
+    end
+  end
+
   describe "composer and rubygems" do
     test "composer reads the declared source" do
       body =
