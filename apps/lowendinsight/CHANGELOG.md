@@ -30,10 +30,22 @@ same tree (ADR-003).
   list, so there is no shell and the bytes reach git as data. The bug was data
   being interpreted as a pattern.
 
-  Narrower than it looks, measured rather than assumed: git uses basic regular
-  expressions, so `A[1] Dev`, `Foo (Bar`, `C++ Dev`, `Jo* Smith` and `Ann? Lee`
-  are all valid or literal and work either way. An unterminated `[` is the case
-  that breaks.
+  **It is also a correctness fix, not only a crash fix.** A name containing `.`
+  is a *valid* regex where the dot matches any character, so the lookup could
+  return a different person's commit:
+
+  ```
+  --author=A.C Dev        ->  2026-01-01   (matched "ABC Dev")
+  -F --author=A.C Dev     ->  2020-01-01   (the actual contributor)
+  ```
+
+  Six years apart, and in the direction that makes a repository look more
+  recently maintained than it is. Any contributor with an initial or a `Jr.` in
+  their name was exposed. The crash was the visible case; this one was silent.
+
+  Only the unterminated `[` raised — git uses basic regular expressions, so
+  `A[1] Dev`, `Foo (Bar`, `C++ Dev`, `Jo* Smith` and `Ann? Lee` all exit 0 —
+  which is why this went unnoticed until a name happened to crash.
 
 ## 0.13.0 — 2026-10-03
 
