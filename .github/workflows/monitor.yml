@@ -137,6 +137,22 @@ jobs:
       # notice a launch that flipped the price list and left the mode alone --
       # revenue would simply not arrive, for as long as it took someone to ask
       # why.
+      - name: The cache has headroom, and fails the way we chose
+        shell: bash
+        env:
+          # A fraction of the budget, not an absolute figure: the budget can be
+          # resized and the alarm should follow it.
+          WARN_PCT: ${{ vars.LEI_REDIS_MEMORY_WARN_PCT || '80' }}
+          # What production is *meant* to run. Defaults to what it does run
+          # today, which is the provider's default rather than anything anyone
+          # chose -- ADR-008 has that as an open decision, and this makes a
+          # change visible rather than inherited a second time.
+          EXPECTED_POLICY: ${{ vars.LEI_REDIS_EXPECTED_POLICY || 'optimistic-volatile' }}
+        run: |
+          set -o pipefail
+          curl -s --max-time 15 https://lowendinsight.dev/metrics \
+            | scripts/check-cache-headroom.sh
+
       - name: Check the billing mode is the one we expect
         id: billing_mode
         env:

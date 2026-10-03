@@ -118,4 +118,107 @@ defmodule LeiService.RedisMemoryMetricTest do
       assert metrics =~ "lei_billing_mode"
     end
   end
+
+  describe "the headroom check, run rather than read" do
+    # `scripts/check-cache-headroom.sh` exists because the first version of this
+    # was inline in monitor.yml, guarded by tests that asserted strings were
+    # present in the YAML. Two mutations against the shell logic came back
+    # **unguarded**: changing `[ "$MAX" = "0" ]` to `[ "$MAX" = "-1" ]` leaves
+    # every asserted string in place. Text presence cannot catch behaviour,
+    # which is the failure this repository is documented around.
+    #
+    # So the logic moved to a script and these drive it with metrics on stdin.
+    @script Path.expand("../../../../scripts/check-cache-headroom.sh", __DIR__)
+
+    defp check(metrics, env \\ []) do
+      path = Path.join(System.tmp_dir!(), "headroom-#{System.unique_integer([:positive])}")
+      File.write!(path, metrics)
+      on_exit(fn -> File.rm_rf(path) end)
+
+      {out, status} =
+        System.cmd("bash", ["-c", "#{@script} < #{path}"],
+          env: env,
+          stderr_to_stdout: true
+        )
+
+      {status, out}
+    end
+
+    @healthy """
+    lei_redis_memory_readable 1
+    lei_redis_memory_bytes{type="used"} 7490
+    lei_redis_maxmemory_bytes 1073741824
+    lei_redis_maxmemory_policy{policy="optimistic-volatile"} 1
+    """
+
+    test "a cache with room, on the expected policy, passes" do
+      assert {0, _out} = check(@healthy)
+    end
+
+    test "a cache near its budget fails" do
+      # 912680550 of 1073741824 is 85%.
+      near = String.replace(@healthy, "7490", "912680550")
+
+      assert {1, out} = check(near)
+      assert out =~ "of its"
+      assert out =~ "dropped, silently"
+    end
+
+    test "an unlimited budget fails rather than reading as endless headroom" do
+      # 0 is Redis's own way of saying unlimited, and it is what the operations
+      # notes claimed production ran. Treating it as room is how an unbounded
+      # cache stays green until the machine runs out.
+      unlimited =
+        String.replace(
+          @healthy,
+          "lei_redis_maxmemory_bytes 1073741824",
+          "lei_redis_maxmemory_bytes 0"
+        )
+
+      assert {1, out} = check(unlimited)
+      assert out =~ "maxmemory is 0"
+    end
+
+    test "a silently changed eviction policy fails" do
+      # Which policy is in force decides which failure happens at the ceiling.
+      # It arrived once as a provider default; it must not change unnoticed
+      # twice (ADR-008).
+      changed = String.replace(@healthy, "optimistic-volatile", "noeviction")
+
+      assert {1, out} = check(changed)
+      assert out =~ "Eviction policy is 'noeviction'"
+    end
+
+    test "a deliberate policy change can be declared" do
+      changed = String.replace(@healthy, "optimistic-volatile", "allkeys-lru")
+
+      assert {0, _} = check(changed, [{"EXPECTED_POLICY", "allkeys-lru"}])
+    end
+
+    test "an unreadable cache fails rather than being skipped" do
+      assert {1, out} = check("lei_redis_memory_readable 0\n")
+      assert out =~ "headroom cannot be checked"
+    end
+
+    test "an absent metric family fails rather than passing" do
+      # An old release publishes none of these. Absence must not read as health.
+      assert {1, out} = check("beam_memory_bytes{type=\"total\"} 1\n")
+      assert out =~ "not readable"
+    end
+
+    test "the threshold is configurable" do
+      near = String.replace(@healthy, "7490", "912680550")
+
+      assert {0, _} = check(near, [{"WARN_PCT", "90"}])
+      assert {1, _} = check(near, [{"WARN_PCT", "80"}])
+    end
+
+    test "monitor.yml actually calls it" do
+      # A script nothing invokes is not a check.
+      monitor = File.read!(Path.expand("../../../../.github/workflows/monitor.yml", __DIR__))
+
+      assert monitor =~ "scripts/check-cache-headroom.sh",
+             "the headroom check is not wired into the monitor"
+    end
+  end
 end
