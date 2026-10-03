@@ -21,8 +21,30 @@ defmodule Lei.SubstantiveCommitDateTest do
     :ok
   end
 
+  # The OS pid is in the name, not only a unique integer.
+  #
+  # `System.unique_integer/1` is unique *within a VM* and starts low in each
+  # one, so two `mix test` processes can produce the same name -- and did.
+  # Both then write commits into one repository, and when the first one's
+  # `on_exit` removes it while the second is still committing, `File.rm_rf!`
+  # raises `:eexist`, which is what Erlang returns for a non-empty directory.
+  #
+  # Reproduced rather than inferred: `File.rm_rf!` on a directory with a
+  # concurrent writer raises exactly `{:raised, :eexist}`, which is the error
+  # CI reported on 2026-10-02 for `/tmp/subst-5698`.
+  #
+  # So the name is made impossible to collide instead of the removal being made
+  # tolerant. A tolerant `rm_rf` would hide a genuine cleanup failure, and the
+  # test would keep sharing a repository with another VM -- which is a wrong
+  # answer, not only a messy one. Eight other test files build temp names the
+  # same way; this is the one that has bitten.
   defp repo_with(commits) do
-    dir = Path.join(System.tmp_dir!(), "subst-#{System.unique_integer([:positive])}")
+    dir =
+      Path.join(
+        System.tmp_dir!(),
+        "subst-#{System.pid()}-#{System.unique_integer([:positive])}"
+      )
+
     File.mkdir_p!(dir)
     on_exit(fn -> File.rm_rf!(dir) end)
 
@@ -120,6 +142,18 @@ defmodule Lei.SubstantiveCommitDateTest do
     {:ok, substantive, :found} = GitModule.get_last_substantive_commit_date(repo)
 
     assert days_since(plain) == days_since(substantive)
+  end
+
+  test "the working directory cannot collide with another test process" do
+    # The flake this guards: two `mix test` VMs producing the same temp name,
+    # writing commits into one repository, and one removing it while the other
+    # writes. System.unique_integer/1 is per-VM and starts low, so the OS pid is
+    # what makes the name unique across processes.
+    {hn, he} = @human
+    repo = repo_with([{1, hn, he, ["lib/core.ex"]}])
+
+    assert repo.path =~ System.pid(),
+           "the temp directory name does not include the OS pid, so a second VM can pick it: #{repo.path}"
   end
 
   test "a repository with nothing substantive in the window says so" do
