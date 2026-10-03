@@ -4131,6 +4131,42 @@
       "replace": "  defp registry(\"npm\", package) do\n    {:ok, \"https://registry.npmjs.org/\" <> URI.encode(package) <> \"/latest\", &npm_repository/1}\n  end",
       "guarded_by": "test/lei/package_repository_test.exs",
       "app": "apps/lowendinsight"
+    },
+    {
+      "id": "monitor-unlimited-budget-reads-as-headroom",
+      "bug": "0 is Redis's own way of saying unlimited. Treating it as endless headroom, or dividing by it, is how an unbounded cache reads as healthy right up to the moment the machine runs out. The operations notes claimed exactly this configuration, so it is the state the alarm is most likely to meet.",
+      "file": "scripts/check-cache-headroom.sh",
+      "find": "elif [ \"$MAX\" = \"0\" ]; then",
+      "replace": "elif [ \"$MAX\" = \"-1\" ]; then",
+      "guarded_by": "test/lei_service/redis_memory_metric_test.exs",
+      "app": "apps/lei_service"
+    },
+    {
+      "id": "monitor-eviction-policy-only-printed",
+      "bug": "Which eviction policy is in force decides which failure happens at the ceiling: dropping other customers' entries, or refusing writes. ADR-008 has that as an open decision and it arrived once already by provider default. Printing it without asserting it lets the same silent inheritance happen twice.",
+      "file": "scripts/check-cache-headroom.sh",
+      "find": "elif [ \"$POLICY\" != \"$EXPECTED_POLICY\" ]; then",
+      "replace": "elif false; then",
+      "guarded_by": "test/lei_service/redis_memory_metric_test.exs",
+      "app": "apps/lei_service"
+    },
+    {
+      "id": "headroom-threshold-never-trips",
+      "bug": "A threshold that is never reached is a number in a log rather than an alarm. Under a volatile eviction policy the ceiling arrives as other customers' reports being dropped silently, so the warning before it is the only notice anyone gets.",
+      "file": "scripts/check-cache-headroom.sh",
+      "find": "  if [ \"$PCT\" -ge \"$WARN_PCT\" ]; then",
+      "replace": "  if [ \"$PCT\" -ge 101 ]; then",
+      "guarded_by": "test/lei_service/redis_memory_metric_test.exs",
+      "app": "apps/lei_service"
+    },
+    {
+      "id": "headroom-unreadable-cache-passes",
+      "bug": "A cache whose memory cannot be read is not a cache with headroom. Skipping the check when the gauges are absent means an old release, or a Redis not answering INFO, reads exactly like a healthy one.",
+      "file": "scripts/check-cache-headroom.sh",
+      "find": "if [ \"$READABLE\" != \"1\" ]; then\n  echo \"::error::Redis memory is not readable",
+      "replace": "if [ \"$READABLE\" = \"never\" ]; then\n  echo \"::error::Redis memory is not readable",
+      "guarded_by": "test/lei_service/redis_memory_metric_test.exs",
+      "app": "apps/lei_service"
     }
   ]
 }
