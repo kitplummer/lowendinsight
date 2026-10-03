@@ -257,16 +257,62 @@ defmodule Lei.PackageRepositoryTest do
                {:ok, "https://bitbucket.org/o/r"}
     end
 
+    test "golang.org/x maps to the go team's github mirror" do
+      # Of the 100 most-depended-upon Go modules, 12 are golang.org/x. They are
+      # also the Go team's own foundational set, so dropping them does not
+      # thin the sample evenly -- it removes the best-maintained corner of the
+      # ecosystem and biases any measurement of Go toward looking worse than it
+      # is. That is the direction that would flatter our own claim.
+      #
+      # Each target was checked against the GitHub API, not recalled.
+      assert PackageRepository.resolve("go", "golang.org/x/sys") ==
+               {:ok, "https://github.com/golang/sys"}
+
+      assert PackageRepository.resolve("go", "golang.org/x/crypto") ==
+               {:ok, "https://github.com/golang/crypto"}
+
+      assert PackageRepository.resolve("go", "golang.org/x/net") ==
+               {:ok, "https://github.com/golang/net"}
+    end
+
+    test "gopkg.in follows its own documented scheme" do
+      # `pkg.vN` is github.com/go-pkg/pkg; `user/pkg.vN` is github.com/user/pkg.
+      # The major version lives in the path segment rather than a directory, so
+      # v2 and v3 of yaml are one repository.
+      assert PackageRepository.resolve("go", "gopkg.in/yaml.v3") ==
+               {:ok, "https://github.com/go-yaml/yaml"}
+
+      assert PackageRepository.resolve("go", "gopkg.in/yaml.v2") ==
+               {:ok, "https://github.com/go-yaml/yaml"}
+
+      assert PackageRepository.resolve("go", "gopkg.in/check.v1") ==
+               {:ok, "https://github.com/go-check/check"}
+    end
+
+    test "a vanity prefix with no mechanical rule stays refused" do
+      # The remaining 14% of the top 100: google.golang.org, k8s.io,
+      # go.uber.org, cloud.google.com, sigs.k8s.io. Each has a real GitHub home
+      # -- google.golang.org/protobuf is github.com/protocolbuffers/protobuf-go
+      # -- but no rule derives it from the path. Inventing a pattern that fits a
+      # few would resolve some modules to repositories that are not theirs, and
+      # a confident analysis of the wrong history is worse than a refusal.
+      assert PackageRepository.resolve("go", "google.golang.org/protobuf") ==
+               {:error, :no_repository}
+
+      assert PackageRepository.resolve("go", "k8s.io/client-go") == {:error, :no_repository}
+      assert PackageRepository.resolve("go", "go.uber.org/zap") == {:error, :no_repository}
+    end
+
     test "a vanity path is refused rather than guessed" do
       # `k8s.io/client-go` is a real module whose repository is
       # github.com/kubernetes/client-go, and nothing in the path says so.
-      # Go's own ?go-get=1 mechanism answers it, and was tested: for
-      # golang.org/x/net it gives go.googlesource.com/net and for
-      # gopkg.in/yaml.v3 it gives gopkg.in itself -- both hosts
-      # `repository?/1` does not accept. Following the protocol would cost a
-      # request per module and still end here.
+      # Go's own ?go-get=1 mechanism answers these, and was tested -- but it
+      # answers with the *canonical* repository, which for golang.org/x/net is
+      # go.googlesource.com/net, a host `repository?/1` does not accept. The
+      # mapping above reaches the GitHub mirror of the same history instead,
+      # which is why the convention is used for the two prefixes that have one
+      # and the protocol is not used at all.
       assert PackageRepository.resolve("go", "k8s.io/client-go") == {:error, :no_repository}
-      assert PackageRepository.resolve("go", "golang.org/x/net") == {:error, :no_repository}
       assert PackageRepository.resolve("go", "example.com/thing") == {:error, :no_repository}
     end
 

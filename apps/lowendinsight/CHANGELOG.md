@@ -4,7 +4,7 @@ Notable changes to the `lowendinsight` library and the hosted service in this
 repository. The library is published to Hex; the service is deployed from the
 same tree (ADR-003).
 
-## 0.12.0 — unreleased
+## 0.12.0 — 2026-10-03
 
 ### New
 
@@ -17,11 +17,26 @@ same tree (ADR-003).
   `source_code_uri`, which commonly points at a tag
   (`.../rails/tree/v8.1.4`) and is trimmed to the repository.
 
-  A vanity Go path — `k8s.io/client-go`, `golang.org/x/net` — is still refused
-  rather than guessed. Go's own `?go-get=1` mechanism resolves those, and it was
-  tested: `golang.org/x/net` gives `go.googlesource.com/net` and
-  `gopkg.in/yaml.v3` gives itself, both on hosts this will not clone. Following
-  the protocol would cost a request per module and end in the same answer.
+  **Two vanity prefixes are mapped**, because measuring showed they are not a
+  rounding error. Of the 100 most-depended-upon Go modules, 70 are already
+  `github.com/...`, 12 are `golang.org/x/...` and 4 are `gopkg.in/...`, so the
+  two documented conventions take Go coverage from 70% to 86%:
+  `golang.org/x/NAME` is `github.com/golang/NAME`, and gopkg.in's own scheme
+  makes `pkg.vN` into `github.com/go-pkg/pkg` with the major version in the
+  segment rather than a directory, so `yaml.v2` and `yaml.v3` are one
+  repository. Every target was checked against the GitHub API.
+
+  The reason is not the 16 points. `golang.org/x/*` is the Go team's own
+  foundational set, so excluding it is not random missingness — it removes the
+  best-maintained corner of the ecosystem and biases any measurement of Go
+  toward looking worse maintained than it is. A bias that flatters the
+  hypothesis is the one to remove first.
+
+  The remaining 14% — `google.golang.org`, `k8s.io`, `go.uber.org`,
+  `cloud.google.com`, `sigs.k8s.io` — stays refused. Each has a real GitHub home
+  (`google.golang.org/protobuf` is `github.com/protocolbuffers/protobuf-go`) but
+  no rule derives it from the path; they are per-organisation facts, and a
+  confident analysis of the wrong history is worse than a refusal.
 
 - **`Lei.PackageRepository.ecosystems/0`**, so a caller can ask what resolves
   rather than keeping a list. `LeiService.CacheBaseline` kept its own copy of
