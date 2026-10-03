@@ -4176,6 +4176,42 @@
       "replace": "  defp strip_gopkg_version(segment), do: segment",
       "guarded_by": "test/lei/package_repository_test.exs",
       "app": "apps/lowendinsight"
+    },
+    {
+      "id": "pypi-project-url-keys-case-sensitive",
+      "bug": "PyPI does not normalise project_urls keys -- the author writes them freely. Matching 'Source' exactly drops numpy (`source`), pandas (`repository`), scipy (`source`) and tqdm (`repository`): 10 of the 50 most-depended-upon PyPI packages, and the core of scientific Python. It fails as :no_repository, which reads as 'the package declares no repository' rather than 'we did not look properly', so the gap appears as a property of the ecosystem rather than a bug in us.",
+      "file": "apps/lowendinsight/lib/lei/package_repository.ex",
+      "find": "    key |> String.downcase() |> String.replace(~r{[\\s-]+}, \"_\")",
+      "replace": "    key",
+      "guarded_by": "test/lei/package_repository_test.exs",
+      "app": "apps/lowendinsight"
+    },
+    {
+      "id": "pypi-any-url-taken-as-the-source",
+      "bug": "Accepting any project_urls value that merely looks like a repository resolves a package to whatever GitHub project its documentation happens to point at. A wrong repository is worse than a refused one: it produces a confident analysis of the wrong history, with real contributor and currency numbers that belong to someone else.",
+      "file": "apps/lowendinsight/lib/lei/package_repository.ex",
+      "find": "         if normalize_url_key(key) in source_like, do: value",
+      "replace": "         if repository?(value), do: value",
+      "guarded_by": "test/lei/package_repository_test.exs",
+      "app": "apps/lowendinsight"
+    },
+    {
+      "id": "pages-owner-page-mistaken-for-source",
+      "bug": "A bare `<owner>.github.io` is a user or organisation page whose repository is `<owner>/<owner>.github.io` -- the project's website, not its source. That URL is a valid repository shape, so it passes every downstream check and resolves: the package is then analysed as its own marketing site, with real contributor counts and a real commit currency belonging to a docs repo. The regex requiring a path segment is what prevents it.",
+      "file": "apps/lowendinsight/lib/lei/package_repository.ex",
+      "find": "        case Regex.run(~r{^https://([^./]+)\\.github\\.io/([^/?#]+)}, url) do\n          [_, owner, repo] -> \"https://github.com/#{owner}/#{repo}\"\n          _ -> nil\n        end",
+      "replace": "        case Regex.run(~r{^https://([^./]+)\\.github\\.io(?:/([^/?#]+))?}, url) do\n          [_, owner, repo] -> \"https://github.com/#{owner}/#{repo}\"\n          [_, owner] -> \"https://github.com/#{owner}/#{owner}.github.io\"\n          _ -> nil\n        end",
+      "guarded_by": "test/lei/package_repository_test.exs",
+      "app": "apps/lowendinsight"
+    },
+    {
+      "id": "pages-homepage-not-mapped-at-all",
+      "bug": "Three of the 34 genuine top RubyGems -- coveralls, vcr, guard -- declare no source_code_uri and only a GitHub Pages homepage. Without the mapping they are recorded as having no repository, which reads as a property of the gem rather than a lookup we did not perform.",
+      "file": "apps/lowendinsight/lib/lei/package_repository.ex",
+      "find": "        case Regex.run(~r{^https://([^./]+)\\.github\\.io/([^/?#]+)}, url) do",
+      "replace": "        case Regex.run(~r{^https://never-matches-anything/([^/]+)/([^/]+)}, url) do",
+      "guarded_by": "test/lei/package_repository_test.exs",
+      "app": "apps/lowendinsight"
     }
   ]
 }

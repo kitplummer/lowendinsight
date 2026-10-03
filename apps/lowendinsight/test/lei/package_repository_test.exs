@@ -226,6 +226,76 @@ defmodule Lei.PackageRepositoryTest do
     end
   end
 
+  describe "pypi project_urls, which authors write however they like" do
+    test "a source key is found whatever its case" do
+      # PyPI does not normalise these keys. Looking for "Source" exactly dropped
+      # numpy, pandas, scipy and tqdm -- 10 of the 50 most-depended-upon PyPI
+      # packages -- and reported `:no_repository`, which reads as "the package
+      # declares no repository" rather than "we did not look properly".
+      for key <- ["source", "Source", "SOURCE", "Source Code", "source-code", "source_code"] do
+        body = ~s({"info":{"project_urls":{"#{key}":"https://github.com/numpy/numpy"}}})
+
+        assert PackageRepository.resolve("pypi", "numpy", get: responder(200, body)) ==
+                 {:ok, "https://github.com/numpy/numpy"},
+               "the key #{inspect(key)} was not matched"
+      end
+    end
+
+    test "repository, repo and github are source keys too" do
+      # pandas and tqdm both use `repository`.
+      for key <- ["repository", "Repository", "repo", "github", "GitHub", "git"] do
+        body = ~s({"info":{"project_urls":{"#{key}":"https://github.com/o/p"}}})
+
+        assert PackageRepository.resolve("pypi", "p", get: responder(200, body)) ==
+                 {:ok, "https://github.com/o/p"},
+               "the key #{inspect(key)} was not matched"
+      end
+    end
+
+    test "the plural Sources is matched" do
+      # pytest-cov uses it, and no amount of case folding would have found it.
+      body = ~s({"info":{"project_urls":{"Sources":"https://github.com/pytest-dev/pytest-cov"}}})
+
+      assert PackageRepository.resolve("pypi", "pytest-cov", get: responder(200, body)) ==
+               {:ok, "https://github.com/pytest-dev/pytest-cov"}
+    end
+
+    test "a homepage is accepted in any case, but only when it is a repository" do
+      for key <- ["Homepage", "homepage", "home_page"] do
+        body = ~s({"info":{"project_urls":{"#{key}":"https://github.com/o/p"}}})
+
+        assert PackageRepository.resolve("pypi", "p", get: responder(200, body)) ==
+                 {:ok, "https://github.com/o/p"},
+               "the key #{inspect(key)} was not matched"
+      end
+
+      # odoo declares only a homepage, and it is not somewhere to clone. It
+      # must stay refused: this fix widens the lookup, not what counts as a
+      # repository.
+      body = ~s({"info":{"project_urls":{"Homepage":"https://www.odoo.com"}}})
+
+      assert PackageRepository.resolve("pypi", "odoo", get: responder(200, body)) ==
+               {:error, :no_repository}
+    end
+
+    test "a documentation or tracker url is not mistaken for the source" do
+      # A wrong repository is worse than a refused one -- it produces a
+      # confident analysis of the wrong history. Only source-like keys count,
+      # so a package whose docs happen to live on someone else's GitHub is not
+      # resolved to that someone else.
+      body =
+        ~s({"info":{"project_urls":{"Documentation":"https://github.com/sphinx-doc/sphinx","Changelog":"https://example.com/c"}}})
+
+      assert PackageRepository.resolve("pypi", "p", get: responder(200, body)) ==
+               {:error, :no_repository}
+    end
+
+    test "no project_urls at all is refused, not crashed on" do
+      assert PackageRepository.resolve("pypi", "p", get: responder(200, ~s({"info":{}}))) ==
+               {:error, :no_repository}
+    end
+  end
+
   describe "go, which has no registry to ask" do
     test "a module path is its own location" do
       # No request at all: the first three segments of a module path are the
@@ -319,6 +389,66 @@ defmodule Lei.PackageRepositoryTest do
     test "a path too short to name a repository is refused" do
       assert PackageRepository.resolve("go", "github.com/owner") == {:error, :no_repository}
       assert PackageRepository.resolve("go", "github.com") == {:error, :no_repository}
+    end
+  end
+
+  describe "a github pages homepage" do
+    test "a project page maps to the repository it is served from" do
+      # Pages serves `<owner>.github.io/<repo>/` from that repository, so the
+      # first path segment is the repository name by construction. Verified
+      # against the GitHub API: guard/guard and benoittgt/vcr both exist.
+      #
+      # It matters because three of the 34 genuine top RubyGems -- coveralls,
+      # vcr, guard -- declare no source_code_uri at all.
+      body = ~s({"source_code_uri":null,"homepage_uri":"https://guard.github.io/guard/"})
+
+      assert PackageRepository.resolve("gem", "guard", get: responder(200, body)) ==
+               {:ok, "https://github.com/guard/guard"}
+    end
+
+    test "extra path segments below the repository are dropped" do
+      body = ~s({"source_code_uri":null,"homepage_uri":"https://psf.github.io/black/stable/"})
+
+      assert PackageRepository.resolve("gem", "black", get: responder(200, body)) ==
+               {:ok, "https://github.com/psf/black"}
+    end
+
+    test "a bare owner page is NOT mapped" do
+      # `<owner>.github.io` with no path is a user or organisation page, whose
+      # repository is `<owner>/<owner>.github.io` -- the website, not the
+      # package's source. Resolving a package to its own marketing site would
+      # produce a confident analysis of the wrong history.
+      body = ~s({"source_code_uri":null,"homepage_uri":"https://someone.github.io"})
+
+      assert PackageRepository.resolve("gem", "g", get: responder(200, body)) ==
+               {:error, :no_repository}
+
+      body = ~s({"source_code_uri":null,"homepage_uri":"https://someone.github.io/"})
+
+      assert PackageRepository.resolve("gem", "g", get: responder(200, body)) ==
+               {:error, :no_repository}
+    end
+
+    test "an ordinary product homepage is still refused" do
+      # coveralls' homepage is coveralls.io, a real product site and not
+      # somewhere to clone. This mapping widens what counts as a *hint*, not
+      # what counts as a repository.
+      body = ~s({"source_code_uri":null,"homepage_uri":"https://coveralls.io"})
+
+      assert PackageRepository.resolve("gem", "coveralls", get: responder(200, body)) ==
+               {:error, :no_repository}
+    end
+
+    test "the mapping applies to pypi and composer too" do
+      pypi = ~s({"info":{"project_urls":{"Homepage":"https://owner.github.io/proj/"}}})
+
+      assert PackageRepository.resolve("pypi", "proj", get: responder(200, pypi)) ==
+               {:ok, "https://github.com/owner/proj"}
+
+      composer = ~s({"packages":{"o/p":[{"homepage":"https://owner.github.io/proj"}]}})
+
+      assert PackageRepository.resolve("composer", "o/p", get: responder(200, composer)) ==
+               {:ok, "https://github.com/owner/proj"}
     end
   end
 
