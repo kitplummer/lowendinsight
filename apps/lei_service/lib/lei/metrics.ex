@@ -72,6 +72,11 @@ defmodule Lei.Metrics do
       # caches, every request becomes a full clone at miss price, and each
       # request individually looks fine (ADR-008). Nothing could see it coming
       # before this.
+      # Which clients call the analysis. The MCP server exists on the theory that
+      # an agent will reach for this while choosing dependencies; this is the
+      # only thing that says whether that happens (Lei.Adoption).
+      adoption_metrics(),
+      "",
       redis_memory_metrics(),
       "",
       "# HELP lei_billing_mode Whether analysis is charged for, or free during beta",
@@ -433,6 +438,44 @@ defmodule Lei.Metrics do
       require Logger
       Logger.error("Metering metrics failed: #{inspect(error)}")
       ["lei_stripe_metering{measure=\"error\"} 1"]
+  end
+
+  # Same rule as the memory gauges: a window we could not read is not a window of
+  # zeros. "Nobody has called this" and "we could not tell" are opposite
+  # findings, and the first one is the whole question.
+  defp adoption_metrics do
+    [
+      "",
+      "# HELP lei_adoption_readable Whether the adoption counters could be read",
+      "# TYPE lei_adoption_readable gauge"
+    ] ++
+      case {Lei.Adoption.window(1), Lei.Adoption.window(30)} do
+        {{:ok, today}, {:ok, month}} ->
+          ["lei_adoption_readable 1", ""] ++
+            [
+              "# HELP lei_adoption_calls Analysis calls by client, today",
+              "# TYPE lei_adoption_calls gauge"
+            ] ++
+            bucket_lines("lei_adoption_calls", today) ++
+            [
+              "",
+              "# HELP lei_adoption_calls_30d Analysis calls by client over 30 days",
+              "# TYPE lei_adoption_calls_30d gauge"
+            ] ++
+            bucket_lines("lei_adoption_calls_30d", month)
+
+        _ ->
+          ["lei_adoption_readable 0"]
+      end
+  end
+
+  # Every bucket, including the zeros. A bucket that vanished when it had no
+  # calls would read as a client we do not count rather than one nobody used,
+  # and "no agent has ever called this" is exactly the finding.
+  defp bucket_lines(name, counts) do
+    for bucket <- Lei.Adoption.buckets() do
+      "#{name}{client=\"#{bucket}\"} #{Map.get(counts, bucket, 0)}"
+    end
   end
 
   # `lei_redis_memory_readable` is emitted whether or not Redis answered, and the
