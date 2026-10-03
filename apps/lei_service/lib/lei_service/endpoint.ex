@@ -24,6 +24,9 @@ defmodule LeiService.Endpoint do
   plug(Lei.Plugs.CanonicalPath)
   plug(LeiService.Auth)
   plug(LeiService.Plugs.RateLimiter)
+  # After auth and the limiter: a request that never got past the door is not
+  # adoption. Before dispatch: a client that tried and failed still tried.
+  plug(Lei.Plugs.Adoption)
   plug(Plug.Logger, log: :debug)
   plug(Plug.Static, from: {:lei_service, "priv/static/images"}, at: "/images")
   plug(Plug.Static, from: {:lei_service, "priv/static/js"}, at: "/js")

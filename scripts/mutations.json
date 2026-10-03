@@ -4059,6 +4059,42 @@
       "replace": "        \"start_time\" => \"2026-09-01T00:00:00Z\",\n        \"end_time\" => \"2026-09-01T00:00:00Z\"",
       "guarded_by": "test/lei/test_hygiene_test.exs",
       "app": "apps/lei_service"
+    },
+    {
+      "id": "adoption-labels-the-raw-user-agent",
+      "bug": "The client comes from a request header, so labelling the counter with the raw User-Agent lets one caller mint unbounded label values until /metrics grows past its scrape timeout -- taking the monitor, the billing mode, the switches and the reconciliation signals with it. A metric that can be made to destroy the metrics endpoint is a denial of service with a header.",
+      "file": "apps/lei_service/lib/lei/adoption.ex",
+      "find": "    Enum.find_value(@buckets, \"other\", fn {pattern, name} ->\n      if Regex.match?(pattern, user_agent), do: name\n    end)",
+      "replace": "    Enum.find_value(@buckets, user_agent, fn {pattern, name} ->\n      if Regex.match?(pattern, user_agent), do: name\n    end)",
+      "guarded_by": "test/lei_service/adoption_test.exs",
+      "app": "apps/lei_service"
+    },
+    {
+      "id": "adoption-unreadable-counter-reads-as-unused",
+      "bug": "An unreadable counter publishing zeros says 'nobody has called this', which is the opposite of 'we could not tell' -- and the first one is the finding the whole measurement exists to produce. It would retire the distribution work on the strength of a Redis outage.",
+      "file": "apps/lei_service/lib/lei/metrics.ex",
+      "find": "        _ ->\n          [\"lei_adoption_readable 0\"]",
+      "replace": "        _ ->\n          [\"lei_adoption_readable 0\", \"\"] ++\n            bucket_lines(\"lei_adoption_calls\", %{})",
+      "guarded_by": "test/lei_service/adoption_test.exs",
+      "app": "apps/lei_service"
+    },
+    {
+      "id": "adoption-counts-every-request",
+      "bug": "Counting every path folds in a /metrics scrape every fifteen minutes, /readyz, the favicon and the landing page. That is traffic, not adoption, and it buries the handful of calls the question is actually about under our own monitoring.",
+      "file": "apps/lei_service/lib/lei/plugs/adoption.ex",
+      "find": "  defp counted?(path), do: Enum.any?(@counted, &String.starts_with?(path, &1))",
+      "replace": "  defp counted?(_path), do: true",
+      "guarded_by": "test/lei_service/adoption_test.exs",
+      "app": "apps/lei_service"
+    },
+    {
+      "id": "adoption-empty-buckets-vanish",
+      "bug": "A bucket that disappears when it has no calls reads as a client we do not count rather than one nobody used. 'No agent has ever called this' is exactly the finding, and it is invisible if the zero row is absent.",
+      "file": "apps/lei_service/lib/lei/adoption.ex",
+      "find": "          |> Enum.reduce(Map.new(buckets(), &{&1, 0}), fn {{bucket, _key}, value}, acc ->\n            Map.update!(acc, bucket, &(&1 + to_count(value)))\n          end)",
+      "replace": "          |> Enum.reduce(%{}, fn {{bucket, _key}, value}, acc ->\n            Map.update(acc, bucket, to_count(value), &(&1 + to_count(value)))\n          end)\n          |> Enum.reject(fn {_b, n} -> n == 0 end)\n          |> Map.new()",
+      "guarded_by": "test/lei_service/adoption_test.exs",
+      "app": "apps/lei_service"
     }
   ]
 }
