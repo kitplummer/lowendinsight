@@ -9,7 +9,7 @@ defmodule GithubModule.MixProject do
     [
       app: :lowendinsight,
       description: description(),
-      version: "0.10.0",
+      version: "0.11.0",
       elixir: "~> 1.17",
       start_permanent: Mix.env() == :prod,
       build_path: "../../_build",

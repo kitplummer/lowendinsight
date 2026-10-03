@@ -4,7 +4,69 @@ Notable changes to the `lowendinsight` library and the hosted service in this
 repository. The library is published to Hex; the service is deployed from the
 same tree (ADR-003).
 
-## 0.10.0 — unreleased
+## 0.11.0 — unreleased
+
+Sixteen commits since 0.10.0 were never released, and the gap was found by
+depending on the published package from outside this tree: a survey built on
+`lowendinsight 0.10.0` could not see `functional_commit_currency_weeks` at all,
+because the module that computes it is in this list.
+
+### New
+
+- **`Lei.CommitSubstance`: commit currency measured from the last commit that
+  meant something.** Plain currency is reset by anything — a README typo, a
+  licence year bump, a merged Dependabot PR — so a repository with no human
+  involvement for a year could report `low` on automation alone, at any
+  threshold. A commit is not substantive when its author classifies as a bot or
+  every path it touches is documentation or repository metadata. AI
+  co-authorship does *not* make a commit non-substantive: an agent-assisted
+  commit still represents a person deciding the project needed changing, and
+  `agentic_classification` is the metric that speaks to that.
+  `functional_commit_currency_weeks` and `functional_commit_currency_risk` are
+  new result fields, with their own thresholds rather than sharing the plain
+  ones.
+- **`Lei.ReportFreshness`: currency recomputed on the way out of the cache.**
+  Five of the six risk metrics are pure functions of a cloned history and stay
+  correct while the repository does not move. Commit currency is derived from
+  `DateTime.utc_now()`, so a stored week count reported the risk a repository
+  held when it was analysed — a project drifting into abandonment kept its old
+  verdict, which made the cache a way of suppressing the one signal the analysis
+  exists to raise. Recomputed from the stored `last_commit_date`: no clone, no
+  network.
+- **`Lei.RiskProfile`: the distribution a verdict was collapsed from.**
+  `data.risk` is the worst of a repository's metrics, which made "one functional
+  contributor, active this month" and "one functional contributor, silent two
+  years" read identically. The verdict is unchanged and the counts are reported
+  beside it — no weights, no 0-100 score.
+- **Manifest ranking, and directness rather than centrality.** A report is
+  rankable, the dependency edges already being received are kept rather than
+  discarded, and one registry fetch answers both the repository and the
+  dependency questions.
+
+### Fixed
+
+- **An npm `repository` published as a string raised** `FunctionClauseError`
+  inside a `Task`, taking a whole batch job down rather than failing one
+  package. `@nodelib/fs.stat` publishes that form and is a transitive dependency
+  of most npm projects, so any batch analysis over a real npm manifest ended on
+  it. The shorthand forms (`github:o/r`, a bare `o/r`, `git@host:o/r`) and URLs
+  pointing into a monorepo directory now resolve too; each previously read as
+  "this package has no repository".
+- **Resolution asks for one version, not every version ever published.** npm's
+  package document for `typescript` is 15.7 MB against 4.8 KB for
+  `/typescript/latest` — the same `repository` field. The download was never the
+  cost; decoding 15.7 MB to read one string was, at 19.8 s per package.
+  `describe/3` and `dependencies/3` still take the full document, because
+  `dist-tags` and `versions` exist only there.
+- **Analyses that determined nothing are no longer cached**, and arguments are
+  validated before work starts.
+
+### Changed
+
+- **git is run directly**, dropping a dependency unmaintained since 2018.
+- README and LICENCE ship in the package.
+
+## 0.10.0 — 2026-09-16
 
 ### Breaking, for library users
 
