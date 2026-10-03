@@ -4,6 +4,49 @@ Notable changes to the `lowendinsight` library and the hosted service in this
 repository. The library is published to Hex; the service is deployed from the
 same tree (ADR-003).
 
+## 0.13.1 — unreleased
+
+### Fixed
+
+- **One contributor's name could lose a whole repository.** `git log --author`
+  is a regex, and a contributor name is data from the repository.
+  `apache/arrow` has a commit authored by `[5~David Li` — a real name, from a
+  terminal control sequence that got into someone's git config — and the
+  unterminated `[` is an invalid character class:
+
+  ```
+  fatal: header, '[5~David Li': Unmatched [, [^, [:, [., or [=
+  ```
+
+  git exits 128, the call raises, and the analysis of the entire repository is
+  lost rather than one contributor's date. `pyarrow` is in the top twenty PyPI
+  packages and that is what happened to it.
+
+  Fixed by passing `-F`, so the name is matched literally — which is what the
+  function means, and what the `Co-Authored-By` search one function away
+  already did.
+
+  **Not an injection.** `Lei.Git.run/3` uses `System.cmd/3` with an argument
+  list, so there is no shell and the bytes reach git as data. The bug was data
+  being interpreted as a pattern.
+
+  **It is also a correctness fix, not only a crash fix.** A name containing `.`
+  is a *valid* regex where the dot matches any character, so the lookup could
+  return a different person's commit:
+
+  ```
+  --author=A.C Dev        ->  2026-01-01   (matched "ABC Dev")
+  -F --author=A.C Dev     ->  2020-01-01   (the actual contributor)
+  ```
+
+  Six years apart, and in the direction that makes a repository look more
+  recently maintained than it is. Any contributor with an initial or a `Jr.` in
+  their name was exposed. The crash was the visible case; this one was silent.
+
+  Only the unterminated `[` raised — git uses basic regular expressions, so
+  `A[1] Dev`, `Foo (Bar`, `C++ Dev`, `Jo* Smith` and `Ann? Lee` all exit 0 —
+  which is why this went unnoticed until a name happened to crash.
+
 ## 0.13.0 — 2026-10-03
 
 ### Fixed
