@@ -30,7 +30,7 @@ defmodule Lei.PackageRepository do
              | {:unreachable, term()}
              | {:status, integer()}}
   def resolve(ecosystem, package, opts \\ []) do
-    with {:ok, url, extract} <- registry(ecosystem, package),
+    with {:ok, url, extract} <- resolve_registry(ecosystem, package),
          {:ok, body} <- fetch(url, opts) do
       case extract.(body) do
         nil -> {:error, :no_repository}
@@ -38,6 +38,26 @@ defmodule Lei.PackageRepository do
       end
     end
   end
+
+  # Resolution needs one field, so it asks for one version rather than the whole
+  # package.
+  #
+  # npm's package document carries every version ever published. Measured
+  # 2026-10-03: `typescript` is **15.7 MB** against **4.8 KB** for
+  # `/typescript/latest` -- the same `repository` field, 3,250 times smaller. The
+  # download is not the cost; decoding 15.7 MB of JSON to read one string is, and
+  # it took 19.8 s in this code path. A batch job resolving a 400-package
+  # manifest (ADR-004) was decoding gigabytes to extract four hundred strings.
+  #
+  # `describe/3` and `dependencies/3` still take the full document, because they
+  # read `dist-tags` and `versions` which only exist there. Hence two functions:
+  # one URL per question, rather than one URL used for both.
+  defp resolve_registry("npm", package) do
+    {:ok, "https://registry.npmjs.org/" <> URI.encode(package) <> "/latest", &npm_repository/1}
+  end
+
+  # Every other registry answers with a single small document already.
+  defp resolve_registry(ecosystem, package), do: registry(ecosystem, package)
 
   @doc """
   The repository URL and the declared dependencies, from **one** fetch.

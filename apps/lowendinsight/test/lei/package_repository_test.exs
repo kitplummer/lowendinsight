@@ -25,7 +25,9 @@ defmodule Lei.PackageRepositoryTest do
     assert PackageRepository.resolve("npm", "left-pad", get: responder(200, body)) ==
              {:ok, "https://github.com/o/r"}
 
-    assert_received {:requested, "https://registry.npmjs.org/left-pad"}
+    # /latest, not the full package document: see "resolution asks for one
+    # version" below for why, and what it measured.
+    assert_received {:requested, "https://registry.npmjs.org/left-pad/latest"}
   end
 
   test "hex: the package's GitHub link, whatever its case" do
@@ -123,6 +125,44 @@ defmodule Lei.PackageRepositoryTest do
         ] do
       body = ~s({"repository":{"url":"#{given}"}})
       assert PackageRepository.resolve("npm", "x", get: responder(200, body)) == {:ok, want}
+    end
+  end
+
+  describe "resolution asks for one version, not the whole package" do
+    test "npm resolution requests /latest" do
+      # npm's package document carries every version ever published. Measured
+      # 2026-10-03: typescript is 15.7 MB against 4.8 KB for /typescript/latest,
+      # the same repository field 3,250 times smaller. The download is not the
+      # cost; decoding 15.7 MB to read one string is, and it took 19.8 s here. A
+      # batch job resolving a 400-package manifest was decoding gigabytes to
+      # extract four hundred strings.
+      body = ~s({"repository":{"url":"git+https://github.com/o/r.git"}})
+
+      assert PackageRepository.resolve("npm", "typescript", get: responder(200, body)) ==
+               {:ok, "https://github.com/o/r"}
+
+      assert_received {:requested, "https://registry.npmjs.org/typescript/latest"}
+    end
+
+    test "dependencies still read the full document" do
+      # dist-tags and versions exist only there, so describe/3 and
+      # dependencies/3 must not be moved onto the light endpoint with it.
+      body =
+        ~s({"dist-tags":{"latest":"1.0.0"},"versions":{"1.0.0":{"dependencies":{"left-pad":"^1"}}}})
+
+      assert PackageRepository.dependencies("npm", "express", get: responder(200, body)) ==
+               {:ok, ["left-pad"]}
+
+      assert_received {:requested, "https://registry.npmjs.org/express"}
+    end
+
+    test "a registry whose document is already small is unchanged" do
+      body = ~s({"meta":{"links":{"GitHub":"https://github.com/o/r"}}})
+
+      assert PackageRepository.resolve("hex", "jason", get: responder(200, body)) ==
+               {:ok, "https://github.com/o/r"}
+
+      assert_received {:requested, "https://hex.pm/api/packages/jason"}
     end
   end
 
