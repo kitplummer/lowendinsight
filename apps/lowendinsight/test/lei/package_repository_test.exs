@@ -226,6 +226,109 @@ defmodule Lei.PackageRepositoryTest do
     end
   end
 
+  describe "go, which has no registry to ask" do
+    test "a module path is its own location" do
+      # No request at all: the first three segments of a module path are the
+      # repository. A resolver that asked someone would be slower and no more
+      # correct.
+      assert PackageRepository.resolve("go", "github.com/gin-gonic/gin") ==
+               {:ok, "https://github.com/gin-gonic/gin"}
+
+      refute_received {:requested, _}
+    end
+
+    test "a submodule path resolves to the repository that contains it" do
+      # The repository is aws-sdk-go-v2; service/s3 is a directory in it. Taking
+      # the whole path would produce a clone target that does not exist.
+      assert PackageRepository.resolve("go", "github.com/aws/aws-sdk-go-v2/service/s3") ==
+               {:ok, "https://github.com/aws/aws-sdk-go-v2"}
+    end
+
+    test "a major version suffix belongs to the module, not the repository" do
+      assert PackageRepository.resolve("go", "github.com/stretchr/testify/v2") ==
+               {:ok, "https://github.com/stretchr/testify"}
+    end
+
+    test "gitlab and bitbucket module paths resolve too" do
+      assert PackageRepository.resolve("go", "gitlab.com/o/r") ==
+               {:ok, "https://gitlab.com/o/r"}
+
+      assert PackageRepository.resolve("go", "bitbucket.org/o/r") ==
+               {:ok, "https://bitbucket.org/o/r"}
+    end
+
+    test "a vanity path is refused rather than guessed" do
+      # `k8s.io/client-go` is a real module whose repository is
+      # github.com/kubernetes/client-go, and nothing in the path says so.
+      # Go's own ?go-get=1 mechanism answers it, and was tested: for
+      # golang.org/x/net it gives go.googlesource.com/net and for
+      # gopkg.in/yaml.v3 it gives gopkg.in itself -- both hosts
+      # `repository?/1` does not accept. Following the protocol would cost a
+      # request per module and still end here.
+      assert PackageRepository.resolve("go", "k8s.io/client-go") == {:error, :no_repository}
+      assert PackageRepository.resolve("go", "golang.org/x/net") == {:error, :no_repository}
+      assert PackageRepository.resolve("go", "example.com/thing") == {:error, :no_repository}
+    end
+
+    test "a path too short to name a repository is refused" do
+      assert PackageRepository.resolve("go", "github.com/owner") == {:error, :no_repository}
+      assert PackageRepository.resolve("go", "github.com") == {:error, :no_repository}
+    end
+  end
+
+  describe "composer and rubygems" do
+    test "composer reads the declared source" do
+      body =
+        ~s({"packages":{"symfony/console":[{"source":{"url":"https://github.com/symfony/console.git","type":"git"}}]}})
+
+      assert PackageRepository.resolve("composer", "symfony/console", get: responder(200, body)) ==
+               {:ok, "https://github.com/symfony/console"}
+
+      assert_received {:requested, "https://repo.packagist.org/p2/symfony/console.json"}
+    end
+
+    test "composer falls back to a homepage that is a repository" do
+      body = ~s({"packages":{"o/p":[{"homepage":"https://github.com/o/p"}]}})
+
+      assert PackageRepository.resolve("composer", "o/p", get: responder(200, body)) ==
+               {:ok, "https://github.com/o/p"}
+    end
+
+    test "composer does not accept a homepage that is not a repository" do
+      body = ~s({"packages":{"o/p":[{"homepage":"https://example.com/p"}]}})
+
+      assert PackageRepository.resolve("composer", "o/p", get: responder(200, body)) ==
+               {:error, :no_repository}
+    end
+
+    test "rubygems reads source_code_uri, trimmed to the repository" do
+      # RubyGems commonly declares a tag: rails gives
+      # https://github.com/rails/rails/tree/v8.1.4, which is a path rather than
+      # a clone target.
+      body = ~s({"source_code_uri":"https://github.com/rails/rails/tree/v8.1.4"})
+
+      assert PackageRepository.resolve("gem", "rails", get: responder(200, body)) ==
+               {:ok, "https://github.com/rails/rails"}
+
+      assert_received {:requested, "https://rubygems.org/api/v1/gems/rails.json"}
+    end
+
+    test "rubygems falls back to a homepage that is a repository" do
+      body = ~s({"source_code_uri":null,"homepage_uri":"https://github.com/o/g"})
+
+      assert PackageRepository.resolve("gem", "g", get: responder(200, body)) ==
+               {:ok, "https://github.com/o/g"}
+    end
+
+    test "rubygems does not accept a homepage that is not a repository" do
+      # rails' homepage is rubyonrails.org, which is not somewhere to clone.
+      body = ~s({"source_code_uri":null,"homepage_uri":"https://rubyonrails.org"})
+
+      assert PackageRepository.resolve("gem", "g", get: responder(200, body)) ==
+               {:error, :no_repository}
+    end
+  end
+
   @tag :network
   test "the live registries resolve a real package in each ecosystem" do
     assert {:ok, npm} = PackageRepository.resolve("npm", "left-pad")

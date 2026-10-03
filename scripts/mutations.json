@@ -4140,6 +4140,24 @@
       "replace": "        \"subst-#{System.unique_integer([:positive])}\"",
       "guarded_by": "test/lei/substantive_commit_date_test.exs",
       "app": "apps/lowendinsight"
+    },
+    {
+      "id": "go-module-path-not-normalized",
+      "bug": "A Go module path is not a clone target until it is normalized: a `/v2` major version, a `/service/s3` submodule path and a vanity host all have to be dealt with. Using the path as given produces URLs that do not exist and keys the cache on them, so a customer pays for a miss on a repository we may already hold.",
+      "file": "apps/lowendinsight/lib/lei/package_repository.ex",
+      "find": "    normalize(\"https://\" <> module)",
+      "replace": "    {:ok, \"https://\" <> module}",
+      "guarded_by": "test/lei/package_repository_test.exs",
+      "app": "apps/lowendinsight"
+    },
+    {
+      "id": "survey-keeps-its-own-ecosystem-list",
+      "bug": "The survey held its own list of resolvable ecosystems, so adding Go, Composer and RubyGems to the library left every caller of the survey still refusing them. Two lists of one fact, and the copy is the one that decides what gets measured.",
+      "file": "apps/lei_service/lib/lei_service/cache_baseline.ex",
+      "find": "        case Map.fetch(@purl_to_resolver, type) do\n          {:ok, resolver} -> {:registry, resolver, package}\n          :error -> {:error, {:unsupported_ecosystem, type}}\n        end",
+      "replace": "        if type in [\"npm\", \"hex\", \"pypi\", \"cargo\"] do\n          {:registry, type, package}\n        else\n          {:error, {:unsupported_ecosystem, type}}\n        end",
+      "guarded_by": "test/lei_service/cache_probe_test.exs",
+      "app": "apps/lei_service"
     }
   ]
 }

@@ -207,9 +207,42 @@ defmodule LeiService.CacheProbeTest do
       assert Baseline.route(debug) == {:registry, "npm", "debug"}
     end
 
-    test "an ecosystem we cannot resolve is refused, not pattern-matched into a URL" do
-      assert {:error, {:unsupported_ecosystem, "golang"}} =
-               Baseline.route(%{ecosystem: "golang", package: "github.com/gin-gonic/gin"})
+    test "a purl ecosystem name is mapped to the resolver's name" do
+      # A Go package is `golang` in a purl and `go` to the resolver. This module
+      # kept its own list of four ecosystems, so adding Go, Composer and
+      # RubyGems to the library left the survey still refusing them -- two lists
+      # of one fact.
+      assert Baseline.route(%{ecosystem: "golang", package: "github.com/gin-gonic/gin"}) ==
+               {:registry, "go", "github.com/gin-gonic/gin"}
+
+      assert Baseline.route(%{ecosystem: "composer", package: "symfony/console"}) ==
+               {:registry, "composer", "symfony/console"}
+
+      assert Baseline.route(%{ecosystem: "gem", package: "rails"}) ==
+               {:registry, "gem", "rails"}
+    end
+
+    test "every ecosystem the library resolves is routed" do
+      # The library owns the list; this asserts nothing was added there and
+      # forgotten here.
+      for ecosystem <- Lei.PackageRepository.ecosystems() do
+        assert match?(
+                 {:registry, _, _},
+                 Baseline.route(%{ecosystem: purl_name(ecosystem), package: "x"})
+               ),
+               "#{ecosystem} is resolvable by the library but not routed by the survey"
+      end
+    end
+
+    defp purl_name("go"), do: "golang"
+    defp purl_name(other), do: other
+
+    test "an ecosystem nobody can resolve is still refused" do
+      assert {:error, {:unsupported_ecosystem, "maven"}} =
+               Baseline.route(%{ecosystem: "maven", package: "com.google.guava:guava"})
+
+      assert {:error, {:unsupported_ecosystem, "nuget"}} =
+               Baseline.route(%{ecosystem: "nuget", package: "Newtonsoft.Json"})
     end
   end
 

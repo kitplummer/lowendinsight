@@ -4,6 +4,31 @@ Notable changes to the `lowendinsight` library and the hosted service in this
 repository. The library is published to Hex; the service is deployed from the
 same tree (ADR-003).
 
+## 0.12.0 — unreleased
+
+### New
+
+- **Go, Composer and RubyGems resolve.** `Lei.PackageRepository` understood npm,
+  hex, pypi and cargo, which is why a customer scanning a Go service got nothing
+  from us. Go needs no request at all — a module path is its location, and
+  `normalize/1` already trims a `/v2` major version, a `/service/s3` submodule
+  path and anything on a host we cannot clone. Composer reads
+  `repo.packagist.org`'s declared `source.url`; RubyGems reads
+  `source_code_uri`, which commonly points at a tag
+  (`.../rails/tree/v8.1.4`) and is trimmed to the repository.
+
+  A vanity Go path — `k8s.io/client-go`, `golang.org/x/net` — is still refused
+  rather than guessed. Go's own `?go-get=1` mechanism resolves those, and it was
+  tested: `golang.org/x/net` gives `go.googlesource.com/net` and
+  `gopkg.in/yaml.v3` gives itself, both on hosts this will not clone. Following
+  the protocol would cost a request per module and end in the same answer.
+
+- **`Lei.PackageRepository.ecosystems/0`**, so a caller can ask what resolves
+  rather than keeping a list. `LeiService.CacheBaseline` kept its own copy of
+  four, so adding a resolver here would otherwise leave every caller of that
+  still refusing the ecosystem — two lists of one fact, and the copy decided
+  what got measured.
+
 ## 0.11.0 — 2026-10-03
 
 Sixteen commits since 0.10.0 were never released, and the gap was found by
