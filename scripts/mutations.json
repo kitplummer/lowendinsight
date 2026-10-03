@@ -4113,6 +4113,24 @@
       "replace": "            \"training data has a cutoff. Returns the state today: the date of the last \"",
       "guarded_by": "test/lei_service/mcp_server_test.exs",
       "app": "apps/lei_service"
+    },
+    {
+      "id": "npm-resolve-pulls-the-whole-package-document",
+      "bug": "npm's package document carries every version ever published. Resolving from it decodes megabytes to read one string -- typescript is 15.7 MB against 4.8 KB for /typescript/latest, and it took 19.8s in this path. A batch job resolving a 400-package manifest (ADR-004) was decoding gigabytes to extract four hundred strings.",
+      "file": "apps/lowendinsight/lib/lei/package_repository.ex",
+      "find": "    {:ok, \"https://registry.npmjs.org/\" <> URI.encode(package) <> \"/latest\", &npm_repository/1}",
+      "replace": "    {:ok, \"https://registry.npmjs.org/\" <> URI.encode(package), &npm_repository/1}",
+      "guarded_by": "test/lei/package_repository_test.exs",
+      "app": "apps/lowendinsight"
+    },
+    {
+      "id": "npm-dependencies-read-the-light-document",
+      "bug": "dist-tags and versions exist only on the full package document. Pointing describe/3 and dependencies/3 at /latest with resolution would make the dependency graph read as empty -- and an empty edge list is not an error, so a package whose edges we cannot see would sort as peripheral rather than as unmeasured.",
+      "file": "apps/lowendinsight/lib/lei/package_repository.ex",
+      "find": "  defp registry(\"npm\", package) do\n    {:ok, \"https://registry.npmjs.org/\" <> URI.encode(package), &npm_repository/1}\n  end",
+      "replace": "  defp registry(\"npm\", package) do\n    {:ok, \"https://registry.npmjs.org/\" <> URI.encode(package) <> \"/latest\", &npm_repository/1}\n  end",
+      "guarded_by": "test/lei/package_repository_test.exs",
+      "app": "apps/lowendinsight"
     }
   ]
 }
