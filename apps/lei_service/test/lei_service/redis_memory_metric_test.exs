@@ -62,15 +62,62 @@ defmodule LeiService.RedisMemoryMetricTest do
 
     setup do
       # Port 1 is reserved, so every command fails with a connection error.
-      {:ok, _} =
-        Redix.start_link(
-          host: "127.0.0.1",
-          port: 1,
-          name: @dead,
-          sync_connect: false,
-          exit_on_disconnection: false,
-          backoff_max: 100
-        )
+      #
+      # `start_supervised!` rather than `Redix.start_link`, because the name is
+      # registered and four tests share this setup. Started with a plain link,
+      # the process is cleaned up only when ExUnit exits the test process -- and
+      # the next test's setup can run before the name is released:
+      #
+      #     immediately after the owner dies:
+      #       {:error, {:already_started, #PID<0.746.0>}}
+      #
+      # which is reproducible on demand and is what failed umbrella_ci on main.
+      # It needs full-suite scheduling pressure to show: eight seeds of this
+      # file alone all passed.
+      #
+      # ExUnit terminates a supervised child before the test finishes, so the
+      # name is free by the time the next setup runs.
+      #
+      # Asserted rather than trusted. If a test ever leaks this name again, the
+      # failure says so by name instead of arriving as a MatchError on
+      # `{:error, {:already_started, pid}}` in a setup block, which is what this
+      # cost to diagnose.
+      refute Process.whereis(@dead),
+             "#{@dead} is still registered at the start of a test: " <>
+               "an earlier test leaked it instead of letting ExUnit tear it down"
+
+      start_supervised!(
+        {Redix,
+         [
+           host: "127.0.0.1",
+           port: 1,
+           name: @dead,
+           sync_connect: false,
+           exit_on_disconnection: false,
+           backoff_max: 100
+         ]}
+      )
+
+      # Deterministic, where the leak check is not.
+      #
+      # The leak check above only fires when the race actually loses, which
+      # needs full-suite scheduling pressure -- reintroducing the bug and
+      # running six seeds of this file passed every time. So the thing asserted
+      # here is the property that makes the race impossible rather than the
+      # symptom: the process is owned by ExUnit's supervisor, not linked
+      # straight to the test process.
+      #
+      # `$ancestors` names the starter. Under `start_supervised!` that is
+      # ExUnit's supervisor; under `Redix.start_link` called here it would be
+      # this test process, and cleanup would again be a race with the next
+      # setup.
+      {:dictionary, dict} = Process.info(Process.whereis(@dead), :dictionary)
+      [starter | _] = Keyword.fetch!(dict, :"$ancestors")
+
+      refute starter == self(),
+             "#{@dead} is linked straight to the test process, so it is cleaned " <>
+               "up only when that process dies -- which races the next setup. " <>
+               "Start it with start_supervised! so ExUnit tears it down first."
 
       previous = Application.get_env(:lei_service, :redix_name)
       Application.put_env(:lei_service, :redix_name, @dead)
