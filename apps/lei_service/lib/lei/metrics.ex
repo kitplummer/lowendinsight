@@ -3,10 +3,41 @@ defmodule Lei.Metrics do
   Prometheus-compatible metrics endpoint.
   """
 
+  # Which commit this build came from.
+  #
+  # Read at **compile time**, so it describes the artifact rather than the
+  # machine's environment. A runtime `System.get_env` would report whatever the
+  # host happened to be told, which is the thing that cannot be trusted: a
+  # stale or wrong variable would make the gauge confidently claim a commit
+  # this code did not come from.
+  #
+  # `unknown` when the build arg was not passed. It is not omitted and it does
+  # not guess -- the monitor treats `unknown` as a failure, because a build
+  # nobody can identify is exactly the state you cannot verify, and the whole
+  # reason this exists is that the deploy check had to infer what was running
+  # from GitHub's record of what it had been asked to run.
+  @build_sha (case System.get_env("LEI_BUILD_SHA") do
+                sha when is_binary(sha) and sha != "" -> String.slice(sha, 0, 40)
+                _ -> "unknown"
+              end)
+
+  @doc "The commit this build was compiled from, or `unknown`."
+  @spec build_sha() :: String.t()
+  def build_sha, do: @build_sha
+
   def collect do
     (vm_metrics() ++ app_metrics() ++ registered_metrics())
     |> Enum.join("\n")
     |> Kernel.<>("\n")
+  end
+
+  # From the compiled application, so unlike the sha this is safe at runtime --
+  # there is no environment variable to be wrong about.
+  defp lei_version do
+    case Application.spec(:lowendinsight, :vsn) do
+      nil -> "unknown"
+      vsn -> to_string(vsn)
+    end
   end
 
   defp vm_metrics do
@@ -78,6 +109,14 @@ defmodule Lei.Metrics do
       adoption_metrics(),
       "",
       redis_memory_metrics(),
+      "",
+      # Asked of the service rather than inferred from CI. The deploy monitor
+      # previously decided what was running by reading GitHub's record of which
+      # deploy runs had succeeded -- which is a check on the system that was
+      # supposed to tell it, not on the thing itself.
+      "# HELP lei_build_info The commit and library version this build was compiled from",
+      "# TYPE lei_build_info gauge",
+      "lei_build_info{sha=\"#{build_sha()}\",lei_version=\"#{lei_version()}\"} 1",
       "",
       "# HELP lei_billing_mode Whether analysis is charged for, or free during beta",
       "# TYPE lei_billing_mode gauge",

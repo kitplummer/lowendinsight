@@ -4221,6 +4221,42 @@
       "replace": "        git_log_split(repo, [\"--author=#{contributor}\", \"-1\", \"--pretty=format:%cI\"])",
       "guarded_by": "test/git_module_local_test.exs",
       "app": "apps/lowendinsight"
+    },
+    {
+      "id": "deployed-sha-unknown-reads-as-deployed",
+      "bug": "A build that cannot say which commit it came from is precisely the build whose deployment cannot be confirmed. Treating `unknown` as a match means the check passes on any image built without the arg -- including every image built before the gauge existed -- so the one check whose job is noticing an undeployed tip would pass on exactly the builds it cannot verify.",
+      "file": "scripts/check-deployed-sha.sh",
+      "find": "if [ -z \"$RUNNING\" ] || [ \"$RUNNING\" = \"unknown\" ]; then",
+      "replace": "if [ -z \"$RUNNING\" ] && [ \"$RUNNING\" = \"never\" ]; then",
+      "guarded_by": "test/lei_service/build_sha_test.exs",
+      "app": "apps/lei_service"
+    },
+    {
+      "id": "deployed-sha-absent-gauge-skipped",
+      "bug": "An old release publishes no lei_build_info at all. Skipping the comparison when the gauge is absent makes a service whose identity cannot be read indistinguishable from one running the right commit -- the failure this repository is documented around, in the check added to prevent it.",
+      "file": "scripts/check-deployed-sha.sh",
+      "find": "if [ -z \"$LINE\" ]; then",
+      "replace": "if [ \"$LINE\" = \"never-matches\" ]; then",
+      "guarded_by": "test/lei_service/build_sha_test.exs",
+      "app": "apps/lei_service"
+    },
+    {
+      "id": "deployed-sha-mismatch-ignored",
+      "bug": "The whole point is that GitHub's deploy record and the running code can disagree: a deploy that reported success while shipping the wrong image, or a machine that rolled back quietly, both look deployed from GitHub's side. Not comparing the two leaves the check asking only whether the gauge exists.",
+      "file": "scripts/check-deployed-sha.sh",
+      "find": "if [ \"$RUNNING\" != \"$EXPECTED\" ]; then",
+      "replace": "if false; then",
+      "guarded_by": "test/lei_service/build_sha_test.exs",
+      "app": "apps/lei_service"
+    },
+    {
+      "id": "build-sha-read-at-runtime",
+      "bug": "A build identifier read at runtime describes the machine's environment rather than the artifact. A stale or wrong LEI_BUILD_SHA on the host would make the gauge confidently name a commit this code did not come from -- and the deploy check would then confirm a deployment that never happened, which is worse than having no gauge.",
+      "file": "apps/lei_service/lib/lei/metrics.ex",
+      "find": "  @build_sha (case System.get_env(\"LEI_BUILD_SHA\") do",
+      "replace": "  @build_sha_unused (case System.get_env(\"LEI_BUILD_SHA\") do",
+      "guarded_by": "test/lei_service/build_sha_test.exs",
+      "app": "apps/lei_service"
     }
   ]
 }

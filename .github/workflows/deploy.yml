@@ -142,7 +142,13 @@ jobs:
       - name: Deploy
         env:
           FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
-        run: flyctl deploy --remote-only
+        # LEI_BUILD_SHA is baked into the image so /metrics can state which
+        # commit is running. Without it the deploy check can only ask GitHub
+        # which deploys it believes succeeded, which is a check on the
+        # bookkeeping rather than on the service.
+        run: >-
+          flyctl deploy --remote-only
+          --build-arg LEI_BUILD_SHA=${{ needs.gate.outputs.sha }}
 
       # Fly's own health checks gate promotion, but they only prove the app
       # answers /healthz. The smoke suite is what proves the deployed code
