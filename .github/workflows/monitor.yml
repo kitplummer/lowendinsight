@@ -548,7 +548,24 @@ jobs:
 
           case "$RESULT" in
             0)
-              echo "The tip of main is live."
+              echo "The tip of main is live, according to GitHub."
+              # And according to the service, which is the one to believe. A
+              # deploy that reported success while shipping the wrong image, or
+              # a machine that quietly rolled back, both look deployed from
+              # GitHub's side. Within the grace a mismatch is a deploy still
+              # rolling, so it is only an error past it.
+              set +e
+              curl -s --max-time 15 https://lowendinsight.dev/metrics \
+                | scripts/check-deployed-sha.sh "$TIP"
+              LIVE=$?
+              set -e
+              if [ "$LIVE" -ne 0 ]; then
+                if [ "$AGE" -lt "$GRACE" ]; then
+                  echo "::notice::The service does not yet report ${TIP:0:7}, committed ${AGE}s ago; within the ${GRACE}s grace."
+                else
+                  exit 1
+                fi
+              fi
               ;;
             1|2)
               # Both share the grace. deploy-status.sh answers 1 for "no deploy

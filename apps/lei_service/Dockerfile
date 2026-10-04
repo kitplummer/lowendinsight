@@ -16,6 +16,16 @@ FROM hexpm/elixir:${ELIXIR_VERSION}-erlang-${ERLANG_VERSION}-alpine-${ALPINE_VER
 
 ARG MIX_ENV=prod
 
+# The commit this image is built from.
+#
+# `Lei.Metrics` reads it at compile time, so it describes the artifact rather
+# than the machine. Passed by the deploy workflow as
+# `--build-arg LEI_BUILD_SHA=<sha>`; `unknown` when nobody passed it, which the
+# monitor treats as a failure rather than a pass -- a build nobody can identify
+# is the state you cannot verify.
+ARG LEI_BUILD_SHA=unknown
+ENV LEI_BUILD_SHA=${LEI_BUILD_SHA}
+
 WORKDIR /opt/app
 
 # The base image is pinned, so its packages are not upgraded past it.
