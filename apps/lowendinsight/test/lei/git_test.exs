@@ -159,8 +159,18 @@ defmodule Lei.GitTest do
       # every other test here would still pass.
       source = File.read!(Path.expand("../../lib/lei/git.ex", __DIR__))
 
-      assert source =~ ~r/\[\"clone\".*\], capture_stderr: true\)/s,
+      # The whole function, then the option within it. The previous version
+      # matched `], capture_stderr: true)` as one contiguous string, which broke
+      # the moment the call wrapped across lines -- the formatter moved it when
+      # `--filter` was added and the behaviour had not changed at all.
+      [body] =
+        Regex.run(~r/def clone\(url, path\) do.*?\n  end/s, source) ||
+          flunk("clone/2 not found in lib/lei/git.ex")
+
+      assert body =~ "capture_stderr: true",
              "clone/2 no longer captures stderr, so git's failure text reaches the console"
+
+      assert body =~ ~s("clone"), "clone/2 no longer runs git clone"
     end
 
     test "and clone/2 does not hand that text back to the caller" do

@@ -60,7 +60,11 @@ config :lowendinsight,
   jobs_per_core_max: String.to_integer(System.get_env("LEI_JOBS_PER_CORE_MAX") || "1"),
 
   ## Base directory structure for temp clones
-  base_temp_dir: System.get_env("LEI_BASE_TEMP_DIR" || "/tmp")
+  base_temp_dir: System.get_env("LEI_BASE_TEMP_DIR" || "/tmp"),
+  # Blobless clones (ADR-009). Empty restores a full clone, which an airgapped
+  # deployment needs: `git log --numstat` lazily fetches blobs and there is no
+  # upstream to fetch from.
+  git_clone_filter: System.get_env("LEI_GIT_CLONE_FILTER") || "blob:none"
 
 # JsonXema Schema Loader
 config :xema, loader: SchemaLoader

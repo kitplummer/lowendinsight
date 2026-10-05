@@ -133,4 +133,116 @@ defmodule LeiService.RepoSizeLimitTest do
       assert source =~ "{:ok, Lei.RepoSize.refusal(url, size_kb, limit_kb), :miss}"
     end
   end
+
+  describe "the default limit, with nothing configured" do
+    test "admits what a blobless clone makes analysable" do
+      # This file's setup pins a small limit for isolation, so the module
+      # default is never otherwise exercised -- a mutation reverting it to
+      # 250_000 came back unguarded.
+      #
+      # 250_000 was right when a clone was a full clone. `Lei.Git.clone/2` now
+      # fetches `--filter=blob:none`, roughly a tenth of the bytes on the
+      # repositories this guard rejected (ADR-009):
+      #
+      #     react   1.07 GB -> 121 MB      pandas  416 MB -> 138 MB
+      #     jest     316 MB -> 103 MB      django  276 MB -> 154 MB
+      #
+      # So the default has to admit them, or four repositories in the two
+      # ecosystems most projects use stay unanalysable for a reason that no
+      # longer holds.
+      Application.delete_env(:lei_service, :max_repo_size_kb)
+
+      for {name, kb} <- [react: 1_100_996, pandas: 415_998, jest: 324_245, django: 282_624] do
+        assert RepoSize.check("https://github.com/x/#{name}", sized(kb)) == :ok,
+               "#{name} at #{kb} KB is refused by the default limit of " <>
+                 "#{RepoSize.limit_kb()} KB, though a blobless clone of it fits"
+      end
+    end
+
+    test "still refuses what does not fit even blobless" do
+      # pytorch is 613 MB blobless and TypeScript 1.62 GB, both over the real
+      # budget. The default must not become a limit that admits everything.
+      Application.delete_env(:lei_service, :max_repo_size_kb)
+
+      assert {:too_large, _, _} =
+               RepoSize.check("https://github.com/x/typescript", sized(2_888_370))
+
+      assert {:too_large, _, _} =
+               RepoSize.check("https://github.com/x/pytorch", sized(1_628_283))
+    end
+  end
+
+  describe "a renamed repository" do
+    # GitHub answers a renamed repository with 301 and the new location rather
+    # than the record:
+    #
+    #     GET /repos/facebook/react
+    #     301 {"message": "Moved Permanently",
+    #          "url": "https://api.github.com/repositories/10270250"}
+    #
+    # React moved to `react/react`. Without `follow_redirect` the 301 body
+    # carries no `size`, `get_repo_size/1` returns `{nil, url}`, and `check/2`
+    # answers `:unknown` -- which is **allowed through**. The guard did not
+    # fail; it silently stopped guarding, for every renamed repository, one of
+    # which is among the most depended upon on GitHub.
+    #
+    # These drive the decision, not the HTTP call: a 301 body is what the
+    # client produces without the option, and it must not read as "no size".
+    test "a 301 body is not a size, and must not pass as one" do
+      moved = fn url ->
+        # What Poison.decode of the 301 body yields: no "size" key, so
+        # get_repo_size/1 falls to its else clause.
+        {nil, url}
+      end
+
+      # This is the state the bug produced. It is `:unknown`, and `:unknown` is
+      # permissive by design -- which is exactly why the client must not create
+      # it by accident.
+      assert RepoSize.check("https://github.com/facebook/react", moved) == :unknown
+    end
+
+    test "with the redirect followed, the real size is compared" do
+      # react/react is 1,100,996 KB, measured against the live API with
+      # follow_redirect. The point is that a size is compared at all, rather
+      # than the comparison being skipped -- so this sets the production limit
+      # instead of the small one this file's setup uses, because the whole
+      # question is whether React falls under it.
+      Application.put_env(:lei_service, :max_repo_size_kb, 1_500_000)
+      followed = fn url -> {1_100_996, url} end
+
+      assert RepoSize.check("https://github.com/facebook/react", followed) == :ok
+
+      # And the same size is refused when the limit is below it, which is what
+      # tells us the value is being read rather than ignored.
+      Application.put_env(:lei_service, :max_repo_size_kb, 1_000_000)
+
+      assert RepoSize.check("https://github.com/facebook/react", followed) ==
+               {:too_large, 1_100_996, 1_000_000}
+    end
+
+    test "the client asks for redirects to be followed" do
+      # The behaviour above depends on one option, and the lesson was already
+      # learned in the study tooling before the service got it. Asserted here
+      # because no injected `size_fn` can catch its absence -- the injection
+      # point is below the HTTP call.
+      source = File.read!(Path.expand("../../lib/lei_service/github_trending.ex", __DIR__))
+
+      [call] =
+        Regex.run(~r/defp fetch_gh_api_response.*?\n  end/s, source) ||
+          flunk("fetch_gh_api_response/2 not found")
+
+      assert call =~ "follow_redirect: true",
+             "the size lookup does not follow GitHub's 301 for a renamed repository, " <>
+               "so the size guard is skipped for every one of them"
+    end
+
+    test "the sbom fetch follows them too" do
+      source =
+        File.read!(Path.expand("../../lib/mix/tasks/lei.cache_baseline.ex", __DIR__))
+
+      assert source =~ "follow_redirect: true",
+             "the SBOM fetch does not follow a rename, so a renamed repository " <>
+               "reads as publishing no SBOM"
+    end
+  end
 end

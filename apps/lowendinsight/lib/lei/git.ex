@@ -127,9 +127,57 @@ defmodule Lei.Git do
   """
   @spec clone(String.t(), String.t()) :: {:ok, Repository.t()} | {:error, non_neg_integer}
   def clone(url, path) do
-    case run(nil, ["clone", "--quiet", "--", url, path], capture_stderr: true) do
+    case run(nil, ["clone", "--quiet"] ++ filter_args() ++ ["--", url, path],
+           capture_stderr: true
+         ) do
       {:ok, _} -> {:ok, %Repository{path: path}}
       {:error, status, _} -> {:error, status}
+    end
+  end
+
+  # `--filter=blob:none` fetches the whole commit graph and omits historical
+  # file contents, materialising only the working tree at HEAD.
+  #
+  # Every metric here reads the commit graph -- dates, authors, the paths a
+  # commit touched -- and the only thing needing historical contents is the size
+  # of recent commits. Measured (ADR-009), with a working tree:
+  #
+  #     jest      316 MB -> 103 MB      react  1.07 GB -> 121 MB
+  #     pandas    416 MB -> 138 MB      django  276 MB -> 154 MB
+  #
+  # Four repositories the size guard refused are now under it, React and pandas
+  # among them, and the analysis is *identical* rather than degraded: on
+  # pallets/click, full and blobless agree on commit count (3,379), distinct
+  # authors (472), last commit date and path-filtered logs. React analyses
+  # completely -- 21,710 commits, substantive date found, 2,032 contributors.
+  #
+  # This is not the shallow clone `Lei.RepoSize` rightly refuses. A shallow
+  # clone truncates history and would lose contributor counts; this keeps the
+  # entire graph.
+  #
+  # The cost: `git log --numstat` needs historical contents and lazily fetches
+  # them, 17ms to 4s on first call for a small repository. It is paid once per
+  # clone, and it means part of the fetch happens during analysis.
+  #
+  # `LEI_GIT_CLONE_FILTER=` (empty) restores a full clone, which an airgapped
+  # deployment needs: there is no upstream to lazily fetch from, so the blobs
+  # `--numstat` wants must already be present (ADR-003).
+  # The environment variable is read here rather than only in config, because
+  # this is the switch an airgapped deployment depends on and config is not
+  # always the loaded one -- a library used from another project takes that
+  # project's config. Reading it at the point of use means the override works
+  # wherever the library runs.
+  defp filter_args do
+    filter =
+      case System.get_env("LEI_GIT_CLONE_FILTER") do
+        nil -> Application.get_env(:lowendinsight, :git_clone_filter, "blob:none")
+        from_env -> from_env
+      end
+
+    case filter do
+      nil -> []
+      "" -> []
+      f when is_binary(f) -> ["--filter=" <> f]
     end
   end
 end
