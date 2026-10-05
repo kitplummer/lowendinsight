@@ -3415,10 +3415,10 @@
     {
       "id": "monitor-alert-channel-unverified",
       "bug": "ntfy rejected the paging credential with a 401 on 2026-09-23 and 2026-09-24. The backup had really failed both nights and the page reached nobody; the channel had been proved once by hand on 2026-09-17 and assumed to hold since. A probe that treats any answer as acceptance is a channel nobody has tested, reported as working.",
-      "file": ".github/workflows/monitor.yml",
-      "find": "          case \"$STATUS\" in\n            2??)\n              echo \"The alert channel accepts this token.\"",
-      "replace": "          case \"$STATUS\" in\n            *)\n              echo \"The alert channel accepts this token.\"",
-      "guarded_by": "test/lei_service/payment_monitoring_wiring_test.exs",
+      "file": "scripts/check-alert-channel.sh",
+      "find": "    2??)\n      echo \"The alert channel accepts this token.\"",
+      "replace": "    *)\n      echo \"The alert channel accepts this token.\"",
+      "guarded_by": "test/lei_service/alert_channel_test.exs",
       "app": "apps/lei_service"
     },
     {
@@ -3427,15 +3427,6 @@
       "file": ".github/workflows/monitor.yml",
       "find": "          for pair in \"alerting:$ALERTING\" \"billing_mode:$BILLING_MODE\" \"readiness:$READINESS\"",
       "replace": "          for pair in \"billing_mode:$BILLING_MODE\" \"readiness:$READINESS\"",
-      "guarded_by": "test/lei_service/payment_monitoring_wiring_test.exs",
-      "app": "apps/lei_service"
-    },
-    {
-      "id": "monitor-alert-probe-aborts-before-it-explains",
-      "bug": "The probe runs under `bash -e`, so a connection curl could not make exits 7 and aborts the step before the branch that names ntfy has run. The run fails either way -- and pages as 'unidentified' rather than saying the alert channel could not be reached.",
-      "file": ".github/workflows/monitor.yml",
-      "find": "-H @- \"${NTFY_SERVER}/${NTFY_TOPIC}/auth\" || true)",
-      "replace": "-H @- \"${NTFY_SERVER}/${NTFY_TOPIC}/auth\")",
       "guarded_by": "test/lei_service/payment_monitoring_wiring_test.exs",
       "app": "apps/lei_service"
     },
@@ -4256,6 +4247,33 @@
       "find": "  @build_sha (case System.get_env(\"LEI_BUILD_SHA\") do",
       "replace": "  @build_sha_unused (case System.get_env(\"LEI_BUILD_SHA\") do",
       "guarded_by": "test/lei_service/build_sha_test.exs",
+      "app": "apps/lei_service"
+    },
+    {
+      "id": "alert-channel-transport-failure-not-retried",
+      "bug": "The alerting channel is a third party, and one unreachable probe is weather rather than an outage. On 2026-10-05 at 04:24 the probe returned HTTP 000 and the next fifteen runs all succeeded -- so a single blip failed the monitor and paged a human about our own monitoring. An alarm that cries wolf stops being read, which is the failure this file is otherwise written against.",
+      "file": "scripts/check-alert-channel.sh",
+      "find": "      if [ \"$attempt\" -ge \"$ATTEMPTS\" ]; then",
+      "replace": "      if [ \"$attempt\" -ge 1 ]; then",
+      "guarded_by": "test/lei_service/alert_channel_test.exs",
+      "app": "apps/lei_service"
+    },
+    {
+      "id": "alert-channel-rejected-credential-retried",
+      "bug": "A 401 or 403 is deterministic: the paging credential is wrong and will still be wrong in twenty seconds. Retrying it delays the one page that genuinely needs sending -- every alarm in this repository is going nowhere while each reports having sent itself -- in exchange for nothing.",
+      "file": "scripts/check-alert-channel.sh",
+      "find": "    401|403)",
+      "replace": "    901|903)",
+      "guarded_by": "test/lei_service/alert_channel_test.exs",
+      "app": "apps/lei_service"
+    },
+    {
+      "id": "alert-channel-unreachable-passes",
+      "bug": "A channel nobody has reached is not a channel known to work. Exiting zero when the probe never succeeded means the monitor reports that it can page someone when it has no evidence of that, and every check below it becomes unverifiable.",
+      "file": "scripts/check-alert-channel.sh",
+      "find": "        echo \"::error::Could not reach ntfy in ${ATTEMPTS} attempts (last: HTTP ${STATUS:-no response}). Whether a page would arrive is unknown.\"\n        exit 1",
+      "replace": "        echo \"::error::Could not reach ntfy in ${ATTEMPTS} attempts (last: HTTP ${STATUS:-no response}). Whether a page would arrive is unknown.\"\n        exit 0",
+      "guarded_by": "test/lei_service/alert_channel_test.exs",
       "app": "apps/lei_service"
     }
   ]

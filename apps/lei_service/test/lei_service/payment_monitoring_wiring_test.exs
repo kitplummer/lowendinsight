@@ -263,16 +263,34 @@ defmodule LeiService.PaymentMonitoringWiringTest do
 
       assert probe =~ "NTFY_TOKEN", "the probe does not use the paging credential"
 
-      # The topic's auth endpoint, which answers whether this token may
-      # publish here -- without sending a notification every 15 minutes.
-      assert probe =~ "/auth", "the probe does not ask ntfy whether the token is accepted"
+      # The logic moved out of this step into scripts/check-alert-channel.sh,
+      # because a transport failure must be retried and a rejected credential
+      # must not -- a distinction no assertion about this file's text can check.
+      # So what is asserted here is the *wiring*; the behaviour is driven in
+      # test/lei_service/alert_channel_test.exs, which executes the script.
+      #
+      # These assertions used to read `2??)` and `::error::` out of the step.
+      # Extracting the script broke them, and that is what preflight caught:
+      # a test that asserts behaviour as text fails when the behaviour moves,
+      # while telling you nothing about whether the behaviour still holds.
+      assert probe =~ "scripts/check-alert-channel.sh",
+             "the step does not invoke the alert-channel check"
+
+      assert probe =~ "\"$NTFY_TOKEN\" | scripts/check-alert-channel.sh",
+             "the token must reach the script on stdin, never as an argument"
+
+      script = File.read!(Path.expand("../../../../scripts/check-alert-channel.sh", __DIR__))
+
+      # The topic's auth endpoint, which answers whether this token may publish
+      # here -- without sending a notification every 15 minutes.
+      assert script =~ "/auth", "the probe does not ask ntfy whether the token is accepted"
 
       # The status has to be compared. A probe that records a code and never
       # reads it is the check that passes while it cannot do its job.
-      assert probe =~ ~r/2\?\?\)/,
+      assert script =~ ~r/2\?\?\)/,
              "the probe never distinguishes an accepted credential from a rejected one"
 
-      assert probe =~ "::error::", "a rejected credential does not fail the run"
+      assert script =~ "::error::", "a rejected credential does not fail the run"
 
       # The page has to be able to name this check, or a dead alert channel
       # reads as "unidentified" -- something is wrong, and not what.
@@ -284,19 +302,19 @@ defmodule LeiService.PaymentMonitoringWiringTest do
     end
 
     test "an alert channel it could not reach is not a working one" do
-      probe = step("monitor.yml", "Check the alert channel")
+      script = File.read!(Path.expand("../../../../scripts/check-alert-channel.sh", __DIR__))
 
       # 401 is the case seen; a 5xx or no response at all leaves the same
       # question unanswered, and the rest of this file treats an answer it
       # could not get as a failure.
-      refute probe =~ ~r/\*\)\s*\n\s*(echo[^\n]*\n\s*)?exit 0/,
+      refute script =~ ~r/\*\)\s*\n\s*(echo[^\n]*\n\s*)?exit 0/,
              "an unanswered probe exits 0, which reports a channel nobody has tested as working"
 
-      # The step runs under `bash -e`. A connection curl could not make exits
-      # 7, which aborts the step before the branch above has said why -- the
-      # run fails, and pages as "unidentified" rather than naming ntfy.
-      assert probe =~ ~r/auth" \|\| true\)/,
-             "a failed connection aborts the step before it can say what went wrong"
+      # A credential rejection must not be retried: the token will still be
+      # wrong in twenty seconds, and retrying delays the page it needs to send.
+      # Driven, not just read, in alert_channel_test.exs.
+      assert script =~ "401|403)",
+             "the script no longer distinguishes a rejected credential from an unreachable one"
     end
 
     test "the paging workflows check out the repository that holds the script" do
