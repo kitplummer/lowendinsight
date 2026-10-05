@@ -259,29 +259,58 @@ defmodule GitHelper do
     []
   end
 
+  # Contributors are deduplicated by email, case-insensitively, keeping the
+  # "best" name among the aliases and summing their counts, merges and commits.
+  #
+  # This was two full list traversals per unique contributor, recursing on the
+  # remainder:
+  #
+  #     cur_contrib = for item <- list, is_author.(item, hd(list)) == true,  do: item
+  #     other       = for item <- list, is_author.(item, hd(list)) == false, do: item
+  #     [contrib_ret | filter_contributors(other)]
+  #
+  # which is O(n^2) in contributors, and every comparison called
+  # `String.downcase` on **both** sides, allocating two fresh binaries per
+  # comparison. Measured: `parse_shortlog` took 3,366 ms on React (2,042
+  # contributors) against 149 ms for the `git shortlog` that produced its input,
+  # and `DefinitelyTyped` (19,983 contributors) did not finish in minutes --
+  # 19,983^2 is roughly 400 million comparisons and 800 million downcase calls.
+  #
+  # That quadratic is why a full analysis of DefinitelyTyped took 37.5 minutes,
+  # why the repository size guard exists, and why `max_repo_size_kb` was tuned
+  # all day against a proxy. None of the cost was git: raw `shortlog` on
+  # DefinitelyTyped is 514 ms.
+  #
+  # One grouping pass instead. `Enum.group_by/2` calls `downcase` once per
+  # contributor rather than 2n^2 times, and the order of the groups follows
+  # first appearance, which preserves the previous behaviour: `shortlog -n`
+  # emits contributors by descending count, and the old recursion kept that
+  # order because it always took `hd(list)` next.
   @spec filter_contributors([Contributor.t()]) :: [Contributor.t()]
   defp filter_contributors(list) do
-    is_author = fn x, y -> String.downcase(x.email) == String.downcase(y.email) end
-    # Divide the list
-    cur_contrib = for item <- list, is_author.(item, hd(list)) == true, do: item
-    other = for item <- list, is_author.(item, hd(list)) == false, do: item
-    # Determine the best name
-    #   for now, just the first one
-    name_list = for a <- cur_contrib, do: a.name
+    list
+    |> Enum.group_by(fn c -> String.downcase(c.email) end)
+    |> Enum.map(fn {_email, aliases} -> merge_aliases(aliases) end)
+    |> Enum.sort_by(& &1.count, &>=/2)
+  end
 
+  # One contributor from their aliases. The name is the longest, most
+  # word-separated of them (`name_sorter/1`), and the email is the first
+  # alias's -- the same choices the previous implementation made, which took
+  # `hd(list).email` and the highest-sorting name.
+  defp merge_aliases([first | _] = aliases) do
     best_name =
-      Enum.sort_by(name_list, &name_sorter/1, &>=/2)
+      aliases
+      |> Enum.map(& &1.name)
+      |> Enum.sort_by(&name_sorter/1, &>=/2)
       |> Enum.at(0)
 
-    # Create the new contributor object
-    contrib_ret = %Contributor{
+    %Contributor{
       name: best_name,
-      email: hd(list).email,
-      commits: List.flatten(for a <- cur_contrib, do: a.commits),
-      merges: Enum.sum(for a <- cur_contrib, do: a.merges),
-      count: Enum.sum(for a <- cur_contrib, do: a.count)
+      email: first.email,
+      commits: Enum.flat_map(aliases, & &1.commits),
+      merges: Enum.sum(Enum.map(aliases, & &1.merges)),
+      count: Enum.sum(Enum.map(aliases, & &1.count))
     }
-
-    [contrib_ret | filter_contributors(other)]
   end
 end

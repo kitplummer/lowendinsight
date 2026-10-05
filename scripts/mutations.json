@@ -4302,6 +4302,33 @@
       "replace": "  @default_max_repo_size_kb 250_000",
       "guarded_by": "test/lei_service/repo_size_limit_test.exs",
       "app": "apps/lei_service"
+    },
+    {
+      "id": "contributor-dedupe-is-quadratic",
+      "bug": "Deduplicating contributors by two full list traversals per unique contributor, recursing on the remainder, is O(n^2) -- and every comparison called String.downcase on both sides, allocating two binaries each time. Measured: 3,366 ms for React's 2,042 contributors against 149 ms for the git shortlog that produced the input; DefinitelyTyped's 19,983 did not finish in minutes. It runs three times per analysis, so a full analysis of DefinitelyTyped took 37.5 minutes against 15.8 seconds after. This single quadratic is why the repository size guard exists and why max_repo_size_kb was tuned against a proxy all day: none of the cost was git, whose raw shortlog on DefinitelyTyped is 514 ms.",
+      "file": "apps/lowendinsight/lib/git_helper.ex",
+      "find": "    |> Enum.group_by(fn c -> String.downcase(c.email) end)",
+      "replace": "    |> Enum.group_by(fn c -> c.email end)",
+      "guarded_by": "test/git_helper_test.exs",
+      "app": "apps/lowendinsight"
+    },
+    {
+      "id": "contributor-order-not-by-count",
+      "bug": "`shortlog -n` emits contributors by descending count and callers rely on it: get_top10_contributors_map/1 takes the first ten, so an unordered list silently reports ten arbitrary contributors as the top ten. The previous recursive implementation preserved the order incidentally, by always taking hd(list) next; grouping does not, so the sort is load-bearing rather than cosmetic.",
+      "file": "apps/lowendinsight/lib/git_helper.ex",
+      "find": "    |> Enum.sort_by(& &1.count, &>=/2)\n  end\n\n  # One contributor from their aliases.",
+      "replace": "  end\n\n  # One contributor from their aliases.",
+      "guarded_by": "test/git_helper_test.exs",
+      "app": "apps/lowendinsight"
+    },
+    {
+      "id": "contributor-aliases-not-merged",
+      "bug": "One person committing under several addresses that map to one email must count once, with their counts summed. Taking only the first alias undercounts every contributor who ever changed machines or name, which inflates contributor concentration -- the metric the critical and high risk thresholds are set against.",
+      "file": "apps/lowendinsight/lib/git_helper.ex",
+      "find": "      count: Enum.sum(Enum.map(aliases, & &1.count))",
+      "replace": "      count: hd(aliases).count",
+      "guarded_by": "test/git_helper_test.exs",
+      "app": "apps/lowendinsight"
     }
   ]
 }
