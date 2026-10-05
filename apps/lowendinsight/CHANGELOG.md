@@ -4,6 +4,37 @@ Notable changes to the `lowendinsight` library and the hosted service in this
 repository. The library is published to Hex; the service is deployed from the
 same tree (ADR-003).
 
+## 0.14.0 — 2026-10-05
+
+### Changed
+
+- **Clones are blobless.** `Lei.Git.clone/2` passes
+  `--filter=blob:none`, fetching the whole commit graph and omitting historical
+  file contents. Every metric here reads the commit graph; the only thing
+  needing historical contents is the size of recent commits, which git fetches
+  lazily on demand.
+
+  This is what the repository size guard was really costing. Measured, with a
+  working tree:
+
+  ```
+  jest      316 MB -> 103 MB      react  1.07 GB -> 121 MB
+  pandas    416 MB -> 138 MB      django  276 MB -> 154 MB
+  ```
+
+  **The analysis is identical, not degraded.** On `pallets/click`, full and
+  blobless agree exactly on commit count (3,379), distinct authors (472), last
+  commit date and path-filtered logs. React analyses completely — 21,710
+  commits, substantive commit date found, 2,032 contributors. This is not the
+  shallow clone that would keep currency and lose contributor counts.
+
+  `LEI_GIT_CLONE_FILTER=` (empty) restores a full clone. An airgapped
+  deployment needs it: `git log --numstat` lazily fetches blobs and there is no
+  upstream to fetch from.
+
+  The cost is that first `--numstat` call, 17 ms to 4 s on a small repository,
+  paid once per clone. See `docs/adr/009-blobless-clones.md`.
+
 ## 0.13.1 — 2026-10-03
 
 ### Fixed
