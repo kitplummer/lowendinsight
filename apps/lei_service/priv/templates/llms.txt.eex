@@ -24,6 +24,31 @@ Batch responses carry `ranking`, worst first, so you need not read every entry. 
 
 A request is priced before it runs, from which repositories already have cached reports. It is charged when accepted, whether it completes in the request or runs asynchronously. A balance smaller than the request is asked to top up by at least the difference.
 
+## Reading a report
+
+Two currency figures, and they disagree on one package in twenty-three.
+
+`commit_currency` is the time since the last commit -- the signal everyone has.
+`functional_commit_currency` is the time since the last commit that changed
+behaviour, excluding bot authors and documentation- or metadata-only changes. A
+dependency bump refreshes the first and not the second.
+
+Measured across 461 of the most-depended-upon packages in npm, PyPI, Go,
+Packagist and RubyGems: **20 had a commit inside a year and no functional commit
+for over a year, and 17 of those 20 carry no known vulnerability.** For those,
+neither a last-commit check nor a CVE scan reports anything.
+`github.com/pkg/errors` read as 27 weeks and had not had a functional commit in
+302.
+
+So prefer `functional_commit_currency` when deciding whether a project is still
+maintained. The measurement, the twenty packages and its limits:
+https://github.com/kitplummer/lowendinsight/blob/main/docs/findings/2026-10-05-one-in-twenty-three.md
+
+Project size is the stronger predictor of staleness in those data: packages with
+five or fewer contributors were stale three-quarters of the time, those with
+five hundred or more one time in twenty. `functional_contributors` is in every
+report.
+
 ## Pricing
 <%= if guide.beta? do %>
 **LowEndInsight is in beta and analysis is free.** No credits are spent for an
