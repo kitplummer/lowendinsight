@@ -228,5 +228,101 @@ defmodule GitHelperTest do
       assert length(result) == 1
       assert hd(result).name == "Could not process"
     end
+
+    test "aliases of one email become one contributor, counts summed" do
+      # Deduplication is by email, case-insensitively, and the counts, merges
+      # and commits of every alias are combined.
+      log = """
+      J. Doe <John@Example.com> (2):
+        a
+        b
+
+      John Doe <john@example.com> (3):
+        c
+        d
+        e
+
+      Jane Smith <jane@example.com> (1):
+        f
+      """
+
+      result = GitHelper.parse_shortlog(log)
+
+      assert length(result) == 2
+
+      doe = Enum.find(result, &(String.downcase(&1.email) == "john@example.com"))
+      assert doe.count == 5, "alias counts were not summed"
+      assert length(doe.commits) == 5, "alias commits were not combined"
+
+      # The longest, most word-separated name wins, which is what name_sorter/1
+      # scores and what the previous implementation chose.
+      assert doe.name == "John Doe"
+    end
+
+    test "contributors come back in descending count order" do
+      # `shortlog -n` emits them that way and callers rely on it:
+      # get_top10_contributors_map/1 takes the first ten, so an unordered list
+      # silently reports ten arbitrary contributors as the top ten.
+      #
+      # Forty, not three. Deduplication groups into a map, and a map with few
+      # keys happens to iterate in insertion order -- a three-contributor
+      # version of this test passed even with the sort removed, purely on how
+      # those three email strings hashed. Above Elixir's flat-map threshold the
+      # order is genuinely arbitrary: measured without the sort, forty
+      # contributors came back as [32, 10, 14, 28, ...].
+      n = 40
+
+      log =
+        Enum.map_join(n..1, "\n\n", fn i ->
+          "Person #{i} <p#{i}@example.com> (#{i}):\n  commit"
+        end)
+
+      counts = GitHelper.parse_shortlog(log) |> Enum.map(& &1.count)
+
+      assert counts == Enum.to_list(n..1),
+             "order is not by descending count: #{inspect(Enum.take(counts, 6))}..."
+    end
+
+    test "deduplication is linear, not quadratic, in contributors" do
+      # The defect this guards. Deduplication was two full list traversals per
+      # unique contributor, recursing on the remainder -- O(n^2) -- and every
+      # comparison called String.downcase on both sides.
+      #
+      # Measured before the fix: 3,366 ms for React's 2,042 contributors
+      # against 149 ms for the `git shortlog` that produced the input, and
+      # DefinitelyTyped's 19,983 did not finish in minutes. A full analysis of
+      # DefinitelyTyped took 37.5 minutes; after the fix, 15.8 seconds.
+      #
+      # Timing is the only way to catch a complexity regression, so this
+      # asserts a ratio rather than a wall-clock figure: doubling the input
+      # must not quadruple the time. The threshold is loose on purpose -- it
+      # should catch n^2, not fluctuate with a loaded machine.
+      build = fn n ->
+        Enum.map_join(1..n, "\n\n", fn i ->
+          "Person #{i} <p#{i}@example.com> (1):\n  commit #{i}"
+        end)
+      end
+
+      small = build.(500)
+      large = build.(1000)
+
+      # Warm the code path so the first measurement is not paying for it.
+      GitHelper.parse_shortlog(build.(50))
+
+      {t_small, r_small} = :timer.tc(fn -> GitHelper.parse_shortlog(small) end)
+      {t_large, r_large} = :timer.tc(fn -> GitHelper.parse_shortlog(large) end)
+
+      assert length(r_small) == 500
+      assert length(r_large) == 1000
+
+      # Linear would be ~2x, quadratic ~4x. Allowing 3x leaves room for
+      # measurement noise while still failing on a reintroduced quadratic,
+      # which at these sizes was far worse than 4x.
+      ratio = t_large / max(t_small, 1)
+
+      assert ratio < 3.0,
+             "doubling contributors multiplied the time by #{Float.round(ratio, 1)}x " <>
+               "(#{t_small}us -> #{t_large}us), which is superlinear"
+    end
   end
 end
