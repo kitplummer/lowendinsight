@@ -3074,8 +3074,8 @@
       "id": "clone-stderr-reaches-the-console",
       "bug": "Clone is the only git command that names the remote, and a failure prints the URL. Left on the parent's stream it reaches production logs, where a repository URL beside a ledger timestamp puts a paying wallet next to what it analysed (#149).",
       "file": "apps/lowendinsight/lib/lei/git.ex",
-      "find": "    case run(nil, [\"clone\", \"--quiet\"] ++ filter_args() ++ [\"--\", url, path],\n           capture_stderr: true\n         ) do",
-      "replace": "    case run(nil, [\"clone\", \"--quiet\"] ++ filter_args() ++ [\"--\", url, path],\n           capture_stderr: false\n         ) do",
+      "find": "    case run(nil, [\"clone\", \"--quiet\", \"--\", url, path], capture_stderr: true) do",
+      "replace": "    case run(nil, [\"clone\", \"--quiet\", \"--\", url, path], capture_stderr: false) do",
       "guarded_by": "test/lei/git_test.exs",
       "app": "apps/lowendinsight"
     },
@@ -4295,15 +4295,6 @@
       "app": "apps/lei_service"
     },
     {
-      "id": "size-limit-still-calibrated-for-full-clones",
-      "bug": "250_000 KB was right when a clone was a full clone. Lei.Git.clone/2 now fetches --filter=blob:none, roughly a tenth of the bytes on the repositories this guard rejected: React 1.07 GB becomes 121 MB, pandas 416 MB becomes 138 MB. Comparing GitHub's size against the old figure refuses four repositories that now analyse comfortably -- React, Jest, pandas and Django, in the two ecosystems most projects use.",
-      "file": "apps/lei_service/lib/lei/repo_size.ex",
-      "find": "  @default_max_repo_size_kb 1_500_000",
-      "replace": "  @default_max_repo_size_kb 250_000",
-      "guarded_by": "test/lei_service/repo_size_limit_test.exs",
-      "app": "apps/lei_service"
-    },
-    {
       "id": "contributor-dedupe-is-quadratic",
       "bug": "Deduplicating contributors by two full list traversals per unique contributor, recursing on the remainder, is O(n^2) -- and every comparison called String.downcase on both sides, allocating two binaries each time. Measured: 3,366 ms for React's 2,042 contributors against 149 ms for the git shortlog that produced the input; DefinitelyTyped's 19,983 did not finish in minutes. It runs three times per analysis, so a full analysis of DefinitelyTyped took 37.5 minutes against 15.8 seconds after. This single quadratic is why the repository size guard exists and why max_repo_size_kb was tuned against a proxy all day: none of the cost was git, whose raw shortlog on DefinitelyTyped is 514 ms.",
       "file": "apps/lowendinsight/lib/git_helper.ex",
@@ -4329,6 +4320,15 @@
       "replace": "      count: hd(aliases).count",
       "guarded_by": "test/git_helper_test.exs",
       "app": "apps/lowendinsight"
+    },
+    {
+      "id": "size-limit-too-high-for-full-clones",
+      "bug": "GitHub's `size` understates a full clone: DefinitelyTyped reports 809 MB and clones to 1,367 MB, 1.7x. Raising the limit to the 1_500_000 that blobless clones justified would admit roughly 2.5 GB on disk per repository, and five concurrent analyses -- OBAN_ANALYSIS_CONCURRENCY -- would exceed the 7.3 GB the machine has, filling the root filesystem that has no volume and no quota.",
+      "file": "apps/lei_service/lib/lei/repo_size.ex",
+      "find": "  @default_max_repo_size_kb 250_000",
+      "replace": "  @default_max_repo_size_kb 1_500_000",
+      "guarded_by": "test/lei_service/repo_size_limit_test.exs",
+      "app": "apps/lei_service"
     }
   ]
 }

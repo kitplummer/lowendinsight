@@ -61,10 +61,6 @@ config :lowendinsight,
 
   ## Base directory structure for temp clones
   base_temp_dir: System.get_env("LEI_BASE_TEMP_DIR") || "/tmp",
-  # Blobless clones (ADR-009). Empty restores a full clone, which an airgapped
-  # deployment needs: `git log --numstat` lazily fetches blobs and there is no
-  # upstream to fetch from.
-  git_clone_filter: System.get_env("LEI_GIT_CLONE_FILTER") || "blob:none",
 
   ## Air-gapped mode: when true, skip network-dependent checks
   airgapped_mode: System.get_env("LEI_AIRGAPPED_MODE") == "true"

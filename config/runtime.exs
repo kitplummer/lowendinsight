@@ -68,7 +68,7 @@ if config_env() == :prod do
     # purpose: trending chooses its own candidates and refuses what it cannot
     # measure, while a customer naming a repository we cannot size is asking a
     # fair question. Sharing one dial would mean tuning either moved both.
-    max_repo_size_kb: String.to_integer(System.get_env("LEI_MAX_REPO_SIZE_KB") || "1500000"),
+    max_repo_size_kb: String.to_integer(System.get_env("LEI_MAX_REPO_SIZE_KB") || "250000"),
     wait_time: String.to_integer(System.get_env("LEI_WAIT_TIME") || "7200000"),
     num_of_repos: String.to_integer(System.get_env("LEI_NUM_OF_REPOS") || "10"),
     gh_token: System.get_env("LEI_GH_TOKEN") || "",
