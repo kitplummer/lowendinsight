@@ -26,22 +26,31 @@ dates, authors, the paths a commit touched. File contents are needed for exactly
 one thing, the size of recent commits.
 
 A `--filter=blob:none` clone fetches the whole commit graph and omits file
-contents. Measured on 2026-10-05:
+contents. Measured on 2026-10-05, **with a working tree**, because the analyser
+reads files for the manifest and SBOM scan:
 
-| repository | full | blobless | against the 250 MB limit |
+| repository | full | blobless, checked out | against the 250 MB limit |
 |---|---|---|---|
-| `facebook/react` | ~1.07 GB | **47 MB** | under |
-| `jestjs/jest` | 316 MB | **29 MB** | under |
-| `pandas-dev/pandas` | 416 MB | **58 MB** | under |
-| `django/django` | 276 MB | **69 MB** | under |
-| `DefinitelyTyped` | 809 MB | **220 MB** | under |
-| `pytorch/pytorch` | 1.59 GB | 258 MB | over, barely |
-| `microsoft/TypeScript` | 2.89 GB | 1.2 GB | over |
+| `jestjs/jest` | 316 MB | **103 MB** | under |
+| `facebook/react` | ~1.07 GB | **121 MB** | under |
+| `pandas-dev/pandas` | 416 MB | **138 MB** | under |
+| `django/django` | 276 MB | **154 MB** | under |
+| `pytorch/pytorch` | 1.59 GB | 613 MB | over |
+| `DefinitelyTyped` | 809 MB | 805 MB | over |
+| `microsoft/TypeScript` | 2.89 GB | 1.62 GB | over |
 
-Five of the seven largest exclusions come under the **existing** limit with no
-change to it. Those five are React, Jest, DefinitelyTyped, pandas and Django —
-the packages `docs/findings/2026-10-05-one-in-twenty-three.md` has to list as
-unanalysable, in the two ecosystems most projects actually use.
+**An earlier draft of this ADR measured `--no-checkout` and was wrong about two
+rows.** Bare, React is 47 MB and DefinitelyTyped 220 MB; with the working tree
+the analyser needs, they are 121 MB and 805 MB. DefinitelyTyped barely shrinks
+at all, because it is almost entirely small text files and the working tree *is*
+the bulk. Correcting that moves it from "under" to "over" and takes the win from
+five repositories to four.
+
+Four of the seven largest exclusions come under the **existing** limit with no
+change to it: React, Jest, pandas and Django — in the two ecosystems most
+projects actually use, and four of the packages
+`docs/findings/2026-10-05-one-in-twenty-three.md` has to list as unanalysable.
+TypeScript, pytorch and DefinitelyTyped stay out either way.
 
 ### It is not the shallow-clone trade `Lei.RepoSize` rejects
 
@@ -65,16 +74,75 @@ log -1 -- '*.py'   identical          <- what functional currency reads
 Nothing is approximated. The two clones answer every question this library asks
 of git identically, because the data those questions read is fully present.
 
+### The clone was never the binding constraint
+
+React analyses **completely and correctly** from a blobless clone. Driven on
+2026-10-05 through `AnalyzerModule.analyze/3` against a `file://` URL:
+
+```
+total_commits_on_default_branch  21710
+last_substantive_commit_date     2026-10-02   source: :found
+contributor_risk                 low
+functional_contributors_risk     low
+human_contributor_count          2032
+human_functional_contributors    103
+agentic_contribution_ratio       0.1035
+total_file_count                 7751
+```
+
+Nothing is missing and nothing is approximated. But measuring peak resident
+memory while doing it moved the problem:
+
+| | commits | peak RSS | attributable to the analysis | wall |
+|---|---|---|---|---|
+| BEAM + mix, nothing analysed | — | 120 MB | — | 0.4 s |
+| `pallets/click` | 3,379 | 133 MB | 13 MB | 1.0 s |
+| `facebook/react` | 21,710 | **222 MB** | **102 MB** | 13.6 s |
+
+Analysis memory tracks commit count, not repository size. On the production
+machine — 512 MB, five concurrent slots — five React-scale analyses need roughly
+`120 + 5 x 102 = 630 MB`. **That is the OOM the size limit was protecting
+against**, and blobless does not remove it; it removes the clone barrier and
+exposes this one underneath.
+
+So the 250 MB figure is a *proxy* for analysis memory. The proxy is wrong about
+which bytes it counts — off by roughly 10x on the repositories that matter — and
+roughly right about the ceiling it implies. Both of those are true at once, and
+only the first is fixed by cloning differently.
+
+### An aside that belongs with it
+
+The React report carries `repo_size: "0"`. The adversarial review of the study
+dataset found the same thing: `repo_size_kb` is the string `"0"` on all 461
+determined rows. The field that should measure the thing this limit cares about
+measures nothing. Not a blocker here, and it means any future gate on *measured*
+clone size has to start by fixing it.
+
 ## The decision
 
-**Clone blobless, and compare the limit against what a blobless clone actually
-costs rather than against GitHub's `size`.**
+Two changes, and the second is the decision:
 
-Two parts, and the second is the one that matters: the guard should keep
-protecting memory, but it should measure the thing being fetched. GitHub's
-`size` would remain the cheap pre-check — it is one API call and no bytes — but
-as an upper bound to reject on only when even the blobless figure cannot
-plausibly fit, not as the figure itself.
+**1. Clone blobless.** One flag. It takes React, Jest, pandas and Django from
+unanalysable to analysable with no change to the limit, and the analysis is
+verified correct rather than degraded. This part is uncontroversial.
+
+**2. Decide the concurrency-versus-size trade, because that is the real
+ceiling.** 102 MB of analysis for React against 512 MB of machine and five
+slots. The options:
+
+| | effect |
+|---|---|
+| **A larger machine** | 2 GB would hold five React-scale analyses with room. Costs money, monthly, and is the only option that changes nothing else. |
+| **A separate queue for large repositories, concurrency 1 or 2** | keeps the machine, bounds the worst case, and makes a large analysis wait behind other large ones rather than failing. More Oban configuration, and ADR-004 is where that belongs. |
+| **A per-analysis memory budget** | the analyser would have to bound what it holds -- the agentic contributor list for React is 2,032 entries -- which is real work in the library and the only option that helps a self-hosted deployment on a small machine. |
+| **Keep a size cap, measured properly** | gate on commit count, which is what analysis memory actually tracks, instead of GitHub's `size`. Cheap, honest, and still excludes repositories we could analyse one at a time. |
+
+The last two compose: bound what an analysis holds, and gate on the thing that
+predicts it. The first two buy time without learning anything.
+
+**What this ADR does not decide** is which. That is a cost question as much as a
+technical one, and the measurement above is what it should be decided on rather
+than on the 250 MB figure, which was never about the clone.
 
 ## The cost, measured
 
@@ -103,26 +171,30 @@ default.
 anything in the table above, and it is the number most likely to be worse at
 the scale this is meant to unlock.
 
-## Options
+## What to do about `--numstat`
+
+The lazy fetch above is the one thing that needs file contents, and it has three
+possible answers:
 
 | | effect |
 |---|---|
-| **Blobless with a bounded `--numstat` window** | restrict large-commit detection to a recent window, so the lazy fetch is small and predictable. Changes what "large recent commits" means, which is a reportable change rather than a silent one. |
-| **Blobless, pre-fetching at clone time** | keeps the analysis local and the airgap intact. Costs whatever the pre-fetch costs, unmeasured. |
-| **Blobless as opt-in** | default unchanged, hosted service enables it, self-hosted and airgapped keep the full clone. Two paths to maintain, and the hosted path becomes the one nobody self-hosting has exercised. |
-| **Leave it** | React, TypeScript, Jest, DefinitelyTyped, pandas and Django stay unanalysable, which the published finding already discloses as a limitation. |
+| **Bound the window** | restrict large-commit detection to recent history, so the fetch is small and predictable. Changes what `large_recent_commits` means -- a reportable change, since the metric is in every report. |
+| **Pre-fetch at clone time** | keeps the analysis local and the airgap intact. Costs whatever the pre-fetch costs, which is unmeasured. |
+| **Blobless as opt-in** | default unchanged; the hosted service enables it, self-hosted keeps the full clone. Two paths, and the hosted one becomes the path nobody self-hosting has exercised. |
 
-The first is the smallest change that unlocks the five repositories, and it is
-the one that alters a reported metric. That trade — a narrower
-`large_recent_commits` window in exchange for analysing React and pandas at all
-— is the decision, and it is not ours to make silently: the metric is in every
-report.
+Bounding the window is the smallest change, and it is the one that alters a
+reported metric. That trade -- a narrower `large_recent_commits` window in
+exchange for analysing React and pandas at all -- is not ours to make silently.
 
 ## Consequences
 
 - The `max_repo_size_kb` figure stops meaning "GitHub says this repository is
   this big" and starts meaning "this is what we will fetch". Those differ by
-  roughly 10x on the repositories that matter.
+  roughly 10x on the repositories that matter -- and neither is what the limit
+  is really for, which is bounding analysis memory.
+- **Four repositories become analysable and three do not.** TypeScript, pytorch
+  and DefinitelyTyped stay excluded, so the published finding keeps a
+  limitation; it gets smaller rather than going away.
 - `docs/findings/2026-10-05-one-in-twenty-three.md` states the exclusion as a
   limitation and a bias. If this is adopted, the measurement should be re-run
   before that limitation is restated, because the excluded repositories are
@@ -135,12 +207,16 @@ report.
 
 ## Not verified
 
-- **The lazy-fetch cost on a large repository.** Four seconds is `click`.
-  Nothing in the table was measured for `--numstat`.
-- **Whether the analyser runs end to end on a blobless clone.** The git-level
-  queries were compared and match; `AnalyzerModule` was not driven against one,
-  so the equivalence is established at the layer below the one that matters.
-- **Memory during analysis of a blobless clone of a large repository.** The
-  limit exists because of an OOM, and this ADR argues the fetch is smaller
-  without measuring what analysing React costs on a 512 MB machine. That is the
-  measurement that would decide it, and it has not been taken.
+- **Memory for the other three.** React is 102 MB of analysis at 21,710
+  commits. pandas, Django and Jest were not measured, and the relationship to
+  commit count is two points on a line.
+- **The lazy-fetch cost on a large repository.** 4 seconds is `click`, with
+  3,379 commits. Nothing in the table above was measured for `--numstat`.
+- **Whether five concurrent analyses actually OOM at 512 MB.** The arithmetic
+  says 630 MB and the machine has 512 MB, but peak RSS of five BEAM-hosted tasks
+  in one VM is not five times one task's peak -- they share a heap and the
+  garbage collector is per-process. The real figure could be materially lower,
+  and it is the number that decides option 1 against options 3 and 4.
+- **`repo_size_kb` returning `"0"`.** Observed in the React report and across
+  all 461 rows of the study dataset. Unexplained, and it is the field any
+  measured-size gate would use.
