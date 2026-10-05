@@ -35,7 +35,7 @@ config :lei_service,
   # purpose: trending chooses its own candidates and refuses what it cannot
   # measure, while a customer naming a repository we cannot size is asking a
   # fair question. Sharing one dial would mean tuning either moved both.
-  max_repo_size_kb: String.to_integer(System.get_env("LEI_MAX_REPO_SIZE_KB") || "250000"),
+  max_repo_size_kb: String.to_integer(System.get_env("LEI_MAX_REPO_SIZE_KB") || "1500000"),
   default_cache_timeout:
     String.to_integer(System.get_env("LEI_DEFAULT_CACHE_TIMEOUT") || "30000"),
   # How many repositories one request may name (ADR-008). Derived from what one

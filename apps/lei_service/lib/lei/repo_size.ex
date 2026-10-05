@@ -44,7 +44,25 @@ defmodule Lei.RepoSize do
 
   require Logger
 
-  @default_max_repo_size_kb 250_000
+  # Calibrated for what we now fetch, not for what GitHub reports.
+  #
+  # 250_000 was right when a clone was a full clone. `Lei.Git.clone/2` fetches
+  # `--filter=blob:none` (ADR-009), which is roughly a tenth of the bytes on the
+  # repositories this guard was rejecting -- React 1.07 GB becomes 121 MB,
+  # pandas 416 MB becomes 138 MB -- so comparing GitHub's `size` against 250_000
+  # refuses repositories that now fit comfortably.
+  #
+  # 1_500_000 is the figure that admits every repository measured as analysable
+  # and still refuses the two that are not: pytorch (1.59 GB, 613 MB blobless)
+  # and TypeScript (2.89 GB, 1.62 GB blobless).
+  #
+  # It remains a **proxy**. GitHub's `size` counts every revision of every file
+  # and the blobless ratio varies from 1.0x (DefinitelyTyped, almost all small
+  # text at HEAD) to 8.8x (React), so this cannot be derived -- it is the
+  # smallest round number above the largest thing we measured working. What the
+  # guard is really protecting is analysis memory, which tracks commit count
+  # rather than either size; ADR-009 records that and does not fix it.
+  @default_max_repo_size_kb 1_500_000
 
   @doc "The limit in KB, as GitHub reports size."
   @spec limit_kb() :: pos_integer

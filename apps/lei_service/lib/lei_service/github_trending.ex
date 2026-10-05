@@ -322,9 +322,29 @@ defmodule LeiService.GithubTrending do
       else: Application.fetch_env!(:lei_service, :gh_token)
   end
 
+  # `follow_redirect`, because GitHub answers a renamed repository with 301 and
+  # the new location rather than the record:
+  #
+  #     GET /repos/facebook/react
+  #     301 {"message": "Moved Permanently",
+  #          "url": "https://api.github.com/repositories/10270250"}
+  #
+  # React moved to `react/react`. Without this the 301 body has no `size`,
+  # `get_repo_size/1` returns `{nil, url}`, and `Lei.RepoSize.check/2` answers
+  # `:unknown` -- which is **allowed through**. So the size guard has been
+  # silently skipped for every renamed repository, which is the opposite of
+  # what a guard is for, and it skipped it for one of the most-depended-upon
+  # repositories on GitHub.
+  #
+  # The study tooling already carried this option and the reason for it. The
+  # service never got it.
   defp fetch_gh_api_response(token, slug) do
     headers = [Authorization: "Bearer #{token}", Accept: "Application/json; Charset=utf-8"]
-    HTTPoison.get("https://api.github.com/repos/" <> slug, headers)
+
+    HTTPoison.get("https://api.github.com/repos/" <> slug, headers,
+      follow_redirect: true,
+      max_redirect: 3
+    )
   end
 
   # {size_in_kb | nil, url}. Never raises: one repository the API cannot

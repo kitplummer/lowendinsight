@@ -11,10 +11,26 @@ deployment), ADR-008 (storage and scale)
 `Lei.RepoSize` refuses a repository over `max_repo_size_kb`, 250 MB by default.
 The number is empirical: #162 found that a 1 GB limit on a machine with 459 MB
 of memory let 671 MB and 411 MB repositories through, and #158 was an OOM kill
-while analysing large repositories. The production machine is 1 CPU and 512 MB
-of memory; the root filesystem has 7.3 GB free, no volume and no quota, and five
-analyses can be in flight at once. **Memory is the binding constraint and disk
-is not** — five concurrent 250 MB clones is 1.25 GB against 7.3 GB.
+while analysing large repositories. Measured on the machine itself rather than
+read from the Fly API, which reports the allocation and not what the guest sees:
+
+```
+/ on overlay (vda/vdc)      7.8 GB total, 7.3 GB free, no volume, no quota
+/tmp                        the same filesystem -- not a tmpfs
+Mem:                        459 MB total, 256 MB available, swap 0
+```
+
+**Memory is the binding constraint and storage is not.** Five concurrent 250 MB
+clones is 1.25 GB against 7.3 GB free, under 20% utilisation; there is room for
+roughly 29 of them. Clones land on real disk, so clone size and memory are
+separate budgets rather than the same one.
+
+The memory figure is tighter than the API suggests. Fly reports `memory_mb:
+512`; the guest reports **459 MB total and 256 MB available**, and **swap is
+zero**, so exceeding it is an OOM kill rather than a slowdown. That is what #158
+was. 459 MB is also the exact figure `Lei.RepoSize` cites from #162 -- the guard
+has always been a memory proxy, and it reads a disk number to protect a memory
+budget.
 
 The guard is right to exist. What it measures is wrong.
 
@@ -100,10 +116,11 @@ memory while doing it moved the problem:
 | `facebook/react` | 21,710 | **222 MB** | **102 MB** | 13.6 s |
 
 Analysis memory tracks commit count, not repository size. On the production
-machine — 512 MB, five concurrent slots — five React-scale analyses need roughly
-`120 + 5 x 102 = 630 MB`. **That is the OOM the size limit was protecting
-against**, and blobless does not remove it; it removes the clone barrier and
-exposes this one underneath.
+machine, five React-scale analyses need roughly `120 + 5 x 102 = 630 MB`.
+Against **256 MB available** that is not close: a single React-scale analysis is
+already 40% of the headroom, and two concurrent would about exhaust it. **That
+is the OOM the size limit was protecting against**, and blobless does not remove
+it; it removes the clone barrier and exposes this one underneath.
 
 So the 250 MB figure is a *proxy* for analysis memory. The proxy is wrong about
 which bytes it counts — off by roughly 10x on the repositories that matter — and
@@ -127,12 +144,12 @@ unanalysable to analysable with no change to the limit, and the analysis is
 verified correct rather than degraded. This part is uncontroversial.
 
 **2. Decide the concurrency-versus-size trade, because that is the real
-ceiling.** 102 MB of analysis for React against 512 MB of machine and five
+ceiling.** 102 MB of analysis for React against 256 MB available and five
 slots. The options:
 
 | | effect |
 |---|---|
-| **A larger machine** | 2 GB would hold five React-scale analyses with room. Costs money, monthly, and is the only option that changes nothing else. |
+| **A larger machine** | 1 GB would hold two or three React-scale analyses; 2 GB would hold five with room. Costs money, monthly, and is the only option that changes nothing else. |
 | **A separate queue for large repositories, concurrency 1 or 2** | keeps the machine, bounds the worst case, and makes a large analysis wait behind other large ones rather than failing. More Oban configuration, and ADR-004 is where that belongs. |
 | **A per-analysis memory budget** | the analyser would have to bound what it holds -- the agentic contributor list for React is 2,032 entries -- which is real work in the library and the only option that helps a self-hosted deployment on a small machine. |
 | **Keep a size cap, measured properly** | gate on commit count, which is what analysis memory actually tracks, instead of GitHub's `size`. Cheap, honest, and still excludes repositories we could analyse one at a time. |
@@ -212,8 +229,8 @@ exchange for analysing React and pandas at all -- is not ours to make silently.
   commit count is two points on a line.
 - **The lazy-fetch cost on a large repository.** 4 seconds is `click`, with
   3,379 commits. Nothing in the table above was measured for `--numstat`.
-- **Whether five concurrent analyses actually OOM at 512 MB.** The arithmetic
-  says 630 MB and the machine has 512 MB, but peak RSS of five BEAM-hosted tasks
+- **Whether five concurrent analyses actually OOM.** The arithmetic says 630 MB
+  against 256 MB available, but peak RSS of five BEAM-hosted tasks
   in one VM is not five times one task's peak -- they share a heap and the
   garbage collector is per-process. The real figure could be materially lower,
   and it is the number that decides option 1 against options 3 and 4.

@@ -3074,8 +3074,8 @@
       "id": "clone-stderr-reaches-the-console",
       "bug": "Clone is the only git command that names the remote, and a failure prints the URL. Left on the parent's stream it reaches production logs, where a repository URL beside a ledger timestamp puts a paying wallet next to what it analysed (#149).",
       "file": "apps/lowendinsight/lib/lei/git.ex",
-      "find": "    case run(nil, [\"clone\", \"--quiet\", \"--\", url, path], capture_stderr: true) do",
-      "replace": "    case run(nil, [\"clone\", \"--quiet\", \"--\", url, path], capture_stderr: false) do",
+      "find": "    case run(nil, [\"clone\", \"--quiet\"] ++ filter_args() ++ [\"--\", url, path],\n           capture_stderr: true\n         ) do",
+      "replace": "    case run(nil, [\"clone\", \"--quiet\"] ++ filter_args() ++ [\"--\", url, path],\n           capture_stderr: false\n         ) do",
       "guarded_by": "test/lei/git_test.exs",
       "app": "apps/lowendinsight"
     },
@@ -4274,6 +4274,33 @@
       "find": "        echo \"::error::Could not reach ntfy in ${ATTEMPTS} attempts (last: HTTP ${STATUS:-no response}). Whether a page would arrive is unknown.\"\n        exit 1",
       "replace": "        echo \"::error::Could not reach ntfy in ${ATTEMPTS} attempts (last: HTTP ${STATUS:-no response}). Whether a page would arrive is unknown.\"\n        exit 0",
       "guarded_by": "test/lei_service/alert_channel_test.exs",
+      "app": "apps/lei_service"
+    },
+    {
+      "id": "size-lookup-does-not-follow-a-rename",
+      "bug": "GitHub answers a renamed repository with 301 and the new location rather than the record. Without follow_redirect the 301 body carries no `size`, get_repo_size/1 returns {nil, url}, and RepoSize.check/2 answers :unknown -- which is allowed through. The guard does not fail, it silently stops guarding, for every renamed repository. facebook/react moved to react/react and was bypassing the size limit entirely at 1.07 GB.",
+      "file": "apps/lei_service/lib/lei_service/github_trending.ex",
+      "find": "    HTTPoison.get(\"https://api.github.com/repos/\" <> slug, headers,\n      follow_redirect: true,\n      max_redirect: 3\n    )",
+      "replace": "    HTTPoison.get(\"https://api.github.com/repos/\" <> slug, headers)",
+      "guarded_by": "test/lei_service/repo_size_limit_test.exs",
+      "app": "apps/lei_service"
+    },
+    {
+      "id": "sbom-fetch-does-not-follow-a-rename",
+      "bug": "The SBOM endpoint is a per-repository path and 301s on a rename like any other. Without follow_redirect a renamed repository reads as publishing no SBOM rather than as having been looked for in the wrong place -- an absence of evidence recorded as evidence of absence, in the survey that decides what the cache baseline measures.",
+      "file": "apps/lei_service/lib/mix/tasks/lei.cache_baseline.ex",
+      "find": "               follow_redirect: true,\n               max_redirect: 3",
+      "replace": "               max_redirect: 3",
+      "guarded_by": "test/lei_service/repo_size_limit_test.exs",
+      "app": "apps/lei_service"
+    },
+    {
+      "id": "size-limit-still-calibrated-for-full-clones",
+      "bug": "250_000 KB was right when a clone was a full clone. Lei.Git.clone/2 now fetches --filter=blob:none, roughly a tenth of the bytes on the repositories this guard rejected: React 1.07 GB becomes 121 MB, pandas 416 MB becomes 138 MB. Comparing GitHub's size against the old figure refuses four repositories that now analyse comfortably -- React, Jest, pandas and Django, in the two ecosystems most projects use.",
+      "file": "apps/lei_service/lib/lei/repo_size.ex",
+      "find": "  @default_max_repo_size_kb 1_500_000",
+      "replace": "  @default_max_repo_size_kb 250_000",
+      "guarded_by": "test/lei_service/repo_size_limit_test.exs",
       "app": "apps/lei_service"
     }
   ]

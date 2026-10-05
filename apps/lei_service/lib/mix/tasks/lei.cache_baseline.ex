@@ -197,7 +197,17 @@ defmodule Mix.Tasks.Lei.CacheBaseline do
     HTTPoison.start()
 
     case Lei.HTTP.Retry.request(
-           fn -> HTTPoison.get(url, headers, recv_timeout: 30_000) end,
+           # follow_redirect for the same reason as GithubTrending's size
+           # lookup: `/repos/{slug}/...` answers 301 for a renamed repository,
+           # and without it a rename reads as "this repository publishes no
+           # SBOM" rather than "we looked in the wrong place".
+           fn ->
+             HTTPoison.get(url, headers,
+               recv_timeout: 30_000,
+               follow_redirect: true,
+               max_redirect: 3
+             )
+           end,
            max_attempts: 3,
            wait: 2_000
          ) do
