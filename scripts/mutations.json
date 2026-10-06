@@ -4323,9 +4323,9 @@
     },
     {
       "id": "size-limit-too-high-for-full-clones",
-      "bug": "GitHub's `size` understates a full clone: DefinitelyTyped reports 809 MB and clones to 1,367 MB, 1.7x. Raising the limit to the 1_500_000 that blobless clones justified would admit roughly 2.5 GB on disk per repository, and five concurrent analyses -- OBAN_ANALYSIS_CONCURRENCY -- would exceed the 7.3 GB the machine has, filling the root filesystem that has no volume and no quota.",
+      "bug": "The guard bounds concurrent clone space on a root filesystem with no volume and no quota. GitHub's `size` understates a full clone by up to 1.73x -- DefinitelyTyped reports 809 MB and clones to 1,400 MB. 500_000 is derived: 7.3 GB free, five concurrent slots, 60% margin, divided by that factor. Raising it to 1_500_000 would admit roughly 2.6 GB per repository and five concurrent would be nearly twice the disk the machine has, filling a filesystem nothing bounds.",
       "file": "apps/lei_service/lib/lei/repo_size.ex",
-      "find": "  @default_max_repo_size_kb 250_000",
+      "find": "  @default_max_repo_size_kb 500_000",
       "replace": "  @default_max_repo_size_kb 1_500_000",
       "guarded_by": "test/lei_service/repo_size_limit_test.exs",
       "app": "apps/lei_service"

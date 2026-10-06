@@ -44,30 +44,37 @@ defmodule Lei.RepoSize do
 
   require Logger
 
-  # 250_000 KB, and the pairing with full clones is deliberate.
+  # Derived from disk, which is the only thing this guard can honestly bound.
   #
-  # This was raised to 1_500_000 when `Lei.Git.clone/2` fetched
-  # `--filter=blob:none`, on the reasoning that blobless fetches roughly a tenth
-  # of the bytes. Blobless has been reverted, so the figure goes back with it --
-  # and it has to, because **GitHub's `size` understates a full clone**:
-  # DefinitelyTyped reports 809 MB and clones to 1,367 MB, 1.7x. A 1.5 GB gate
-  # against full clones would admit ~2.5 GB on disk, and five concurrent would
-  # exceed the 7.3 GB the machine has.
+  # What it protects is concurrent clone space on the root filesystem -- no
+  # volume, no quota -- and GitHub's `size` is a fair predictor of that because
+  # it *is* a repository size. It is not a predictor of analysis cost: that
+  # tracked a quadratic in `filter_contributors/1`, now fixed (#319), and
+  # DefinitelyTyped analyses in 15.5 s from a full clone.
   #
-  # Why blobless went away: it was introduced to get large repositories under
-  # this gate, but the gate existed because analysis was slow, and that was a
-  # quadratic in `filter_contributors/1`. With that fixed, DefinitelyTyped
-  # analyses in 15.5 s from a full clone against 15.8 s blobless -- the full
-  # clone is marginally faster -- while blobless made `git log --numstat` fetch
-  # blobs over the network mid-analysis, costing 42x on a 287 KB repository
-  # (93 ms to 3,924 ms) and timing out two analyses in the 2026-10-05 study that
-  # had previously succeeded.
+  # The arithmetic, with every input measured:
   #
-  # What this figure is for is **disk**, which is the one thing GitHub's `size`
-  # predicts honestly, since it is a repository size. Five concurrent clones at
-  # this limit is 1.25 GB against 7.3 GB free. Analysis memory peaks around
-  # 650 MB on the largest repository measured and is a separate budget.
-  @default_max_repo_size_kb 250_000
+  #     free disk                7,300,000 KB   (df on the machine)
+  #     concurrency                        5    (OBAN_ANALYSIS_CONCURRENCY)
+  #     peak disk budget               60%      leaves room for the image, logs
+  #     per-slot allowance       876,000 KB
+  #     GitHub size understates      x1.73      worst of three measured:
+  #                                             DefinitelyTyped 809 -> 1,400 MB
+  #                                             scipy           207 ->   307 MB
+  #                                             django          276 ->   377 MB
+  #     gate                     506,358 KB  ->  500_000
+  #
+  # 250_000 was the figure from before the quadratic was found, when large
+  # repositories were genuinely expensive. 500_000 admits pandas (416 MB),
+  # jest (324 MB) and django (283 MB) -- three of the six the published finding
+  # lists as unanalysable.
+  #
+  # **No safe gate admits the other three.** Five concurrent DefinitelyTyped
+  # clones is 95.9% of free disk; React is 1.07 GB reported and TypeScript
+  # 2.89 GB. Admitting those needs the concurrent disk bounded directly -- a
+  # smaller queue for large repositories, or a semaphore on bytes in flight --
+  # rather than a larger number here. Recorded rather than attempted.
+  @default_max_repo_size_kb 500_000
 
   @doc "The limit in KB, as GitHub reports size."
   @spec limit_kb() :: pos_integer

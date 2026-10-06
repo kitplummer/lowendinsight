@@ -135,51 +135,51 @@ defmodule LeiService.RepoSizeLimitTest do
   end
 
   describe "the default limit, with nothing configured" do
-    test "bounds disk for five concurrent full clones" do
-      # 250_000 KB, paired with full clones deliberately.
+    test "is derived from disk, not chosen" do
+      # The guard bounds concurrent clone space on a root filesystem with no
+      # volume and no quota. Every input is measured:
       #
-      # This briefly read 1_500_000, justified by blobless clones fetching
-      # roughly a tenth of the bytes. Blobless was reverted -- it made
-      # `git log --numstat` fetch over the network mid-analysis, cost 42x on a
-      # 287 KB repository and timed out two previously-successful analyses --
-      # so the figure goes back with it.
-      #
-      # It has to. **GitHub's `size` understates a full clone**: DefinitelyTyped
-      # reports 809 MB and clones to 1,367 MB. At 1.5 GB the gate would admit
-      # ~2.5 GB per repository, and five concurrent would exceed the 7.3 GB the
-      # machine has on a root filesystem with no volume and no quota.
+      #   free disk 7,300,000 KB / concurrency 5 x 60% margin = 876,000 KB
+      #   per slot, divided by the 1.73x by which GitHub's `size` understates a
+      #   full clone (DefinitelyTyped 809 -> 1,400 MB) = 506,358 KB.
       Application.delete_env(:lei_service, :max_repo_size_kb)
 
-      limit = RepoSize.limit_kb()
-      assert limit == 250_000
-
-      # The budget this is really protecting, stated as arithmetic rather than
-      # left implicit: five slots at the limit against the disk available.
+      free_disk_kb = 7_300_000
       concurrency = 5
-      disk_available_kb = 7_300_000
+      margin = 0.6
+      understatement = 1.73
 
-      assert limit * concurrency < disk_available_kb,
-             "#{concurrency} concurrent clones at #{limit} KB exceeds #{disk_available_kb} KB of disk"
+      derived = free_disk_kb * margin / concurrency / understatement
+
+      assert RepoSize.limit_kb() <= derived,
+             "the limit exceeds what the disk arithmetic allows (#{trunc(derived)} KB)"
+
+      assert RepoSize.limit_kb() * concurrency * understatement < free_disk_kb,
+             "#{concurrency} concurrent clones at the limit would not fit on disk"
     end
 
-    test "refuses the repositories a full clone cannot afford" do
+    test "admits the repositories the quadratic fix made cheap" do
+      # pandas, jest and django were refused when analysis was slow. It is not
+      # any more -- DefinitelyTyped analyses in 15.5 s -- so the only question
+      # left is disk, and these fit.
       Application.delete_env(:lei_service, :max_repo_size_kb)
 
-      # Reported sizes; the full clones are larger still.
-      for {name, kb} <- [react: 1_100_996, typescript: 2_888_370, definitely_typed: 809_000] do
-        assert {:too_large, _, _} = RepoSize.check("https://github.com/x/#{name}", sized(kb)),
-               "#{name} at #{kb} KB is admitted, and its full clone is larger than that"
+      for {name, kb} <- [pandas: 415_998, jest: 324_245, django: 282_624] do
+        assert RepoSize.check("https://github.com/x/#{name}", sized(kb)) == :ok,
+               "#{name} at #{kb} KB is refused though it now analyses in seconds and fits on disk"
       end
     end
 
-    test "admits what five concurrent clones can hold" do
+    test "still refuses what no safe gate can admit" do
+      # Five concurrent DefinitelyTyped clones is 95.9% of free disk. These
+      # need the concurrent disk bounded directly -- a smaller queue for large
+      # repositories, or a semaphore on bytes in flight -- not a larger number
+      # here.
       Application.delete_env(:lei_service, :max_repo_size_kb)
 
-      # The median analysed repository in the 2026-10-05 study was single-digit
-      # megabytes; these are the large end of what is still affordable.
-      for {name, kb} <- [pillow: 206_000, ruff: 203_000, bundler: 223_000] do
-        assert RepoSize.check("https://github.com/x/#{name}", sized(kb)) == :ok,
-               "#{name} at #{kb} KB is refused though five concurrent would fit"
+      for {name, kb} <- [definitely_typed: 809_000, react: 1_100_996, typescript: 2_888_370] do
+        assert {:too_large, _, _} = RepoSize.check("https://github.com/x/#{name}", sized(kb)),
+               "#{name} at #{kb} KB is admitted, and five concurrent would not fit on disk"
       end
     end
   end
