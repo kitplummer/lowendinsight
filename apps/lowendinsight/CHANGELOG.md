@@ -4,6 +4,65 @@ Notable changes to the `lowendinsight` library and the hosted service in this
 repository. The library is published to Hex; the service is deployed from the
 same tree (ADR-003).
 
+## 0.15.0 — 2026-10-05
+
+### Changed
+
+- **Clones are full again; `--filter=blob:none` is reverted.** It was added in
+  0.14.0 to get large repositories under the service's size guard. The guard
+  existed because analysis was slow, and that was a quadratic in
+  `filter_contributors/1` — two full list traversals per unique contributor,
+  recursing on the remainder, with `String.downcase` on both sides of every
+  comparison.
+
+  With that fixed, blobless buys nothing. Measured on the worst repository
+  found:
+
+  ```
+  DefinitelyTyped, full clone   15,537 ms   peak 647 MB
+  DefinitelyTyped, blobless     15,827 ms   peak 585 MB
+  ```
+
+  The full clone is marginally **faster**, and blobless was never free:
+  `git log --numstat` fetched blobs over the network *during* analysis, costing
+  93 ms against 3,924 ms on a 287 KB repository, and timing out two analyses in
+  a study run that had succeeded before it. An airgapped deployment had no
+  upstream to fetch from at all.
+
+  `LEI_GIT_CLONE_FILTER` is gone with it.
+
+- **The service's repository size limit is derived from disk rather than
+  chosen.** `250_000` KB dated from before the quadratic was found, when large
+  repositories were genuinely expensive to analyse. What the guard actually
+  bounds is concurrent clone space on a root filesystem with no volume and no
+  quota, and that can be computed:
+
+  ```
+  free disk              7,300,000 KB   df on the machine
+  concurrency                      5    OBAN_ANALYSIS_CONCURRENCY
+  margin                         60%    room for the image and logs
+  per-slot allowance       876,000 KB
+  GitHub size understates      x1.73    worst of three measured
+  limit                    506,358 KB  ->  500_000
+  ```
+
+  This admits pandas (416 MB), jest (324 MB) and django (283 MB). It does not
+  admit DefinitelyTyped, React or TypeScript, and no safe limit can: five
+  concurrent DefinitelyTyped clones is 95.9% of free disk. Bounding that needs
+  the concurrent disk limited directly, which is recorded in `Lei.RepoSize`
+  rather than attempted.
+
+  `LEI_MAX_REPO_SIZE_KB` still overrides it.
+
+### Fixed
+
+- **Contributor deduplication is linear.** `parse_shortlog/1` went from
+  3,366 ms to 52 ms on React's 2,042 contributors; DefinitelyTyped's 19,983
+  from not finishing in minutes to 410 ms. A full analysis of DefinitelyTyped
+  went from **37.5 minutes to 15.8 seconds**, with the same verdict, the same
+  peak memory and the same contributor counts — verified against git's own
+  mailmap-applied figures.
+
 ## 0.14.0 — 2026-10-05
 
 ### Changed
