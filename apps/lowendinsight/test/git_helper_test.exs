@@ -294,35 +294,52 @@ defmodule GitHelperTest do
       # DefinitelyTyped took 37.5 minutes; after the fix, 15.8 seconds.
       #
       # Timing is the only way to catch a complexity regression, so this
-      # asserts a ratio rather than a wall-clock figure: doubling the input
-      # must not quadruple the time. The threshold is loose on purpose -- it
-      # should catch n^2, not fluctuate with a loaded machine.
+      # asserts a ratio. Two things make the ratio trustworthy, both learned
+      # from this test failing on CI at 3.3x with 3,579us against 11,734us --
+      # at single-digit milliseconds a garbage collection is the whole signal:
+      #
+      #   * **sizes large enough that work dominates noise.** 500 and 1,000
+      #     contributors were too small. 2,000 and 4,000 take tens of
+      #     milliseconds here and more on a loaded runner.
+      #   * **the minimum of several runs**, which is the sample least
+      #     disturbed by a pause. The mean would carry the outlier that failed
+      #     CI.
+      #
+      # Locally this gives 1.8x. With the quadratic restored it is ~4x and the
+      # absolute times diverge enormously, so the threshold has room.
       build = fn n ->
         Enum.map_join(1..n, "\n\n", fn i ->
           "Person #{i} <p#{i}@example.com> (1):\n  commit #{i}"
         end)
       end
 
-      small = build.(500)
-      large = build.(1000)
+      small = build.(2_000)
+      large = build.(4_000)
 
       # Warm the code path so the first measurement is not paying for it.
       GitHelper.parse_shortlog(build.(50))
 
-      {t_small, r_small} = :timer.tc(fn -> GitHelper.parse_shortlog(small) end)
-      {t_large, r_large} = :timer.tc(fn -> GitHelper.parse_shortlog(large) end)
+      best = fn input ->
+        Enum.min(for _ <- 1..3, do: elem(:timer.tc(fn -> GitHelper.parse_shortlog(input) end), 0))
+      end
 
-      assert length(r_small) == 500
-      assert length(r_large) == 1000
+      t_small = best.(small)
+      t_large = best.(large)
 
-      # Linear would be ~2x, quadratic ~4x. Allowing 3x leaves room for
-      # measurement noise while still failing on a reintroduced quadratic,
-      # which at these sizes was far worse than 4x.
-      ratio = t_large / max(t_small, 1)
+      assert length(GitHelper.parse_shortlog(small)) == 2_000
+      assert length(GitHelper.parse_shortlog(large)) == 4_000
 
-      assert ratio < 3.0,
-             "doubling contributors multiplied the time by #{Float.round(ratio, 1)}x " <>
-               "(#{t_small}us -> #{t_large}us), which is superlinear"
+      # Below a millisecond any ratio is noise, so say so rather than assert
+      # something meaningless. This should not trigger at these sizes.
+      if t_small < 1_000 do
+        IO.puts("  (skipped: #{t_small}us is too fast to compare meaningfully)")
+      else
+        ratio = t_large / t_small
+
+        assert ratio < 3.0,
+               "doubling contributors multiplied the time by #{Float.round(ratio, 1)}x " <>
+                 "(#{t_small}us -> #{t_large}us), which is superlinear"
+      end
     end
   end
 end
