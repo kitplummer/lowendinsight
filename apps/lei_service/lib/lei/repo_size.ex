@@ -44,25 +44,30 @@ defmodule Lei.RepoSize do
 
   require Logger
 
-  # Calibrated for what we now fetch, not for what GitHub reports.
+  # 250_000 KB, and the pairing with full clones is deliberate.
   #
-  # 250_000 was right when a clone was a full clone. `Lei.Git.clone/2` fetches
-  # `--filter=blob:none` (ADR-009), which is roughly a tenth of the bytes on the
-  # repositories this guard was rejecting -- React 1.07 GB becomes 121 MB,
-  # pandas 416 MB becomes 138 MB -- so comparing GitHub's `size` against 250_000
-  # refuses repositories that now fit comfortably.
+  # This was raised to 1_500_000 when `Lei.Git.clone/2` fetched
+  # `--filter=blob:none`, on the reasoning that blobless fetches roughly a tenth
+  # of the bytes. Blobless has been reverted, so the figure goes back with it --
+  # and it has to, because **GitHub's `size` understates a full clone**:
+  # DefinitelyTyped reports 809 MB and clones to 1,367 MB, 1.7x. A 1.5 GB gate
+  # against full clones would admit ~2.5 GB on disk, and five concurrent would
+  # exceed the 7.3 GB the machine has.
   #
-  # 1_500_000 is the figure that admits every repository measured as analysable
-  # and still refuses the two that are not: pytorch (1.59 GB, 613 MB blobless)
-  # and TypeScript (2.89 GB, 1.62 GB blobless).
+  # Why blobless went away: it was introduced to get large repositories under
+  # this gate, but the gate existed because analysis was slow, and that was a
+  # quadratic in `filter_contributors/1`. With that fixed, DefinitelyTyped
+  # analyses in 15.5 s from a full clone against 15.8 s blobless -- the full
+  # clone is marginally faster -- while blobless made `git log --numstat` fetch
+  # blobs over the network mid-analysis, costing 42x on a 287 KB repository
+  # (93 ms to 3,924 ms) and timing out two analyses in the 2026-10-05 study that
+  # had previously succeeded.
   #
-  # It remains a **proxy**. GitHub's `size` counts every revision of every file
-  # and the blobless ratio varies from 1.0x (DefinitelyTyped, almost all small
-  # text at HEAD) to 8.8x (React), so this cannot be derived -- it is the
-  # smallest round number above the largest thing we measured working. What the
-  # guard is really protecting is analysis memory, which tracks commit count
-  # rather than either size; ADR-009 records that and does not fix it.
-  @default_max_repo_size_kb 1_500_000
+  # What this figure is for is **disk**, which is the one thing GitHub's `size`
+  # predicts honestly, since it is a repository size. Five concurrent clones at
+  # this limit is 1.25 GB against 7.3 GB free. Analysis memory peaks around
+  # 650 MB on the largest repository measured and is a separate budget.
+  @default_max_repo_size_kb 250_000
 
   @doc "The limit in KB, as GitHub reports size."
   @spec limit_kb() :: pos_integer

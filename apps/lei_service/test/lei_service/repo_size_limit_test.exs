@@ -135,40 +135,52 @@ defmodule LeiService.RepoSizeLimitTest do
   end
 
   describe "the default limit, with nothing configured" do
-    test "admits what a blobless clone makes analysable" do
-      # This file's setup pins a small limit for isolation, so the module
-      # default is never otherwise exercised -- a mutation reverting it to
-      # 250_000 came back unguarded.
+    test "bounds disk for five concurrent full clones" do
+      # 250_000 KB, paired with full clones deliberately.
       #
-      # 250_000 was right when a clone was a full clone. `Lei.Git.clone/2` now
-      # fetches `--filter=blob:none`, roughly a tenth of the bytes on the
-      # repositories this guard rejected (ADR-009):
+      # This briefly read 1_500_000, justified by blobless clones fetching
+      # roughly a tenth of the bytes. Blobless was reverted -- it made
+      # `git log --numstat` fetch over the network mid-analysis, cost 42x on a
+      # 287 KB repository and timed out two previously-successful analyses --
+      # so the figure goes back with it.
       #
-      #     react   1.07 GB -> 121 MB      pandas  416 MB -> 138 MB
-      #     jest     316 MB -> 103 MB      django  276 MB -> 154 MB
-      #
-      # So the default has to admit them, or four repositories in the two
-      # ecosystems most projects use stay unanalysable for a reason that no
-      # longer holds.
+      # It has to. **GitHub's `size` understates a full clone**: DefinitelyTyped
+      # reports 809 MB and clones to 1,367 MB. At 1.5 GB the gate would admit
+      # ~2.5 GB per repository, and five concurrent would exceed the 7.3 GB the
+      # machine has on a root filesystem with no volume and no quota.
       Application.delete_env(:lei_service, :max_repo_size_kb)
 
-      for {name, kb} <- [react: 1_100_996, pandas: 415_998, jest: 324_245, django: 282_624] do
-        assert RepoSize.check("https://github.com/x/#{name}", sized(kb)) == :ok,
-               "#{name} at #{kb} KB is refused by the default limit of " <>
-                 "#{RepoSize.limit_kb()} KB, though a blobless clone of it fits"
+      limit = RepoSize.limit_kb()
+      assert limit == 250_000
+
+      # The budget this is really protecting, stated as arithmetic rather than
+      # left implicit: five slots at the limit against the disk available.
+      concurrency = 5
+      disk_available_kb = 7_300_000
+
+      assert limit * concurrency < disk_available_kb,
+             "#{concurrency} concurrent clones at #{limit} KB exceeds #{disk_available_kb} KB of disk"
+    end
+
+    test "refuses the repositories a full clone cannot afford" do
+      Application.delete_env(:lei_service, :max_repo_size_kb)
+
+      # Reported sizes; the full clones are larger still.
+      for {name, kb} <- [react: 1_100_996, typescript: 2_888_370, definitely_typed: 809_000] do
+        assert {:too_large, _, _} = RepoSize.check("https://github.com/x/#{name}", sized(kb)),
+               "#{name} at #{kb} KB is admitted, and its full clone is larger than that"
       end
     end
 
-    test "still refuses what does not fit even blobless" do
-      # pytorch is 613 MB blobless and TypeScript 1.62 GB, both over the real
-      # budget. The default must not become a limit that admits everything.
+    test "admits what five concurrent clones can hold" do
       Application.delete_env(:lei_service, :max_repo_size_kb)
 
-      assert {:too_large, _, _} =
-               RepoSize.check("https://github.com/x/typescript", sized(2_888_370))
-
-      assert {:too_large, _, _} =
-               RepoSize.check("https://github.com/x/pytorch", sized(1_628_283))
+      # The median analysed repository in the 2026-10-05 study was single-digit
+      # megabytes; these are the large end of what is still affordable.
+      for {name, kb} <- [pillow: 206_000, ruff: 203_000, bundler: 223_000] do
+        assert RepoSize.check("https://github.com/x/#{name}", sized(kb)) == :ok,
+               "#{name} at #{kb} KB is refused though five concurrent would fit"
+      end
     end
   end
 
