@@ -1,8 +1,18 @@
 # LowEndInsight
 
-![build status](https://github.com/kitplummer/lowendinsight/workflows/default_elixir_ci/badge.svg?branch=develop) ![Hex.pm](https://img.shields.io/hexpm/v/lowendinsight) [![Coverage Status](https://coveralls.io/repos/github/kitplummer/lowendinsight/badge.svg?branch=develop&v=2)](https://coveralls.io/github/kitplummer/lowendinsight?branch=develop)
+[![umbrella_ci](https://github.com/kitplummer/lowendinsight/actions/workflows/elixir.yml/badge.svg?branch=main)](https://github.com/kitplummer/lowendinsight/actions/workflows/elixir.yml) [![Hex.pm](https://img.shields.io/hexpm/v/lowendinsight?include_prereleases)](https://hex.pm/packages/lowendinsight)
 
-## Current Version: 0.10.0
+## Status: beta (0.16.0-beta.1)
+
+LowEndInsight is in beta. Every published interface carries the pre-release
+version: the Hex package, the container image, the Zarf package and UDS
+bundle, the REST API (`/openapi.json`, `GET /v1/health`), the MCP client and
+the VS Code extension. Interfaces may change between betas, and breaking
+changes are listed in the [CHANGELOG](apps/lowendinsight/CHANGELOG.md).
+
+```elixir
+{:lowendinsight, "~> 0.16.0-beta.1"}   # pre-releases need an explicit opt-in
+```
 
 <img src="lei_bus_128.png" style="float: left;margin-right: 10px;margin-top: 10px;">
 
@@ -11,6 +21,14 @@ LowEndInsight is a simple "bus-factor" risk analysis library for Open Source Sof
 ---
 
 ## What's New
+
+**Version 0.16.0-beta.1**
+- The first beta, including the work prepared as 0.14.0 and 0.15.0, which
+  was never published: full clones again, and contributor analysis on large
+  repositories goes from minutes to seconds.
+- npm lockfileVersion 3 (`package-lock.json` from npm 7+) is parsed;
+  scanning a project with one used to crash.
+- See [CHANGELOG.md](apps/lowendinsight/CHANGELOG.md).
 
 **Version 0.10.0**
 - **Requires Elixir 1.17+** and moves to httpoison 3 / hackney 4, which clears
@@ -197,6 +215,11 @@ LEI_CRITICAL_CURRENCY_LEVEL=60 mix lei.scan
 
 ## GitHub Action
 
+> **Not working in this beta.** The action's Docker build predates the
+> umbrella layout and fails, and `kitplummer/lowendinsight@gha` names a ref
+> that no longer exists. Use `mix lei.sarif` in a workflow step until it is
+> fixed.
+
 Add LowEndInsight to your GitHub workflow:
 
 ```yaml
@@ -228,7 +251,7 @@ We welcome contributions!
 - **Bugs?** Report them at [GitHub Issues](https://github.com/kitplummer/lowendinsight/issues).
 - **Style**: Run `mix format` before submitting. Documentation for functions is expected.
 - **Testing**: Please write ExUnit tests for new code. Use `mix test --cover` to verify coverage.
-- **PRs**: Submit atomic pull requests to the [develop branch](https://github.com/kitplummer/lowendinsight/pulls).
+- **PRs**: Submit atomic pull requests against `main`, after `scripts/preflight.sh` passes.
 
 ## License
 

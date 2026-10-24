@@ -2,6 +2,11 @@
 
 LowEndInsight (LEI) provides supply chain security analysis for git repositories, including risk analysis and agentic classification. This document covers the REST API endpoints.
 
+> **Beta.** The API is in beta (currently `0.16.0-beta.1`). Paths and fields
+> under `/v1` may change between betas; breaking changes are listed in
+> [CHANGELOG.md](../../lowendinsight/CHANGELOG.md). `GET /v1/health` and
+> `/openapi.json` report the running version.
+
 ## Base URL
 
 Production: `https://your-lei-instance.example.com`

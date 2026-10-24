@@ -4347,6 +4347,24 @@
       "replace": "    for {\"node_modules/\" <> name, %{\"version\" => version}} <- %{},",
       "guarded_by": "test/npm/package_json_test.exs",
       "bug": "npm 7+ lockfiles (lockfileVersion 3) keep dependencies under \"packages\" with no top-level \"dependencies\". Unparsed, the parser raised and `mix lei.sarif` crashed on every scheduled scan; reading it as empty would report a project with a lockfile as having no dependencies."
+    },
+    {
+      "id": "openapi-version-static",
+      "app": "apps/lei_service",
+      "file": "apps/lei_service/lib/lei_service/endpoint.ex",
+      "find": "    Map.put(spec, \"info\", Map.put(info, \"version\", version))",
+      "replace": "    Map.put(spec, \"info\", info)",
+      "guarded_by": "test/lei_service/openapi_version_test.exs",
+      "bug": "/openapi.json was a static file that reported version 0.9.2 through seven releases, so neither a generated client nor a reader of /doc could tell which API, or that it was a beta whose paths may change."
+    },
+    {
+      "id": "mcp-server-version-drifts",
+      "app": "apps/lei_service",
+      "file": "clients/mcp/lei_mcp.py",
+      "find": "\"serverInfo\": {\"name\": SERVER_NAME, \"version\": SERVER_VERSION},",
+      "replace": "\"serverInfo\": {\"name\": SERVER_NAME, \"version\": \"0.2.0\"},",
+      "guarded_by": "test/lei_service/mcp_server_test.exs",
+      "bug": "The MCP client reported serverInfo.version 0.2.0 while the service it calls went from 0.9 to 0.15, so nothing told an agent which beta it was talking to."
     }
   ]
 }

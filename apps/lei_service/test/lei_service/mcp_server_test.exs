@@ -80,6 +80,15 @@ defmodule LeiService.McpServerTest do
       assert reply["result"]["capabilities"]["tools"]
     end
 
+    test "serverInfo.version is the release it ships in" do
+      # It said 0.2.0 while the service it calls went from 0.9 to 0.15. An
+      # agent, or whoever reads its logs, is told which beta it is talking to.
+      [reply] = rpc([initialize()])
+
+      assert reply["result"]["serverInfo"]["version"] ==
+               to_string(Application.spec(:lowendinsight, :vsn))
+    end
+
     test "an unknown method is an error, not silence" do
       # A server that ignores what it does not understand leaves the client
       # waiting, which presents as a hung agent rather than a failure.

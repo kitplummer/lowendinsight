@@ -3,7 +3,7 @@
   "info": {
     "title": "LowEndInsight API",
     "description": "OSS risk (bus-factor) analysis service. Analyzes git repositories for contributor risk, commit currency, agentic classification, and other supply-chain risk indicators.",
-    "version": "0.9.2",
+    "version": "see GET /openapi.json; replaced with the running version",
     "license": {
       "name": "BSD 3-Clause",
       "url": "https://opensource.org/licenses/BSD-3-Clause"

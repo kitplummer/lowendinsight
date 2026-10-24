@@ -1,5 +1,5 @@
 name: 'lowendinsight'
-description: 'Runs lowendinsight against a GitHub repository and saves the output to the repo root directory'
+description: '(Beta; not working in 0.16.0-beta.1, see README) Runs lowendinsight against a GitHub repository and saves the output to the repo root directory'
 
 author: 'kitplummer'
 branding:
