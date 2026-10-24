@@ -43,7 +43,7 @@ jobs:
         run: |
           mix local.rebar --force
           mix local.hex --force
-          mix deps.get
+          scripts/mix-deps-get.sh
 
       # The cache-scoped key the canary already holds. /v1/cache/probe is under
       # the same scope and strictly less authority than the invalidate the

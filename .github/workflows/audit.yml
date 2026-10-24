@@ -67,7 +67,7 @@ jobs:
       run: |
         mix local.rebar --force
         mix local.hex --force
-        mix deps.get
+        scripts/mix-deps-get.sh
     - name: Hex and mix_audit advisories
       if: steps.scope.outputs.audit == 'true'
       run: |

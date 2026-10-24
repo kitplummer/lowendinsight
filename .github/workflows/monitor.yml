@@ -513,9 +513,11 @@ jobs:
           echo "tip ${TIP:0:7}, committed ${COMMITTED} (${AGE}s ago)"
 
           set +e
-          scripts/ops/deploy-status.sh "$TIP"
+          STATUS_OUT=$(scripts/ops/deploy-status.sh "$TIP" 2>&1)
           RESULT=$?
           set -e
+          printf '%s\n' "$STATUS_OUT"
+          VERDICT=$(grep -m1 -E '^(NOT DEPLOYED|COULD NOT TELL):' <<<"$STATUS_OUT" || true)
 
           case "$RESULT" in
             0)
@@ -559,7 +561,7 @@ jobs:
               if [ "$AGE" -lt "$GRACE" ]; then
                 echo "::notice::${TIP:0:7} ${WHAT}, but was committed ${AGE}s ago; within the ${GRACE}s grace."
               elif [ "$RESULT" = "1" ]; then
-                echo "::error::${TIP:0:7} has been the tip of main for ${AGE}s and is not deployed. A deploy run that declines ships nothing and still reports success, so nothing else will tell you."
+                echo "::error::${TIP:0:7} has been the tip of main for ${AGE}s and is not deployed. A deploy run that declines ships nothing and still reports success, so nothing else will tell you. ${VERDICT}"
                 exit 1
               else
                 # Past the grace, the same rule as everywhere else in this file:

@@ -4392,6 +4392,24 @@
       "replace": "{:ok, repo}",
       "guarded_by": "test/npm_registry_test.exs",
       "bug": "npm records repositories as authors wrote them; left-pad's git+ssh://git@github.com/... was refused by the analyzer, so one of npm's most depended-on packages was reported as unanalysable."
+    },
+    {
+      "id": "deps-fetch-not-retried",
+      "app": "apps/lei_service",
+      "file": "scripts/mix-deps-get.sh",
+      "find": "ATTEMPTS=3",
+      "replace": "ATTEMPTS=1",
+      "guarded_by": "test/lei_service/deps_fetch_retry_test.exs",
+      "bug": "One hex.pm 500 during mix deps.get failed umbrella_ci on main; deploy declined the commit and monitor reported an undeployed tip every fifteen minutes for seven hours."
+    },
+    {
+      "id": "undeployed-tip-hides-ci-failure",
+      "app": "apps/lei_service",
+      "file": "scripts/ops/deploy-status.sh",
+      "find": "  \"completed failure\"*)",
+      "replace": "  \"completed failure-never\"*)",
+      "guarded_by": "test/lei_service/deploy_reporting_test.exs",
+      "bug": "The monitor's error said only 'not deployed' while the cause, umbrella_ci failing on the tip, was in the log three lookups away, so a transient failure that one re-run fixes stayed red for seven hours."
     }
   ]
 }

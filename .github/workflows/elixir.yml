@@ -40,7 +40,7 @@ jobs:
       run: |
         mix local.rebar --force
         mix local.hex --force
-        mix deps.get
+        scripts/mix-deps-get.sh
     - name: Toolchain pins agree
       run: scripts/check-toolchain.sh
     - name: Check formatting
@@ -102,7 +102,7 @@ jobs:
       run: |
         mix local.rebar --force
         mix local.hex --force
-        mix deps.get
+        scripts/mix-deps-get.sh
     - name: Verify backup grants
       run: scripts/verify-backup-grants.sh
 
@@ -156,7 +156,7 @@ jobs:
       run: |
         mix local.rebar --force
         mix local.hex --force
-        mix deps.get
+        scripts/mix-deps-get.sh
     # This step used to retry up to five times, each attempt with a fresh
     # random seed. That turned a seed-dependent failure into a green check:
     # Lei.Acp.RateLimitTest was failing on roughly two seeds in three and CI
@@ -241,7 +241,7 @@ jobs:
       run: |
         mix local.rebar --force
         mix local.hex --force
-        mix deps.get
+        scripts/mix-deps-get.sh
     - name: Setup Database
       run: |
         MIX_ENV=test mix ecto.create
@@ -299,7 +299,7 @@ jobs:
       run: |
         mix local.rebar --force
         mix local.hex --force
-        mix deps.get
+        scripts/mix-deps-get.sh
     - name: Setup database
       run: |
         MIX_ENV=test mix ecto.create

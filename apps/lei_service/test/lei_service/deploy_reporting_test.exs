@@ -136,6 +136,37 @@ defmodule LeiService.DeployReportingTest do
 
     @sha "0123456789012345678901234567890123456789"
 
+    # 2026-10-24: hex.pm returned 500 to one `mix deps.get`, umbrella_ci failed
+    # on 03743c5, and the deploy gate declined it. The monitor's error said only
+    # "not deployed" for seven hours; the CI failure that explained it was three
+    # lookups away. When CI failed on the commit, that is the answer, and it
+    # comes with the command that resolves a transient failure.
+    test "a commit CI failed on says so, with the run to re-run", %{dir: dir} do
+      stub_gh(dir, "skipped", ci: "completed failure 4242")
+
+      {out, code} = run_status(dir, @sha)
+
+      assert code == 1
+      assert out =~ ~r/NOT DEPLOYED: .*umbrella_ci failed on this commit \(run 4242\)/
+      assert out =~ "gh run rerun 4242 --failed"
+    end
+
+    test "and says so when no deploy run was triggered at all", %{dir: dir} do
+      stub_gh(dir, "skipped", ci: "completed failure 4242", runs: "")
+
+      {out, 1} = run_status(dir, @sha)
+
+      assert out =~ "umbrella_ci failed on this commit (run 4242)"
+    end
+
+    test "a commit CI passed on is not blamed on CI", %{dir: dir} do
+      stub_gh(dir, "skipped", ci: "completed success 4242")
+
+      {out, 1} = run_status(dir, @sha)
+
+      refute out =~ "umbrella_ci failed"
+    end
+
     test "a job that succeeded is deployed", %{dir: dir} do
       stub_gh(dir, "success")
 
@@ -212,6 +243,15 @@ defmodule LeiService.DeployReportingTest do
       # difference between paging and not.
       assert monitor =~ "::error::${TIP:0:7} has been the tip of main",
              "an undeployed tip does not produce an error, so nothing pages"
+    end
+
+    test "the error carries deploy-status.sh's verdict, which names a CI failure" do
+      # The verdict was in the log and not in the annotation -- the part that
+      # is on the run page and in the email.
+      monitor = File.read!(@monitor)
+
+      assert monitor =~ ~r/::error::\$\{TIP:0:7\} has been the tip of main[^"]*\$\{VERDICT\}"/,
+             "the undeployed-tip error does not say why"
     end
 
     test "a deploy in flight is not paged for" do
