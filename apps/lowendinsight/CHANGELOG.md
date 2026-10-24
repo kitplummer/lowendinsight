@@ -15,6 +15,9 @@ The first beta. Every published interface now says so in its version:
 - **REST API**: `/openapi.json` and `GET /v1/health` report the running
   version, and the specification says it is a beta. The `/v1` paths are not
   frozen until 1.0.
+- **Web UI**: every page opens with a BETA banner naming the running version.
+  It follows the version, not the billing mode, so it goes when the
+  pre-release suffix does.
 - **MCP client** (`clients/mcp`) and the **VS Code extension** are marked beta
   and preview.
 - **GitHub Action**: does not work in this beta. Its Docker build predates the

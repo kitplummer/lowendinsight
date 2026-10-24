@@ -4365,6 +4365,15 @@
       "replace": "\"serverInfo\": {\"name\": SERVER_NAME, \"version\": \"0.2.0\"},",
       "guarded_by": "test/lei_service/mcp_server_test.exs",
       "bug": "The MCP client reported serverInfo.version 0.2.0 while the service it calls went from 0.9 to 0.15, so nothing told an agent which beta it was talking to."
+    },
+    {
+      "id": "web-ui-silent-about-beta-release",
+      "app": "apps/lei_service",
+      "file": "apps/lei_service/lib/lei/web/release.ex",
+      "find": "    if prerelease?(version) do",
+      "replace": "    if false do",
+      "guarded_by": "test/lei_service/release_beta_banner_test.exs",
+      "bug": "0.16.0-beta.1 was labelled a beta on Hex, GHCR, the API and the MCP client while the web UI said nothing beyond the free-analysis notice, which follows the billing mode rather than the release."
     }
   ]
 }

@@ -6,8 +6,8 @@
 
 LowEndInsight is in beta. Every published interface carries the pre-release
 version: the Hex package, the container image, the Zarf package and UDS
-bundle, the REST API (`/openapi.json`, `GET /v1/health`), the MCP client and
-the VS Code extension. Interfaces may change between betas, and breaking
+bundle, the REST API (`/openapi.json`, `GET /v1/health`), the web UI (a
+banner on every page), the MCP client and the VS Code extension. Interfaces may change between betas, and breaking
 changes are listed in the [CHANGELOG](apps/lowendinsight/CHANGELOG.md).
 
 ```elixir

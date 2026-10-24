@@ -39,6 +39,7 @@
     </style>
   </head>
   <body>
+    <%= Lei.Web.Release.banner() %>
     <section class="hero is-dark is-small">
       <div class="hero-body">
         <div class="container">
