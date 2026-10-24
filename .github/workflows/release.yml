@@ -182,7 +182,17 @@ jobs:
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
+      # Without a version, setup-uds installs whatever uds-cli was released
+      # last. Pinned, and checked: an input the action does not recognise is
+      # only a warning, and it would install latest anyway.
       - uses: defenseunicorns/setup-uds@ab842abcad1f7a3305c2538e3dd1950d0daacfa5 # v1.0.1
+        with:
+          version: v0.40.0
+      - name: uds-cli is the pinned version
+        run: |
+          V=$(uds version)
+          echo "uds-cli: $V"
+          [[ "$V" =~ ^v?0\.40\.0$ ]] || { echo "::error::uds-cli is '$V', not v0.40.0"; exit 1; }
 
       - name: Zarf package
         working-directory: apps/lowendinsight
