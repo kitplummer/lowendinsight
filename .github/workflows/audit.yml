@@ -31,7 +31,7 @@ jobs:
     env:
       MIX_ENV: test
     steps:
-    - uses: actions/checkout@v4
+    - uses: actions/checkout@v7
       with:
         fetch-depth: 0
     # Decided per PR from its diff, so the required check always reports.
@@ -57,7 +57,7 @@ jobs:
           echo "audit=false" >> "$GITHUB_OUTPUT"
           echo "No dependency or audit changes; not auditing. The daily --strict run covers new advisories."
         fi
-    - uses: erlef/setup-beam@54075bcc5e249e4758d363f27d099f55d843f124 # v1
+    - uses: erlef/setup-beam@54075bcc5e249e4758d363f27d099f55d843f124 # v1.24.1
       if: steps.scope.outputs.audit == 'true'
       with:
         elixir-version: 1.20.4
@@ -86,9 +86,13 @@ jobs:
     # survey built on it produced 329 analysed repositories with zero
     # functional_commit_currency_weeks.
     #
-    # Two contradictions, both cheap to detect:
+    # Three contradictions, all cheap to detect:
     #
     #   * hex has a version the CHANGELOG still calls unreleased
+    #   * the CHANGELOG gives the tree's version a ship date, and hex does not
+    #     have it. 0.14.0 and 0.15.0 were dated 2026-10-05 and never tagged;
+    #     this step passed for three weeks because hex's newest version, 0.13.1,
+    #     was not the tree's, and the only checks were keyed on that
     #   * the tree's version is already published, and the tree has moved since
     #     its tag -- which means the next release has no number allocated, and
     #     that is the state in which commits accumulate unnoticed
@@ -103,16 +107,24 @@ jobs:
         set -o pipefail
 
         VERSION=$(sed -n 's/.*version: "\([^"]*\)".*/\1/p' apps/lowendinsight/mix.exs | head -1)
-        HEX=$(curl -sf --max-time 30 https://hex.pm/api/packages/lowendinsight \
-          | jq -r '.releases[0].version') || HEX=""
+        PUBLISHED=$(curl -sf --max-time 30 https://hex.pm/api/packages/lowendinsight \
+          | jq -r '.releases[].version') || PUBLISHED=""
+        HEX=$(head -1 <<<"$PUBLISHED")
 
         if [ -z "$HEX" ]; then
-          echo "::warning::could not read the published version from hex; not concluding anything"
+          echo "::warning::could not read the published versions from hex; not concluding anything"
           exit 0
         fi
 
-        echo "tree: $VERSION   hex: $HEX"
+        echo "tree: $VERSION   hex (newest): $HEX"
         FAILED=0
+
+        # The tree's version carries a ship date that hex does not bear out.
+        HEADING=$(grep -m1 -F "## ${VERSION} " apps/lowendinsight/CHANGELOG.md || true)
+        if [[ "$HEADING" =~ [0-9]{4}-[0-9]{2}-[0-9]{2} ]] && ! grep -qxF "$VERSION" <<<"$PUBLISHED"; then
+          echo "::error::CHANGELOG says ${VERSION} shipped ('${HEADING}'), but hex has no ${VERSION}. Push the tag v${VERSION}, or put the section back to unreleased."
+          FAILED=1
+        fi
 
         # A published version whose section still says unreleased.
         if grep -qiE "^## +${HEX//./\\.} .*unreleased" apps/lowendinsight/CHANGELOG.md; then
@@ -121,7 +133,7 @@ jobs:
         fi
 
         # The tree's version is already out, and the tree has moved since.
-        if [ "$VERSION" = "$HEX" ]; then
+        if grep -qxF "$VERSION" <<<"$PUBLISHED"; then
           BEHIND=$(git log "v${VERSION}..HEAD" --oneline -- apps/lowendinsight | wc -l | tr -d ' ')
 
           if [ "$BEHIND" != "0" ]; then

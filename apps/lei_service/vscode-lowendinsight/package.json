@@ -1,8 +1,9 @@
 {
   "name": "vscode-lowendinsight",
   "displayName": "LowEndInsight",
-  "description": "Bus-factor and supply-chain risk analysis for your dependencies",
+  "description": "(Beta) Bus-factor and supply-chain risk analysis for your dependencies",
   "version": "0.1.0",
+  "preview": true,
   "publisher": "gtri",
   "license": "BSD-3-Clause",
   "engines": {

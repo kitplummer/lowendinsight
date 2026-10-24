@@ -32,7 +32,7 @@ check_contains() {
   local desc="$1"
   local needle="$2"
   local haystack="$3"
-  if echo "$haystack" | grep -q "$needle"; then
+  if grep -q "$needle" <<<"$haystack"; then
     green "  PASS: $desc"
     PASS=$((PASS + 1))
   else

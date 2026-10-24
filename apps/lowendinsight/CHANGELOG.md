@@ -4,9 +4,55 @@ Notable changes to the `lowendinsight` library and the hosted service in this
 repository. The library is published to Hex; the service is deployed from the
 same tree (ADR-003).
 
-## 0.15.0 — 2026-10-05
+## 0.16.0-beta.1 — unreleased
 
-### Changed
+The first beta. Every published interface now says so in its version:
+
+- **Hex**: `0.16.0-beta.1` is a pre-release, so `~> 0.13` and the like do not
+  resolve to it. Opt in with `{:lowendinsight, "~> 0.16.0-beta.1"}`.
+- **Container images, Zarf package and UDS bundle**: tagged with the exact
+  version only. A pre-release never moves `:latest` or `:0.16`.
+- **REST API**: `/openapi.json` and `GET /v1/health` report the running
+  version, and the specification says it is a beta. The `/v1` paths are not
+  frozen until 1.0.
+- **Web UI**: every page opens with a BETA banner naming the running version.
+  It follows the version, not the billing mode, so it goes when the
+  pre-release suffix does.
+- **MCP client** (`clients/mcp`) and the **VS Code extension** are marked beta
+  and preview.
+- **GitHub Action**: rebuilt as a composite action at the repository root, so
+  `uses: kitplummer/lowendinsight@v0.16.0-beta.1` works. The Docker action it
+  replaces could not be built after the umbrella conversion (it copied a
+  `mix.lock` that no longer existed), and the documented `@gha` ref did not
+  exist. **Breaking:** SARIF is now the default (`sarif: 'false'` for JSON), and
+  JSON mode pushes only when `branch` is set. See `gha.md`.
+
+Interfaces may change between betas. Breaking changes are listed here.
+
+This release also contains the work prepared as 0.14.0 and 0.15.0. Both were
+given a date on 2026-10-05 and neither was ever tagged or published, so they
+appear below as part of this release, not as versions of their own.
+
+### Fixed
+
+- **SARIF survives a dependency that could not be analysed.** An entry with
+  an error and no results raised `KeyError` in `Lei.Sarif`, losing the log for
+  every dependency. It is now a tool notification in
+  `runs[].invocations[].toolExecutionNotifications`.
+- **npm `git+ssh://` repositories are analysed.** The registry's repository
+  URL is normalised to https before cloning; left-pad's
+  `git+ssh://git@github.com/stevemao/left-pad.git` was refused as not a Git
+  URL.
+- **npm lockfileVersion 3 is parsed.** npm 7+ writes dependencies under
+  `"packages"`, with no top-level `"dependencies"`. `Npm.Packagefile` had no
+  clause for that and raised `FunctionClauseError`, which crashed `mix lei.sarif`
+  and `mix lei.scan` on any project with a modern `package-lock.json`. A
+  manifest with no dependencies at all now has none, rather than raising.
+
+### Prepared as 0.15.0
+
+
+#### Changed
 
 - **Clones are full again; `--filter=blob:none` is reverted.** It was added in
   0.14.0 to get large repositories under the service's size guard. The guard
@@ -54,7 +100,7 @@ same tree (ADR-003).
 
   `LEI_MAX_REPO_SIZE_KB` still overrides it.
 
-### Fixed
+#### Fixed
 
 - **Contributor deduplication is linear.** `parse_shortlog/1` went from
   3,366 ms to 52 ms on React's 2,042 contributors; DefinitelyTyped's 19,983
@@ -63,9 +109,10 @@ same tree (ADR-003).
   peak memory and the same contributor counts — verified against git's own
   mailmap-applied figures.
 
-## 0.14.0 — 2026-10-05
 
-### Changed
+### Prepared as 0.14.0
+
+#### Changed
 
 - **Clones are blobless.** `Lei.Git.clone/2` passes
   `--filter=blob:none`, fetching the whole commit graph and omitting historical

@@ -1,71 +1,289 @@
-name: Release
+name: release
+
+# One workflow per release, replacing four that each triggered on the tag and
+# raced: hex_publish published to Hex without running a single test, Release and
+# zarf_package both built and pushed the same image, zarf_package pushed :latest
+# for every tag, and uds_bundle had never once produced a bundle -- `uds create`
+# failed on a core ref that does not exist, `continue-on-error` swallowed it,
+# and the publish step said "No bundle artifact found -- skipping" and passed.
+#
+# Order is by reversibility. Everything is built and verified first; GHCR tags
+# can be overwritten, so images and OCI packages publish next; Hex is last
+# because a published version cannot be reused; the GitHub Release records
+# what happened.
+#
+#   git tag v0.16.0-beta.1 && git push origin v0.16.0-beta.1    # release
+#   gh workflow run release.yml --ref <branch>                   # dry run
+#
+# A dry run builds every artifact from the tree's version and publishes nothing.
+#
+# A version with a pre-release suffix (0.16.0-beta.1) is a pre-release
+# everywhere: Hex marks it so and resolvers skip it unless asked, the GitHub
+# Release is flagged prerelease and never "latest", and the image gets only its
+# exact tag -- no :MAJOR.MINOR, no :latest.
 
 on:
   push:
-    tags:
-      - 'v*'
+    tags: ['v*']
+  workflow_dispatch:
 
-env:
-  REGISTRY: ghcr.io
-  IMAGE_NAME: ${{ github.repository }}
+permissions:
+  contents: read
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
 
 jobs:
-  build-and-push-image:
+  plan:
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.plan.outputs.version }}
+      prerelease: ${{ steps.plan.outputs.prerelease }}
+      publish: ${{ steps.plan.outputs.publish }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+      - name: Version, tag, CHANGELOG and branch agree
+        id: plan
+        env:
+          EVENT: ${{ github.event_name }}
+          REF_TYPE: ${{ github.ref_type }}
+          REF_NAME: ${{ github.ref_name }}
+        run: |
+          set -euo pipefail
+          TREE=$(sed -n 's/.*version: "\([^"]*\)".*/\1/p' apps/lowendinsight/mix.exs | head -1)
+          FAILED=0
+
+          if [ "$EVENT" = "push" ] && [ "$REF_TYPE" = "tag" ]; then
+            VERSION="${REF_NAME#v}"
+            PUBLISH=true
+          else
+            VERSION="$TREE"
+            PUBLISH=false
+            echo "::notice::Dry run of ${VERSION}: every artifact is built, nothing is published."
+          fi
+
+          if ! [[ "$VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?$ ]]; then
+            echo "::error::'${VERSION}' is not a SemVer version."
+            exit 1
+          fi
+
+          if [ "$VERSION" != "$TREE" ]; then
+            echo "::error::Tag says ${VERSION}, apps/lowendinsight/mix.exs says ${TREE}."
+            FAILED=1
+          fi
+
+          # A released section carries the date it shipped. 0.14.0 and 0.15.0
+          # were given dates and never tagged; the date is what makes a section
+          # a claim, so the tag has to be pushed against one.
+          HEADING=$(grep -m1 -F "## ${VERSION} " apps/lowendinsight/CHANGELOG.md || true)
+          if [ -z "$HEADING" ]; then
+            echo "::error::apps/lowendinsight/CHANGELOG.md has no section for ${VERSION}."
+            FAILED=1
+          elif ! [[ "$HEADING" =~ [0-9]{4}-[0-9]{2}-[0-9]{2} ]]; then
+            if [ "$PUBLISH" = "true" ]; then
+              echo "::error::The CHANGELOG section for ${VERSION} has no date: '${HEADING}'. Date it, merge, then tag."
+              FAILED=1
+            else
+              echo "::warning::The CHANGELOG section for ${VERSION} has no date yet; a tag would be refused."
+            fi
+          fi
+
+          # Released from what was reviewed: main, or a maintenance branch.
+          if [ "$PUBLISH" = "true" ]; then
+            ON=$(git branch -r --contains "$GITHUB_SHA" | grep -cE '^\s*origin/(main|release/.+)$' || true)
+            if [ "$ON" = "0" ]; then
+              echo "::error::${GITHUB_SHA} is not on main or a release/ branch."
+              FAILED=1
+            fi
+          fi
+
+          [ "$FAILED" = "0" ] || exit 1
+
+          PRERELEASE=false
+          [[ "$VERSION" == *-* ]] && PRERELEASE=true
+
+          # The section's body becomes the release notes.
+          awk -v h="## ${VERSION} " 'index($0, h) == 1 {on=1; next} on && /^## / {exit} on' \
+            apps/lowendinsight/CHANGELOG.md > notes.md
+          if [ ! -s notes.md ]; then
+            echo "::error::The CHANGELOG section for ${VERSION} is empty."
+            exit 1
+          fi
+
+          {
+            echo "version=${VERSION}"
+            echo "prerelease=${PRERELEASE}"
+            echo "publish=${PUBLISH}"
+          } >> "$GITHUB_OUTPUT"
+          echo "version=${VERSION} prerelease=${PRERELEASE} publish=${PUBLISH}"
+      - uses: actions/upload-artifact@v7
+        with:
+          name: release-notes
+          path: notes.md
+          if-no-files-found: error
+
+  # The whole of umbrella_ci, on exactly the tagged commit, including every
+  # guard mutation. A tag is not a release until this passes.
+  ci:
+    needs: plan
+    uses: ./.github/workflows/elixir.yml
+    secrets: inherit
+
+  # The image, the Zarf package and the UDS bundle share one Docker daemon:
+  # Zarf packages the image it finds locally, so they are one job.
+  packages:
+    needs: [plan, ci]
     runs-on: ubuntu-latest
     permissions:
-      contents: write
+      contents: read
       packages: write
-
+    env:
+      VERSION: ${{ needs.plan.outputs.version }}
+      PRERELEASE: ${{ needs.plan.outputs.prerelease }}
+      PUBLISH: ${{ needs.plan.outputs.publish }}
+      IMAGE: ghcr.io/${{ github.repository_owner }}/lowendinsight
+      REGISTRY: ghcr.io/${{ github.repository_owner }}
     steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
-      - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@8d2750c68a42422c14e847fe6c8ac0403b4cbd6f # v3
+      - uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
 
-      - name: Log in to the Container registry
-        uses: docker/login-action@c94ce9fb468520275223c153574b00df6fe4bcc9 # v3
+      - uses: docker/login-action@81c6f93d4bc991e510b342a00b419b3bb4efc5c6 # v4.7.0
+        if: needs.plan.outputs.publish == 'true'
         with:
-          registry: ${{ env.REGISTRY }}
+          registry: ghcr.io
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Extract metadata (tags, labels) for Docker
-        id: meta
-        uses: docker/metadata-action@c299e40c65443455700f0fdfc63efafe5b349051 # v5
-        with:
-          images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
-          tags: |
-            type=semver,pattern={{version}}
-            type=semver,pattern={{major}}.{{minor}}
-            type=sha
+      - name: Image tags
+        id: tags
+        run: |
+          TAGS="${IMAGE}:${VERSION}"
+          if [ "$PRERELEASE" = "false" ]; then
+            TAGS="${TAGS},${IMAGE}:${VERSION%.*},${IMAGE}:latest"
+          fi
+          echo "tags=${TAGS}" >> "$GITHUB_OUTPUT"
+          echo "$TAGS"
 
-      - name: Build and push Docker image
-        uses: docker/build-push-action@ca052bb54ab0790a636c9b5f226502c73d547a25 # v5
+      - uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
         with:
           context: .
           file: apps/lowendinsight/Dockerfile.prod
-          push: true
-          tags: ${{ steps.meta.outputs.tags }}
-          labels: ${{ steps.meta.outputs.labels }}
+          load: true
+          push: ${{ needs.plan.outputs.publish == 'true' }}
+          tags: ${{ steps.tags.outputs.tags }}
+          labels: |
+            org.opencontainers.image.version=${{ needs.plan.outputs.version }}
+            org.opencontainers.image.revision=${{ github.sha }}
+            org.opencontainers.image.source=${{ github.server_url }}/${{ github.repository }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
-      - name: Create GitHub Release
-        uses: softprops/action-gh-release@de2c0eb89ae2a093876385947365aca7b0e5f844 # v1
+      # Without a version, setup-uds installs whatever uds-cli was released
+      # last. Pinned, and checked: an input the action does not recognise is
+      # only a warning, and it would install latest anyway.
+      - uses: defenseunicorns/setup-uds@ab842abcad1f7a3305c2538e3dd1950d0daacfa5 # v1.0.1
         with:
-          generate_release_notes: true
-          body: |
-            ## Installation
+          version: v0.40.0
+      - name: uds-cli is the pinned version
+        run: |
+          V=$(uds version)
+          echo "uds-cli: $V"
+          [[ "$V" =~ ^v?0\.40\.0$ ]] || { echo "::error::uds-cli is '$V', not v0.40.0"; exit 1; }
 
-            ```elixir
-            {:lowendinsight, "~> ${{ github.ref_name }}"}
-            ```
+      - name: Zarf package
+        working-directory: apps/lowendinsight
+        run: |
+          uds zarf dev lint . \
+            --set VERSION="$VERSION" --set LEI_REGISTRY="$REGISTRY" --set LEI_CACHE_REGISTRY="$REGISTRY"
+          uds zarf package create . --confirm \
+            --set VERSION="$VERSION" --set LEI_REGISTRY="$REGISTRY" --set LEI_CACHE_REGISTRY="$REGISTRY"
+          ls zarf-package-lei-*-"${VERSION}".tar.zst
 
-            ## Docker Image
+      # The bundle's own version and the lei package ref follow the release;
+      # they were hardcoded at 0.9.1 for every release since.
+      - name: UDS bundle
+        run: |
+          yq -i '.metadata.version = strenv(VERSION)' uds-bundle.yaml
+          yq -i '(.packages[] | select(.name == "lei") | .ref) = strenv(VERSION)' uds-bundle.yaml
+          uds create . --confirm
+          ls uds-bundle-lei-*-"${VERSION}".tar.zst
 
-            ```bash
-            docker pull ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ github.ref_name }}
-            ```
+      - name: Publish Zarf package and UDS bundle
+        if: needs.plan.outputs.publish == 'true'
+        run: |
+          uds zarf package publish apps/lowendinsight/zarf-package-lei-*-"${VERSION}".tar.zst "oci://${REGISTRY}/packages"
+          uds publish uds-bundle-lei-*-"${VERSION}".tar.zst "oci://${REGISTRY}/bundles"
+
+      - uses: actions/upload-artifact@v7
+        with:
+          name: zarf-and-uds-${{ needs.plan.outputs.version }}
+          path: |
+            apps/lowendinsight/zarf-package-lei-*.tar.zst
+            uds-bundle-lei-*.tar.zst
+          if-no-files-found: error
+          retention-days: 14
+
+  hex:
+    needs: [plan, packages]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: erlef/setup-beam@54075bcc5e249e4758d363f27d099f55d843f124 # v1.24.1
+        with:
+          elixir-version: 1.20.4
+          otp-version: 28.5.0.6
+      - name: Install dependencies
+        run: |
+          mix local.rebar --force
+          mix local.hex --force
+          mix deps.get
+      - name: Build the package
+        working-directory: apps/lowendinsight
+        run: mix hex.build
+      - name: Publish to Hex
+        if: needs.plan.outputs.publish == 'true'
+        working-directory: apps/lowendinsight
         env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          HEX_API_KEY: ${{ secrets.HEX_API_KEY }}
+        run: mix hex.publish --yes
+
+  github-release:
+    needs: [plan, packages, hex]
+    if: needs.plan.outputs.publish == 'true'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    env:
+      VERSION: ${{ needs.plan.outputs.version }}
+    steps:
+      - uses: actions/download-artifact@v8
+        with:
+          name: release-notes
+      - name: Release body
+        run: |
+          {
+            if [[ "$VERSION" == *-* ]]; then
+              echo "> **Pre-release.** Interfaces may change before ${VERSION%%-*}."
+              echo
+            fi
+            echo '## Install'
+            echo
+            echo '```elixir'
+            echo "{:lowendinsight, \"~> ${VERSION}\"}"
+            echo '```'
+            echo
+            echo '```bash'
+            echo "docker pull ghcr.io/${{ github.repository_owner }}/lowendinsight:${VERSION}"
+            echo '```'
+            echo
+            cat notes.md
+          } > body.md
+      - uses: softprops/action-gh-release@efb35369e0ad2afab669f228072c1b0d510eae64 # v3.0.3
+        with:
+          body_path: body.md
+          prerelease: ${{ needs.plan.outputs.prerelease == 'true' }}
+          make_latest: ${{ needs.plan.outputs.prerelease == 'true' && 'false' || 'true' }}

@@ -46,7 +46,7 @@ STATUS=$?
 printf '%s\n' "$OUT"
 echo
 
-if printf '%s\n' "$OUT" | grep -q "does not match any advisory"; then
+if grep -q "does not match any advisory" <<<"$OUT"; then
   if [ "$STRICT" -eq 1 ]; then
     echo "FAIL: an acknowledged advisory no longer applies; remove it from scripts/acknowledged-advisories.txt"
     exit 1
@@ -78,7 +78,7 @@ if [ "$MIX_AUDIT_STATUS" -ne 0 ]; then
   echo "FAIL: mix_audit found unacknowledged vulnerabilities (above)"
   exit 1
 fi
-printf '%s\n' "$MIX_AUDIT" | grep -q "No vulnerabilities found" || {
+grep -q "No vulnerabilities found" <<<"$MIX_AUDIT" || {
   echo "FAIL: mix_audit did not report a result; it may not have run"
   exit 1
 }

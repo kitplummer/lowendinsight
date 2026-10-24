@@ -20,16 +20,21 @@ defmodule LeiService.WorkflowPinningTest do
   @workflows Path.expand("../../../../.github/workflows", __DIR__)
 
   # First-party. GitHub controls the namespace, and the repo pins them to major
-  # tags deliberately so security patches arrive without a manual bump.
-  @first_party ~r{^actions/}
+  # tags deliberately so security patches arrive without a manual bump. A
+  # `./` reference is a workflow in this repository, at this commit.
+  @first_party ~r{^(actions/|\./)}
 
-  # The one exception, and it is a gap rather than a decision: this org enforces
-  # SAML on its repositories, so the API will not resolve the tag to a commit
-  # for us. v1.0.1 is at least an immutable-by-convention patch tag rather than
-  # a moving major.
-  @unresolvable ["defenseunicorns/setup-uds@v1.0.1"]
+  # Actions whose tag cannot be resolved to a commit. setup-uds was here because
+  # the org enforces SAML on the API; its public tag listing resolves without
+  # authentication, and it is pinned now. Empty, and it stays that way unless
+  # an entry is argued for in a diff.
+  @unresolvable []
 
-  defp workflow_files, do: Path.wildcard(Path.join(@workflows, "*.yml"))
+  # The composite action this repository publishes runs in other people's jobs,
+  # with their tokens.
+  @action Path.expand("../../../../action.yml", __DIR__)
+
+  defp workflow_files, do: [@action | Path.wildcard(Path.join(@workflows, "*.yml"))]
 
   defp action_refs do
     for path <- workflow_files(),
@@ -77,9 +82,8 @@ defmodule LeiService.WorkflowPinningTest do
   end
 
   test "the unresolvable list has not quietly grown" do
-    # An allowlist is how this check stops being a check. One entry, for a
-    # stated reason; a second one has to be argued for in a diff.
-    assert length(@unresolvable) == 1
+    # An allowlist is how this check stops being a check.
+    assert @unresolvable == []
   end
 
   test "the check can actually see the workflows" do

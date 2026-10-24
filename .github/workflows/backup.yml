@@ -80,7 +80,7 @@ jobs:
     name: Verify the backup
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       # Refuses to proceed half-configured. A verification that cannot read the
       # bucket must fail, not report a backup it never looked at.
@@ -308,7 +308,7 @@ jobs:
       # this job did before the producer moved, and it costs one upload of a
       # file already downloaded. scripts/backup-pull.sh is the other off-Fly
       # copy, onto a machine a human controls.
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: lei-backup-${{ github.run_started_at }}
           path: lei-backup.dump.gpg

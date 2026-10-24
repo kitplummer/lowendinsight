@@ -1,5 +1,8 @@
 # LowEndInsight as an MCP tool
 
+> **Beta** (`0.16.0-beta.1`, reported as `serverInfo.version`). Tool names,
+> arguments and output may change between betas.
+
 Puts dependency facts in an agent's tool list. That is the only way an agent
 comes to use them: it does not browse, it uses what it was given.
 

@@ -47,6 +47,7 @@
     </script>
   </head>
   <body>
+    <%= Lei.Web.Release.banner() %>
     <script src="../js/endpoints.js" type="text/javascript"></script>
     <section class="section">
       <div class="columns is-multiline is-centered">

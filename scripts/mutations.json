@@ -3362,7 +3362,7 @@
       "id": "deploy-gate-hides-that-it-declined",
       "bug": "A deploy run that deliberately ships nothing concludes success, so declining and shipping are identical in the run list. Without the job summary saying which happened, the run page carries no way to tell -- which produced two wrong answers in one sitting.",
       "file": ".github/workflows/deploy.yml",
-      "find": "              echo \"### DECLINED \u2014 nothing was shipped by this run\"",
+      "find": "              echo \"### DECLINED — nothing was shipped by this run\"",
       "replace": "              echo \"### Deploy\"",
       "guarded_by": "test/lei_service/deploy_reporting_test.exs",
       "app": "apps/lei_service"
@@ -4329,6 +4329,69 @@
       "replace": "  @default_max_repo_size_kb 1_500_000",
       "guarded_by": "test/lei_service/repo_size_limit_test.exs",
       "app": "apps/lei_service"
+    },
+    {
+      "id": "canary-match-lost-to-sigpipe",
+      "app": "apps/lei_service",
+      "file": "scripts/canary.sh",
+      "find": "  if grep -qF -- \"$needle\" <<<\"$haystack\"; then",
+      "replace": "  if printf '%s' \"$haystack\" | grep -qF -- \"$needle\"; then",
+      "guarded_by": "test/lei_service/script_sigpipe_test.exs",
+      "bug": "Under pipefail, piping a body larger than a pipe buffer into grep -q reports a found needle as missing: grep exits at the first match and printf fails writing into the closed pipe. The monitor canary failed on 'report names the repo' this way, and the same shape fails open where the match means something is wrong."
+    },
+    {
+      "id": "npm-lockfile-v3-unparsed",
+      "app": "apps/lowendinsight",
+      "file": "apps/lowendinsight/lib/npm/packagefile.ex",
+      "find": "    for {\"node_modules/\" <> name, %{\"version\" => version}} <- packages,",
+      "replace": "    for {\"node_modules/\" <> name, %{\"version\" => version}} <- %{},",
+      "guarded_by": "test/npm/package_json_test.exs",
+      "bug": "npm 7+ lockfiles (lockfileVersion 3) keep dependencies under \"packages\" with no top-level \"dependencies\". Unparsed, the parser raised and `mix lei.sarif` crashed on every scheduled scan; reading it as empty would report a project with a lockfile as having no dependencies."
+    },
+    {
+      "id": "openapi-version-static",
+      "app": "apps/lei_service",
+      "file": "apps/lei_service/lib/lei_service/endpoint.ex",
+      "find": "    Map.put(spec, \"info\", Map.put(info, \"version\", version))",
+      "replace": "    Map.put(spec, \"info\", info)",
+      "guarded_by": "test/lei_service/openapi_version_test.exs",
+      "bug": "/openapi.json was a static file that reported version 0.9.2 through seven releases, so neither a generated client nor a reader of /doc could tell which API, or that it was a beta whose paths may change."
+    },
+    {
+      "id": "mcp-server-version-drifts",
+      "app": "apps/lei_service",
+      "file": "clients/mcp/lei_mcp.py",
+      "find": "\"serverInfo\": {\"name\": SERVER_NAME, \"version\": SERVER_VERSION},",
+      "replace": "\"serverInfo\": {\"name\": SERVER_NAME, \"version\": \"0.2.0\"},",
+      "guarded_by": "test/lei_service/mcp_server_test.exs",
+      "bug": "The MCP client reported serverInfo.version 0.2.0 while the service it calls went from 0.9 to 0.15, so nothing told an agent which beta it was talking to."
+    },
+    {
+      "id": "web-ui-silent-about-beta-release",
+      "app": "apps/lei_service",
+      "file": "apps/lei_service/lib/lei/web/release.ex",
+      "find": "    if prerelease?(version) do",
+      "replace": "    if false do",
+      "guarded_by": "test/lei_service/release_beta_banner_test.exs",
+      "bug": "0.16.0-beta.1 was labelled a beta on Hex, GHCR, the API and the MCP client while the web UI said nothing beyond the free-analysis notice, which follows the billing mode rather than the release."
+    },
+    {
+      "id": "sarif-crashes-on-unanalysed-dependency",
+      "app": "apps/lowendinsight",
+      "file": "apps/lowendinsight/lib/sarif/sarif.ex",
+      "find": "    {unanalysed, analysed} = Enum.split_with(repos, &unanalysed?/1)",
+      "replace": "    {unanalysed, analysed} = {[], repos}",
+      "guarded_by": "test/sarif/sarif_test.exs",
+      "bug": "One dependency LowEndInsight could not analyse (an error, no results) raised KeyError in Lei.Sarif and lost the SARIF log for every dependency. Found by running the GitHub Action on a project that depends on left-pad."
+    },
+    {
+      "id": "npm-git-ssh-repository-not-normalised",
+      "app": "apps/lowendinsight",
+      "file": "apps/lowendinsight/lib/npm/npm_scanner.ex",
+      "find": "{:ok, cloneable(repo)}",
+      "replace": "{:ok, repo}",
+      "guarded_by": "test/npm_registry_test.exs",
+      "bug": "npm records repositories as authors wrote them; left-pad's git+ssh://git@github.com/... was refused by the analyzer, so one of npm's most depended-on packages was reported as unanalysable."
     }
   ]
 }

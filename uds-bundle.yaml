@@ -14,14 +14,19 @@ packages:
   # UDS Core provides: Istio, Keycloak, Pepr, Prometheus, Loki, Grafana
   - name: core
     repository: ghcr.io/defenseunicorns/packages/uds/core
-    ref: 0.62.0
+    # The flavor is part of the tag. uds-cli 0.40.0 accepts a separate
+    # `flavor:` key and still looks up the bare ref, which does not exist.
+    ref: 0.62.0-upstream
 
   # PostgreSQL for LEI metadata and API key storage
   - name: postgresql
     repository: ghcr.io/defenseunicorns/packages/uds/postgres-operator
-    ref: 1.15.0-uds.5
+    # 1.15.0-uds.5 was never published; this is the newest that is.
+    ref: 1.14.0-uds.12-upstream
 
-  # LowEndInsight application (Zarf package built in apps/lowendinsight)
+  # LowEndInsight application (Zarf package built in apps/lowendinsight).
+  # .github/workflows/release.yml sets this ref and metadata.version to the
+  # release being built.
   - name: lei
     path: apps/lowendinsight
     ref: 0.9.1

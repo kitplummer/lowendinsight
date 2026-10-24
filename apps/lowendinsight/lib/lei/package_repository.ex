@@ -376,6 +376,12 @@ defmodule Lei.PackageRepository do
     "bitbucket" => "https://bitbucket.org"
   }
 
+  @doc """
+  A repository URL as a registry records it, as the https URL the analyzer
+  clones: `{:ok, url}`, or `{:error, :no_repository}` when it is not one.
+  """
+  def normalize_url(url), do: normalize(url)
+
   # Registries record repositories in whatever form the package author wrote:
   # git+ssh, git://, a trailing .git, npm's `owner/repo` shorthand, or a URL
   # pointing at a directory inside a monorepo. The analyzer clones over https.

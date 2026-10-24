@@ -47,7 +47,7 @@ bad() { red "$1"; [ -n "${2:-}" ] && echo "         $2"; FAIL=$((FAIL + 1)); }
 # feature works.
 contains() {
   local name="$1" needle="$2" haystack="$3"
-  if printf '%s' "$haystack" | grep -qF -- "$needle"; then
+  if grep -qF -- "$needle" <<<"$haystack"; then
     ok "$name"
   else
     bad "$name" "expected to find: ${needle}"
@@ -187,13 +187,13 @@ else
   contains "report names the repo" "$CANARY_REPO" "$REPORT"
   contains "report has a risk value" '"risk":' "$REPORT"
 
-  if printf '%s' "$REPORT" | grep -qE '"risk":"(critical|high|medium|low)"'; then
+  if grep -qE '"risk":"(critical|high|medium|low)"' <<<"$REPORT"; then
     ok "risk is a real level"
   else
     bad "risk is a real level" "found no critical/high/medium/low"
   fi
 
-  if printf '%s' "$REPORT" | grep -q '"contributor_count":0'; then
+  if grep -q '"contributor_count":0' <<<"$REPORT"; then
     bad "report has contributors" "contributor_count is 0 — the git analysis did nothing"
   else
     ok "report has contributors"

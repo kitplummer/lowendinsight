@@ -110,12 +110,10 @@ defmodule LeiService.Endpoint do
   end
 
   get "/openapi.json" do
-    {:ok, spec} = File.read("#{:code.priv_dir(:lei_service)}/static/openapi.json")
-
     conn
     |> put_resp_content_type(@content_type)
     |> put_resp_header("access-control-allow-origin", "*")
-    |> send_resp(200, spec)
+    |> send_resp(200, Poison.encode!(openapi_spec()))
   end
 
   get "/gh_trending" do
@@ -959,6 +957,28 @@ defmodule LeiService.Endpoint do
     conn
     |> put_resp_content_type("text/html")
     |> send_resp(status || 200, body)
+  end
+
+  # The static file said 0.9.2 for seven releases. The version is the running
+  # one, and a pre-release says it is a beta.
+  defp openapi_spec do
+    version = Application.spec(:lei_service, :vsn) |> to_string()
+
+    spec =
+      Path.join(:code.priv_dir(:lei_service), "static/openapi.json")
+      |> File.read!()
+      |> Poison.decode!()
+
+    info =
+      if String.contains?(version, "-") do
+        Map.update!(spec["info"], "description", fn description ->
+          "Beta (#{version}): paths and fields may change before 1.0. " <> description
+        end)
+      else
+        spec["info"]
+      end
+
+    Map.put(spec, "info", Map.put(info, "version", version))
   end
 
   def handle_errors(conn, _) do
