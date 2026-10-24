@@ -1,10 +1,15 @@
 name: lei_sarif_scan
 
+# The scan used to run with continue-on-error, and crashed on every run since
+# at least 2026-10-03 (a lockfileVersion 3 package-lock.json the npm parser had
+# no clause for). The upload step then skipped for want of a file, and the
+# workflow reported success having uploaded nothing. A scan that cannot finish
+# fails here.
 on:
   push:
-    branches: [develop, main]
+    branches: [main]
   pull_request:
-    branches: [develop, main]
+    branches: [main]
   schedule:
     - cron: '0 6 * * 1'  # Weekly Monday 6am UTC
 
@@ -19,10 +24,10 @@ jobs:
     env:
       MIX_ENV: test
     steps:
-    - uses: actions/checkout@v4
+    - uses: actions/checkout@v7
 
     - name: Setup Elixir
-      uses: erlef/setup-beam@54075bcc5e249e4758d363f27d099f55d843f124 # v1
+      uses: erlef/setup-beam@54075bcc5e249e4758d363f27d099f55d843f124 # v1.24.1
       with:
         elixir-version: 1.20.4
         otp-version: 28.5.0.6
@@ -34,14 +39,12 @@ jobs:
         mix deps.get
 
     - name: Run LowEndInsight SARIF Scan
-      continue-on-error: true
       run: |
         git config --global --add safe.directory /__w/${{ github.event.repository.name }}/${{ github.event.repository.name }}
         cd apps/lowendinsight && mix lei.sarif ../.. --output ../../lei-results.sarif
 
     - name: Upload SARIF to GitHub Security tab
-      uses: github/codeql-action/upload-sarif@1190a975f95ce23525efb6a3fc21ea29567c1b52 # v3
-      if: always() && hashFiles('lei-results.sarif') != ''
+      uses: github/codeql-action/upload-sarif@9b3254085494b55a0f7c4c2b3d2d52cc712ce370 # v4.39.1
       with:
         sarif_file: lei-results.sarif
         category: lowendinsight

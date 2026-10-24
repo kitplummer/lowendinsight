@@ -34,4 +34,16 @@ defmodule Npm.Packagefile do
   defp extract_deps({:ok, %{"dependencies" => deps}}), do: deps
 
   defp extract_deps({:ok, %{"devDependencies" => devDeps}}), do: devDeps
+
+  # lockfileVersion 3 (npm 7+) has no top-level "dependencies"; packages are
+  # keyed by install path. Only top-level installs, as for version 1, and only
+  # entries with a version -- a "link" to a local directory has none.
+  defp extract_deps({:ok, %{"packages" => packages}}) do
+    for {"node_modules/" <> name, %{"version" => version}} <- packages,
+        not String.contains?(name, "/node_modules/"),
+        into: %{},
+        do: {name, %{"version" => version}}
+  end
+
+  defp extract_deps({:ok, %{}}), do: %{}
 end

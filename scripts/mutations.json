@@ -4338,6 +4338,15 @@
       "replace": "  if printf '%s' \"$haystack\" | grep -qF -- \"$needle\"; then",
       "guarded_by": "test/lei_service/script_sigpipe_test.exs",
       "bug": "Under pipefail, piping a body larger than a pipe buffer into grep -q reports a found needle as missing: grep exits at the first match and printf fails writing into the closed pipe. The monitor canary failed on 'report names the repo' this way, and the same shape fails open where the match means something is wrong."
+    },
+    {
+      "id": "npm-lockfile-v3-unparsed",
+      "app": "apps/lowendinsight",
+      "file": "apps/lowendinsight/lib/npm/packagefile.ex",
+      "find": "    for {\"node_modules/\" <> name, %{\"version\" => version}} <- packages,",
+      "replace": "    for {\"node_modules/\" <> name, %{\"version\" => version}} <- %{},",
+      "guarded_by": "test/npm/package_json_test.exs",
+      "bug": "npm 7+ lockfiles (lockfileVersion 3) keep dependencies under \"packages\" with no top-level \"dependencies\". Unparsed, the parser raised and `mix lei.sarif` crashed on every scheduled scan; reading it as empty would report a project with a lockfile as having no dependencies."
     }
   ]
 }

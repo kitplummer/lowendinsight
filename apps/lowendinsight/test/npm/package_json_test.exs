@@ -63,4 +63,31 @@ defmodule PackageJSONTest do
     assert deps_count == 1
     assert [{"lodash", "4.17.21"}] == lib_map
   end
+
+  # npm 7+ writes lockfileVersion 3: dependencies are under "packages", keyed by
+  # install path, and there is no top-level "dependencies". The parser had no
+  # clause for it and raised, which crashed `mix lei.sarif` on every scheduled
+  # run of lei_sarif_scan -- hidden by continue-on-error, so the workflow stayed
+  # green while uploading nothing.
+  test "extracts top-level dependencies from a lockfileVersion 3 package-lock.json" do
+    content = ~s({
+      "name": "app", "lockfileVersion": 3,
+      "packages": {
+        "": {"name": "app", "dependencies": {"express": "^4.17.1"}},
+        "node_modules/express": {"version": "4.21.2"},
+        "node_modules/@babel/core": {"version": "7.26.0", "dev": true},
+        "node_modules/express/node_modules/debug": {"version": "2.6.9"},
+        "node_modules/local-thing": {"resolved": "../local-thing", "link": true}
+      }
+    })
+
+    {:ok, {lib_map, deps_count}} = Npm.Packagefile.parse!(content)
+
+    assert deps_count == 2
+    assert Enum.sort(lib_map) == [{"@babel/core", "7.26.0"}, {"express", "4.21.2"}]
+  end
+
+  test "a manifest with no dependencies has none, rather than raising" do
+    assert {:ok, {[], 0}} = Npm.Packagefile.parse!(~s({"name": "empty", "version": "1.0.0"}))
+  end
 end

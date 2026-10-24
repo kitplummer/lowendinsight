@@ -15,13 +15,18 @@ packages:
   - name: core
     repository: ghcr.io/defenseunicorns/packages/uds/core
     ref: 0.62.0
+    flavor: upstream
 
   # PostgreSQL for LEI metadata and API key storage
   - name: postgresql
     repository: ghcr.io/defenseunicorns/packages/uds/postgres-operator
-    ref: 1.15.0-uds.5
+    # 1.15.0-uds.5 was never published; this is the newest that is.
+    ref: 1.14.0-uds.12
+    flavor: upstream
 
-  # LowEndInsight application (Zarf package built in apps/lowendinsight)
+  # LowEndInsight application (Zarf package built in apps/lowendinsight).
+  # .github/workflows/release.yml sets this ref and metadata.version to the
+  # release being built.
   - name: lei
     path: apps/lowendinsight
     ref: 0.9.1

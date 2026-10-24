@@ -27,7 +27,7 @@ jobs:
     name: Verify production
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       # Asked first, because every check below it is worth running only if a
       # failure can still reach someone.
