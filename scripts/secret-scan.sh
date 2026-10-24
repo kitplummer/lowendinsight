@@ -49,7 +49,7 @@ FOUND=()
 for entry in "${PATTERNS[@]}"; do
   name="${entry%%|*}"
   regex="${entry#*|}"
-  if printf '%s' "$BODY" | grep -qE -- "$regex"; then
+  if grep -qE -- "$regex" <<<"$BODY"; then
     FOUND+=("$name")
   fi
 done

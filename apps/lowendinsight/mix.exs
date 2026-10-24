@@ -59,7 +59,7 @@ defmodule GithubModule.MixProject do
       {:sweet_xml, "~> 0.7.1"},
       # No database, web server or JWT here: those belong to the hosted
       # service, which depends on this library (ADR-003).
-      {:sbom, "~> 0.6", only: :dev, runtime: false}
+      {:sbom, "~> 0.12", only: :dev, runtime: false}
     ]
   end
 

@@ -48,9 +48,9 @@ mix deps.get >deps.log 2>&1 || fail "deps.get" "$(tail -5 deps.log)"
 
 # 1. Dependencies
 RESOLVED=$(mix deps 2>/dev/null | sed -n 's/^\* \([a-z_0-9]*\).*/\1/p' | sort -u)
-[ -n "$RESOLVED" ] && echo "$RESOLVED" | grep -qx lowendinsight || fail "dependencies resolved" "mix deps listed no lowendinsight"
+[ -n "$RESOLVED" ] && grep -qx lowendinsight <<<"$RESOLVED" || fail "dependencies resolved" "mix deps listed no lowendinsight"
 for dep in $FORBIDDEN; do
-  if echo "$RESOLVED" | grep -qx "$dep"; then
+  if grep -qx "$dep" <<<"$RESOLVED"; then
     fail "no service dependencies" "$dep is resolved for a project that depends only on the library"
   fi
 done
@@ -74,7 +74,7 @@ BOOT=$(mix run -e '
   present = Enum.filter([Lei.Repo, Lei.Stripe, Lei.Web.Router, LeiService.Endpoint, Ecto.Repo, Plug.Conn], &Code.ensure_loaded?/1)
   IO.puts("PRESENT=" <> inspect(present))
 ' 2>&1) || fail "starts with no configuration" "$(echo "$BOOT" | tail -5)"
-echo "$BOOT" | grep -q '^PRESENT=\[\]$' || fail "no service code loaded" "$(echo "$BOOT" | grep PRESENT= || echo "$BOOT" | tail -3)"
+grep -q '^PRESENT=\[\]$' <<<"$BOOT" || fail "no service code loaded" "$(echo "$BOOT" | grep PRESENT= || echo "$BOOT" | tail -3)"
 pass "starts with no configuration; no service modules present"
 
 # 4. Analyzes a real repository with thresholds configured
@@ -115,8 +115,8 @@ ANALYSIS=$(mix run -e "
   IO.puts(\"CONFIG_ONLY_THRESHOLDS=\" <> to_string(keys != [] and Enum.all?(keys, &String.ends_with?(&1, \"_level\"))))
 " 2>&1) || fail "analysis runs" "$(echo "$ANALYSIS" | tail -5)"
 
-echo "$ANALYSIS" | grep -qE '^RISK=(critical|high|medium|low)$' || fail "analysis produces a risk level" "$(echo "$ANALYSIS" | tail -3)"
-echo "$ANALYSIS" | grep -q '^CONFIG_ONLY_THRESHOLDS=true$' || fail "report config is only thresholds" "$(echo "$ANALYSIS" | grep CONFIG_)"
+grep -qE '^RISK=(critical|high|medium|low)$' <<<"$ANALYSIS" || fail "analysis produces a risk level" "$(echo "$ANALYSIS" | tail -3)"
+grep -q '^CONFIG_ONLY_THRESHOLDS=true$' <<<"$ANALYSIS" || fail "report config is only thresholds" "$(echo "$ANALYSIS" | grep CONFIG_)"
 pass "analyzes a git repository: $(echo "$ANALYSIS" | sed -n 's/^RISK=//p') risk, report config only thresholds"
 
 # 5. The Hex package declares no service dependency
@@ -125,7 +125,7 @@ rm -f "$LIB"/lowendinsight-*.tar
 DECLARED=$(echo "$HEX" | sed -n '/^  Dependencies:/,/^  [A-Z]/p' | sed -n 's/^    \([a-z_0-9]*\) .*/\1/p')
 [ -n "$DECLARED" ] || fail "hex.build lists dependencies" "could not read the Dependencies section"
 for dep in $FORBIDDEN; do
-  if echo "$DECLARED" | grep -qx "$dep"; then
+  if grep -qx "$dep" <<<"$DECLARED"; then
     fail "Hex package declares no service dependency" "$dep"
   fi
 done

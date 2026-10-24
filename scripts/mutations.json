@@ -3362,7 +3362,7 @@
       "id": "deploy-gate-hides-that-it-declined",
       "bug": "A deploy run that deliberately ships nothing concludes success, so declining and shipping are identical in the run list. Without the job summary saying which happened, the run page carries no way to tell -- which produced two wrong answers in one sitting.",
       "file": ".github/workflows/deploy.yml",
-      "find": "              echo \"### DECLINED \u2014 nothing was shipped by this run\"",
+      "find": "              echo \"### DECLINED — nothing was shipped by this run\"",
       "replace": "              echo \"### Deploy\"",
       "guarded_by": "test/lei_service/deploy_reporting_test.exs",
       "app": "apps/lei_service"
@@ -4329,6 +4329,15 @@
       "replace": "  @default_max_repo_size_kb 1_500_000",
       "guarded_by": "test/lei_service/repo_size_limit_test.exs",
       "app": "apps/lei_service"
+    },
+    {
+      "id": "canary-match-lost-to-sigpipe",
+      "app": "apps/lei_service",
+      "file": "scripts/canary.sh",
+      "find": "  if grep -qF -- \"$needle\" <<<\"$haystack\"; then",
+      "replace": "  if printf '%s' \"$haystack\" | grep -qF -- \"$needle\"; then",
+      "guarded_by": "test/lei_service/script_sigpipe_test.exs",
+      "bug": "Under pipefail, piping a body larger than a pipe buffer into grep -q reports a found needle as missing: grep exits at the first match and printf fails writing into the closed pipe. The monitor canary failed on 'report names the repo' this way, and the same shape fails open where the match means something is wrong."
     }
   ]
 }

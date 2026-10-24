@@ -29,7 +29,7 @@ check() {
 check_contains() {
   TOTAL=$((TOTAL + 1))
   local desc="$1" needle="$2" haystack="$3"
-  if echo "$haystack" | grep -q "$needle"; then
+  if grep -q "$needle" <<<"$haystack"; then
     green "  PASS: $desc"
     PASS=$((PASS + 1))
   else
@@ -182,7 +182,7 @@ ANALYZE_RESP=$(curl -s -X POST "$BASE_URL/v1/analyze" \
   --max-time 60 \
   -d '{"urls":["https://github.com/kitplummer/xmpp4rails"]}')
 
-if echo "$ANALYZE_RESP" | grep -q "POSTful service"; then
+if grep -q "POSTful service" <<<"$ANALYZE_RESP"; then
   red "  FAIL: POST /v1/analyze returned the generic error handler (it raised)"
   FAIL=$((FAIL + 1))
   TOTAL=$((TOTAL + 1))
