@@ -119,12 +119,25 @@ defmodule Npm.Scanner do
     case Lei.HTTP.Retry.request(fn -> get.(url) end) do
       {:ok, %HTTPoison.Response{status_code: 200, body: body}} ->
         case Poison.decode(body) do
-          {:ok, %{"repository" => %{"url" => repo}}} when is_binary(repo) -> {:ok, repo}
-          _ -> :none
+          {:ok, %{"repository" => %{"url" => repo}}} when is_binary(repo) ->
+            {:ok, cloneable(repo)}
+
+          _ ->
+            :none
         end
 
       _ ->
         :none
+    end
+  end
+
+  # npm records the repository as the author wrote it -- left-pad's is
+  # git+ssh://git@github.com/stevemao/left-pad.git, which the analyzer refuses.
+  # A form the normalizer does not recognise is passed on as written, as before.
+  defp cloneable(repo) do
+    case Lei.PackageRepository.normalize_url(repo) do
+      {:ok, url} -> url
+      {:error, _} -> repo
     end
   end
 end

@@ -7,7 +7,8 @@
 LowEndInsight is in beta. Every published interface carries the pre-release
 version: the Hex package, the container image, the Zarf package and UDS
 bundle, the REST API (`/openapi.json`, `GET /v1/health`), the web UI (a
-banner on every page), the MCP client and the VS Code extension. Interfaces may change between betas, and breaking
+banner on every page), the GitHub Action, the MCP client and the VS Code
+extension. Interfaces may change between betas, and breaking
 changes are listed in the [CHANGELOG](apps/lowendinsight/CHANGELOG.md).
 
 ```elixir
@@ -215,32 +216,32 @@ LEI_CRITICAL_CURRENCY_LEVEL=60 mix lei.scan
 
 ## GitHub Action
 
-> **Not working in this beta.** The action's Docker build predates the
-> umbrella layout and fails, and `kitplummer/lowendinsight@gha` names a ref
-> that no longer exists. Use `mix lei.sarif` in a workflow step until it is
-> fixed.
-
 Add LowEndInsight to your GitHub workflow:
 
 ```yaml
-name: LEI
-on:
-  push:
-    branches: [ main ]
+name: LowEndInsight
+on: [push, pull_request]
+
+permissions:
+  contents: read
+  security-events: write
 
 jobs:
-  analyze:
+  lei:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           fetch-depth: 0
-      - name: Generate Report
-        uses: kitplummer/lowendinsight@gha
+      - id: lei
+        uses: kitplummer/lowendinsight@v0.16.0-beta.1
+      - uses: github/codeql-action/upload-sarif@v4
         with:
-          github_token: ${{ secrets.GITHUB_TOKEN }}
-          branch: main
+          sarif_file: ${{ steps.lei.outputs.sarif_file }}
+          category: lowendinsight
 ```
+
+Inputs, JSON mode and what changed from the old Docker action: [gha.md](gha.md).
 
 ---
 

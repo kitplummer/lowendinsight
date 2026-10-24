@@ -20,8 +20,12 @@ The first beta. Every published interface now says so in its version:
   pre-release suffix does.
 - **MCP client** (`clients/mcp`) and the **VS Code extension** are marked beta
   and preview.
-- **GitHub Action**: does not work in this beta. Its Docker build predates the
-  umbrella layout and fails on a missing `mix.lock`. Do not depend on it yet.
+- **GitHub Action**: rebuilt as a composite action at the repository root, so
+  `uses: kitplummer/lowendinsight@v0.16.0-beta.1` works. The Docker action it
+  replaces could not be built after the umbrella conversion (it copied a
+  `mix.lock` that no longer existed), and the documented `@gha` ref did not
+  exist. **Breaking:** SARIF is now the default (`sarif: 'false'` for JSON), and
+  JSON mode pushes only when `branch` is set. See `gha.md`.
 
 Interfaces may change between betas. Breaking changes are listed here.
 
@@ -31,6 +35,14 @@ appear below as part of this release, not as versions of their own.
 
 ### Fixed
 
+- **SARIF survives a dependency that could not be analysed.** An entry with
+  an error and no results raised `KeyError` in `Lei.Sarif`, losing the log for
+  every dependency. It is now a tool notification in
+  `runs[].invocations[].toolExecutionNotifications`.
+- **npm `git+ssh://` repositories are analysed.** The registry's repository
+  URL is normalised to https before cloning; left-pad's
+  `git+ssh://git@github.com/stevemao/left-pad.git` was refused as not a Git
+  URL.
 - **npm lockfileVersion 3 is parsed.** npm 7+ writes dependencies under
   `"packages"`, with no top-level `"dependencies"`. `Npm.Packagefile` had no
   clause for that and raised `FunctionClauseError`, which crashed `mix lei.sarif`

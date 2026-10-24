@@ -1,10 +1,14 @@
 name: lei_sarif_scan
 
-# The scan used to run with continue-on-error, and crashed on every run since
-# at least 2026-10-03 (a lockfileVersion 3 package-lock.json the npm parser had
-# no clause for). The upload step then skipped for want of a file, and the
-# workflow reported success having uploaded nothing. A scan that cannot finish
-# fails here.
+# Runs the published GitHub Action (action.yml at the root) against this
+# repository, so every PR exercises the action exactly as a user's workflow
+# would: composite steps, the action's own checkout, the SARIF it writes.
+#
+# The scan used to be run directly with continue-on-error, and crashed on every
+# run since at least 2026-10-03 (a lockfileVersion 3 package-lock.json the npm
+# parser had no clause for). The upload then skipped for want of a file, and the
+# workflow reported success having uploaded nothing. The action fails when it
+# cannot write a SARIF log with a run in it.
 on:
   push:
     branches: [main]
@@ -21,30 +25,17 @@ permissions:
 jobs:
   lei-sarif:
     runs-on: ubuntu-latest
-    env:
-      MIX_ENV: test
     steps:
     - uses: actions/checkout@v7
-
-    - name: Setup Elixir
-      uses: erlef/setup-beam@54075bcc5e249e4758d363f27d099f55d843f124 # v1.24.1
       with:
-        elixir-version: 1.20.4
-        otp-version: 28.5.0.6
+        fetch-depth: 0
 
-    - name: Install Dependencies
-      run: |
-        mix local.rebar --force
-        mix local.hex --force
-        mix deps.get
-
-    - name: Run LowEndInsight SARIF Scan
-      run: |
-        git config --global --add safe.directory /__w/${{ github.event.repository.name }}/${{ github.event.repository.name }}
-        cd apps/lowendinsight && mix lei.sarif ../.. --output ../../lei-results.sarif
+    - name: LowEndInsight (this repository's action)
+      id: lei
+      uses: ./
 
     - name: Upload SARIF to GitHub Security tab
       uses: github/codeql-action/upload-sarif@9b3254085494b55a0f7c4c2b3d2d52cc712ce370 # v4.39.1
       with:
-        sarif_file: lei-results.sarif
+        sarif_file: ${{ steps.lei.outputs.sarif_file }}
         category: lowendinsight

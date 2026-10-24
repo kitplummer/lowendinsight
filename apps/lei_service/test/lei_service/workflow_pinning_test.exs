@@ -30,7 +30,11 @@ defmodule LeiService.WorkflowPinningTest do
   # an entry is argued for in a diff.
   @unresolvable []
 
-  defp workflow_files, do: Path.wildcard(Path.join(@workflows, "*.yml"))
+  # The composite action this repository publishes runs in other people's jobs,
+  # with their tokens.
+  @action Path.expand("../../../../action.yml", __DIR__)
+
+  defp workflow_files, do: [@action | Path.wildcard(Path.join(@workflows, "*.yml"))]
 
   defp action_refs do
     for path <- workflow_files(),

@@ -1,0 +1,153 @@
+name: 'LowEndInsight'
+description: '(Beta) Bus-factor and supply-chain risk for the dependencies of a repository, as SARIF for code scanning or as a JSON report.'
+author: 'kitplummer'
+branding:
+  icon: upload-cloud
+  color: green
+
+# A composite action, run from this repository at the ref you pin -- the
+# library and the lock file it was released with, nothing rebuilt in a
+# container. The Docker action it replaces copied an apps/lowendinsight/mix.lock
+# that stopped existing when the repository became an umbrella, so every run
+# of it failed at `docker build`; the README pointed at a ref, @gha, that did
+# not exist either.
+#
+# It installs Elixir and Erlang with the setup-beam action, which puts them on PATH
+# for the steps after it in your job.
+
+inputs:
+  sarif:
+    description: "'true' writes SARIF to sarif_file for upload-sarif. 'false' writes a JSON report instead, and pushes it to `branch` if one is given."
+    required: false
+    default: 'true'
+  sarif_file:
+    description: 'Where to write SARIF, relative to the workspace.'
+    required: false
+    default: 'lei-results.sarif'
+  path:
+    description: 'The directory to scan, relative to the workspace.'
+    required: false
+    default: '.'
+  branch:
+    description: "JSON mode: push the report to this branch. Empty writes the file and pushes nothing."
+    required: false
+    default: ''
+  github_token:
+    description: 'JSON mode with `branch`: a token that can push to the repository.'
+    required: false
+    default: ''
+  repository:
+    description: 'JSON mode with `branch`: owner/repo to push to. Defaults to this repository.'
+    required: false
+    default: ''
+  force:
+    description: "JSON mode with `branch`: 'true' force-pushes."
+    required: false
+    default: 'false'
+  tags:
+    description: "JSON mode with `branch`: 'true' passes --tags."
+    required: false
+    default: 'false'
+  directory:
+    description: 'JSON mode: where the report is written and committed from, relative to the workspace.'
+    required: false
+    default: '.'
+
+outputs:
+  sarif_file:
+    description: 'Absolute path of the SARIF written (SARIF mode).'
+    value: ${{ steps.scan.outputs.sarif_file }}
+  report_file:
+    description: 'Absolute path of the JSON report written (JSON mode).'
+    value: ${{ steps.scan.outputs.report_file }}
+
+runs:
+  using: composite
+  steps:
+    # Must match .tool-versions; scripts/check-toolchain.sh checks this file.
+    - uses: erlef/setup-beam@54075bcc5e249e4758d363f27d099f55d843f124 # v1.24.1
+      with:
+        elixir-version: 1.20.4
+        otp-version: 28.5.0.6
+
+    - name: Cache key
+      id: key
+      shell: bash
+      run: |
+        echo "key=lei-action-${RUNNER_OS}-$(cat "$GITHUB_ACTION_PATH/mix.lock" "$GITHUB_ACTION_PATH/.tool-versions" | sha256sum | cut -c1-16)" >> "$GITHUB_OUTPUT"
+
+    - uses: actions/cache@v6
+      with:
+        path: |
+          ${{ github.action_path }}/deps
+          ${{ github.action_path }}/_build/gha
+        key: ${{ steps.key.outputs.key }}
+
+    - name: Build LowEndInsight
+      shell: bash
+      env:
+        MIX_ENV: gha
+      run: |
+        set -euo pipefail
+        cd "$GITHUB_ACTION_PATH"
+        mix local.rebar --force >/dev/null
+        mix local.hex --force >/dev/null
+        mix deps.get >/dev/null
+        cd apps/lowendinsight
+        mix compile
+
+    - name: Scan
+      id: scan
+      shell: bash
+      env:
+        MIX_ENV: gha
+        LEI_BASE_TEMP_DIR: ${{ runner.temp }}
+        # Inputs through the environment, never interpolated into the script.
+        IN_SARIF: ${{ inputs.sarif }}
+        IN_SARIF_FILE: ${{ inputs.sarif_file }}
+        IN_PATH: ${{ inputs.path }}
+        IN_BRANCH: ${{ inputs.branch }}
+        IN_TOKEN: ${{ inputs.github_token }}
+        IN_REPOSITORY: ${{ inputs.repository }}
+        IN_FORCE: ${{ inputs.force }}
+        IN_TAGS: ${{ inputs.tags }}
+        IN_DIRECTORY: ${{ inputs.directory }}
+      run: |
+        set -euo pipefail
+        TARGET=$(realpath "$GITHUB_WORKSPACE/$IN_PATH")
+        [ -d "$TARGET" ] || { echo "::error::path '$IN_PATH' is not a directory in the workspace"; exit 1; }
+        cd "$GITHUB_ACTION_PATH/apps/lowendinsight"
+
+        if [ "$IN_SARIF" = "true" ]; then
+          OUT=$(realpath -m "$GITHUB_WORKSPACE/$IN_SARIF_FILE")
+          mix lei.sarif "$TARGET" --output "$OUT"
+          # A run that wrote nothing is not a scan.
+          jq -e '.runs | length > 0' "$OUT" >/dev/null || { echo "::error::$OUT is not a SARIF log with a run in it"; exit 1; }
+          echo "sarif_file=$OUT" >> "$GITHUB_OUTPUT"
+          echo "SARIF written to $OUT"
+          exit 0
+        fi
+
+        DIR=$(realpath -m "$GITHUB_WORKSPACE/$IN_DIRECTORY")
+        mkdir -p "$DIR"
+        OUT="$DIR/lei--$(date -u +'%Y-%m-%d--%H-%M-%S').json"
+        mix lei.scan "$TARGET" > "$OUT"
+        jq -e . "$OUT" >/dev/null || { echo "::error::the report in $OUT is not JSON"; exit 1; }
+        echo "report_file=$OUT" >> "$GITHUB_OUTPUT"
+        echo "Report written to $OUT"
+
+        [ -n "$IN_BRANCH" ] || exit 0
+        [ -n "$IN_TOKEN" ] || { echo "::error::branch is set but github_token is empty; nothing can be pushed"; exit 1; }
+
+        cd "$DIR"
+        git config --local user.email "action@github.com"
+        git config --local user.name "GitHub Action"
+        git add "$(basename "$OUT")"
+        git commit -m "LowEndInsight report $(basename "$OUT")"
+
+        ARGS=(--follow-tags)
+        [ "$IN_FORCE" = "true" ] && ARGS+=(--force)
+        [ "$IN_TAGS" = "true" ] && ARGS+=(--tags)
+        REPO=${IN_REPOSITORY:-$GITHUB_REPOSITORY}
+        echo "::add-mask::$IN_TOKEN"
+        git push "https://x-access-token:${IN_TOKEN}@github.com/${REPO}.git" "HEAD:${IN_BRANCH}" "${ARGS[@]}"

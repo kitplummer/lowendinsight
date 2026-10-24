@@ -1,96 +1,102 @@
-# Lowendinsight GitHub Action
-This is an action for Lowendinsight, a simple "bus-factor" risk analysis library for Open Source Software. In its current state, this action works against both NPM and Mix based projects, currently existing in the develop branch of Lowendinsight. When run against a GitHub repository, a `.json` file will be generated of the format `lei--Y-m-d--H-M-S.json` and pushed to that repository's root directory by default.
+# LowEndInsight GitHub Action
 
-## Usage
+> **Beta** (`0.16.0-beta.1`). Inputs and output may change between betas; see
+> the [CHANGELOG](apps/lowendinsight/CHANGELOG.md).
 
-### JSON Report Mode (Legacy)
-```yaml
-name: LEI
-on:
-  push:
-    branches: [ master ]
-  pull_request:
-    branches: [ master ]
+Scans a repository's dependencies (Mix, npm, PyPI, Cargo) for bus-factor and
+supply-chain risk. The default writes SARIF for GitHub code scanning; JSON mode
+writes a report file, and can commit it to a branch.
 
-jobs:
-  build:
-    runs-on: ubuntu-latest
-    steps:
-    - uses: actions/checkout@v2
-    - uses: actions/checkout@master
-      with:
-        persist-credentials: false # otherwise, the token used is the GITHUB_TOKEN, instead of your personal token
-        fetch-depth: 0 # otherwise, you will fail to push refs to dest repo
-    - name: Generate Report
-      uses: kitplummer/lowendinsight@gha
-      with:
-        github_token: ${{ secrets.GITHUB_TOKEN }}
-        branch: main
-```
+It is a composite action: it installs Elixir and Erlang with `erlef/setup-beam`
+and runs LowEndInsight from this repository at the ref you pin. No Docker. The
+first run on a ref compiles for about two minutes; later runs restore from the
+Actions cache.
 
-### SARIF Mode (GitHub Security Tab)
-
-Generate a SARIF 2.1.0 report and upload it to the GitHub Security tab for
-integrated code scanning alerts.
+## SARIF (code scanning)
 
 ```yaml
-name: LEI Security Scan
+name: LowEndInsight
 on:
   push:
     branches: [ main ]
   pull_request:
-    branches: [ main ]
   schedule:
-    - cron: '0 6 * * 1'  # Weekly on Monday
+    - cron: '0 6 * * 1'
 
 permissions:
+  contents: read
   security-events: write
 
 jobs:
-  lei-sarif:
+  lei:
     runs-on: ubuntu-latest
     steps:
-    - uses: actions/checkout@v4
-      with:
-        fetch-depth: 0
-    - name: Run LowEndInsight SARIF scan
-      uses: kitplummer/lowendinsight@gha
-      with:
-        sarif: 'true'
-        sarif_file: 'lei-results.sarif'
-    - name: Upload SARIF to GitHub Security
-      uses: github/codeql-action/upload-sarif@v3
-      with:
-        sarif_file: lei-results.sarif
-        category: lowendinsight
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+      - id: lei
+        uses: kitplummer/lowendinsight@v0.16.0-beta.1
+      - uses: github/codeql-action/upload-sarif@v4
+        with:
+          sarif_file: ${{ steps.lei.outputs.sarif_file }}
+          category: lowendinsight
+```
+
+A dependency LowEndInsight cannot analyse is not dropped: it is reported as a
+tool notification, which code scanning shows on the tool's status page.
+
+## JSON report
+
+```yaml
+      - id: lei
+        uses: kitplummer/lowendinsight@v0.16.0-beta.1
+        with:
+          sarif: 'false'
+          directory: reports            # optional; where the file is written
+          # To commit the report as well:
+          # branch: lei-reports
+          # github_token: ${{ secrets.GITHUB_TOKEN }}   # needs contents: write
 ```
 
 ## Inputs
 
-| name | value | default | description |
-| ---- | ----- | ------- | ----------- |
-| github_token | string | | Token for the repo. Can be passed in using `${{ secrets.GITHUB_TOKEN }}`. Required for legacy JSON mode. |
-| branch | string | 'master' | Destination branch to push changes. Required for legacy JSON mode. |
-| force | boolean | false | Determines if force push is used. |
-| tags | boolean | false | Determines if `--tags` is used. |
-| directory | string | '.' | Directory to change to before pushing. |
-| repository | string | '' | Repository name. Default or empty repository name represents current github repository. If you want to push to other repository, you should make a personal access token. |
-| sarif | boolean | false | Enable SARIF output mode for GitHub Security tab integration. |
-| sarif_file | string | 'lei-results.sarif' | Path to write the SARIF output file (used with `sarif: true`). |
+| name | default | description |
+| ---- | ------- | ----------- |
+| `sarif` | `'true'` | `'true'` writes SARIF; `'false'` writes a JSON report. |
+| `sarif_file` | `lei-results.sarif` | SARIF output path, relative to the workspace. |
+| `path` | `.` | Directory to scan, relative to the workspace. |
+| `directory` | `.` | JSON mode: where the report is written (and committed from). |
+| `branch` | | JSON mode: commit the report and push it here. Empty pushes nothing. |
+| `github_token` | | JSON mode with `branch`: a token that can push. |
+| `repository` | this repository | JSON mode with `branch`: `owner/repo` to push to. |
+| `force` | `'false'` | JSON mode with `branch`: force-push. |
+| `tags` | `'false'` | JSON mode with `branch`: pass `--tags`. |
 
-## SARIF Rule Mapping
+## Outputs
 
-When using SARIF mode, LowEndInsight risk levels are mapped to GitHub Security
-severity levels:
+| name | description |
+| ---- | ----------- |
+| `sarif_file` | Absolute path of the SARIF written (SARIF mode). |
+| `report_file` | Absolute path of the JSON report written (JSON mode). |
 
-| LEI Risk Level | GitHub Severity | Security Score |
-| -------------- | --------------- | -------------- |
+## Changes from the Docker action
+
+The action used to be a Docker action in `apps/lowendinsight/`, referenced as
+`kitplummer/lowendinsight@gha`. That ref does not exist, and the image could
+not be built after the repository became an umbrella. Two behaviours changed:
+
+- **SARIF is the default.** `sarif: 'false'` gives the JSON report.
+- **JSON mode no longer requires a branch.** It writes the file; it pushes only
+  when `branch` is set.
+
+## SARIF rule mapping
+
+| LEI risk | Code scanning level | security-severity |
+| -------- | ------------------- | ----------------- |
 | Critical | error | 9.1 |
 | High | warning | 7.0 |
 | Medium | note | 4.5 |
-| Low | (not reported) | 2.0 |
-
-### SARIF Rules
+| Low | not reported | 2.0 |
 
 | Rule ID | Description |
 | ------- | ----------- |
@@ -101,4 +107,6 @@ severity levels:
 | `lei/sbom-missing` | Dependency has elevated SBOM transparency risk |
 
 ## Privacy
-This action does not, nor will it ever, collect user data. Any repository used in Lowendinsight's analysis is cloned and deleted without any information being collected or sent to a third party.
+
+The action collects nothing. Each dependency's repository is cloned to the
+runner's temporary directory, analysed, and deleted.

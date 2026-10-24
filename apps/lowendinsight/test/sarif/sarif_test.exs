@@ -444,4 +444,41 @@ defmodule Lei.SarifTest do
       assert is_map(rule["defaultConfiguration"])
     end)
   end
+
+  # A dependency LowEndInsight could not analyse has an error and no results.
+  # repo_to_results/1 fetched :results unconditionally, so one such entry
+  # crashed generate/1 and the whole SARIF log was lost -- for every other
+  # dependency too. Found by running the GitHub Action on a project depending on
+  # left-pad. Dropping the entry would be worse: a log that omits what it could
+  # not examine reads as clean. It is reported as a tool notification, which
+  # code scanning shows on the tool's status page.
+  test "a dependency that could not be analysed is a notification, not a crash" do
+    unanalysable = %{
+      data: %{
+        error:
+          "Unable to analyze the repo (git+ssh://git@github.com/stevemao/left-pad.git), is this a valid Git repo URL?",
+        git: %{},
+        repo: "git+ssh://git@github.com/stevemao/left-pad.git",
+        project_types: %{undetermined: "undetermined"},
+        repo_size: "undetermined",
+        risk: "undetermined"
+      }
+    }
+
+    report = update_in(@multi_report, [:report, :repos], &(&1 ++ [unanalysable]))
+
+    assert {:ok, json} = Lei.Sarif.generate(report)
+    [run] = Poison.decode!(json)["runs"]
+
+    {:ok, analysed} = Lei.Sarif.generate(@multi_report)
+    [analysed_run] = Poison.decode!(analysed)["runs"]
+
+    assert run["results"] == analysed_run["results"],
+           "the analysed dependencies lost their results"
+
+    [invocation] = run["invocations"]
+    assert [notification] = invocation["toolExecutionNotifications"]
+    assert notification["level"] == "warning"
+    assert notification["message"]["text"] =~ "stevemao/left-pad"
+  end
 end

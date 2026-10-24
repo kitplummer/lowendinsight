@@ -102,17 +102,19 @@ defmodule Lei.Sarif do
   """
   @spec generate(map()) :: {:ok, String.t()} | {:error, String.t()}
   def generate(%{report: %{repos: repos}} = _report) do
-    results =
-      repos
-      |> Enum.flat_map(&repo_to_results/1)
+    {unanalysed, analysed} = Enum.split_with(repos, &unanalysed?/1)
 
-    sarif = build_sarif(results)
+    results = Enum.flat_map(analysed, &repo_to_results/1)
+    sarif = build_sarif(results, Enum.map(unanalysed, &notification/1))
     {:ok, Poison.encode!(sarif, pretty: true)}
   end
 
   def generate(%{header: _header, data: _data} = report) do
-    results = repo_to_results(report)
-    sarif = build_sarif(results)
+    sarif =
+      if unanalysed?(report),
+        do: build_sarif([], [notification(report)]),
+        else: build_sarif(repo_to_results(report), [])
+
     {:ok, Poison.encode!(sarif, pretty: true)}
   end
 
@@ -121,7 +123,24 @@ defmodule Lei.Sarif do
   @doc false
   def rules, do: @rules
 
-  defp build_sarif(results) do
+  # An entry the analyzer could not examine carries an error and no results.
+  # Leaving it out would make the log read as clean for a dependency nobody
+  # looked at; it is reported as a tool notification instead.
+  defp unanalysed?(repo_report) do
+    data = repo_report[:data] || %{}
+    is_binary(data[:error]) and not Map.has_key?(data, :results)
+  end
+
+  defp notification(repo_report) do
+    data = repo_report[:data]
+
+    %{
+      level: "warning",
+      message: %{text: "Not analysed: #{data[:repo]}: #{data[:error]}"}
+    }
+  end
+
+  defp build_sarif(results, notifications) do
     %{
       "$schema": @schema_uri,
       version: @sarif_version,
@@ -139,6 +158,9 @@ defmodule Lei.Sarif do
             id: "lowendinsight/supply-chain-risk"
           },
           results: results,
+          invocations: [
+            %{executionSuccessful: true, toolExecutionNotifications: notifications}
+          ],
           columnKind: "utf16CodeUnits"
         }
       ]

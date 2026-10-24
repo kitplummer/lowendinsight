@@ -25,9 +25,10 @@ OTP_MAJOR=${ERLANG%%.*}
 [ "$ELIXIR_FULL" = "$ELIXIR-otp-$OTP_MAJOR" ] || bad ".tool-versions: elixir $ELIXIR_FULL is not built for OTP $OTP_MAJOR"
 echo "toolchain: Elixir $ELIXIR, OTP $ERLANG"
 
-# GitHub Actions: every setup-beam pins both versions to .tool-versions.
+# GitHub Actions: every setup-beam pins both versions to .tool-versions,
+# including the composite action this repository publishes.
 checked=0
-for f in .github/workflows/*.yml; do
+for f in .github/workflows/*.yml action.yml; do
   while IFS= read -r v; do
     checked=$((checked + 1))
     [ "$v" = "$ELIXIR" ] || bad "$f: elixir-version $v"

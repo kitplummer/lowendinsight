@@ -19,9 +19,21 @@ defmodule Npm.RegistryTest do
       ~s({"name":"left-pad","repository":{"type":"git","url":"git+https://github.com/stevemao/left-pad.git"}})
 
     assert Npm.Scanner.repository_url("left-pad", registry(200, body)) ==
-             {:ok, "git+https://github.com/stevemao/left-pad.git"}
+             {:ok, "https://github.com/stevemao/left-pad"}
 
     assert_received {:requested, "https://registry.npmjs.org/left-pad"}
+  end
+
+  # The registry records the repository as the author wrote it. left-pad's is
+  # git+ssh://git@github.com/stevemao/left-pad.git, which the analyzer refused
+  # as "not a valid Git repo URL" -- so the scan reported one of npm's most
+  # depended-on packages as unanalysable, and lei.sarif crashed on that entry.
+  test "a git+ssh repository is analysed over https" do
+    body =
+      ~s({"repository":{"type":"git","url":"git+ssh://git@github.com/stevemao/left-pad.git"}})
+
+    assert Npm.Scanner.repository_url("left-pad", registry(200, body)) ==
+             {:ok, "https://github.com/stevemao/left-pad"}
   end
 
   test "a scoped package keeps its scope in the registry path" do

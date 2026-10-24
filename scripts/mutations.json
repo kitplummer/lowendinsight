@@ -4374,6 +4374,24 @@
       "replace": "    if false do",
       "guarded_by": "test/lei_service/release_beta_banner_test.exs",
       "bug": "0.16.0-beta.1 was labelled a beta on Hex, GHCR, the API and the MCP client while the web UI said nothing beyond the free-analysis notice, which follows the billing mode rather than the release."
+    },
+    {
+      "id": "sarif-crashes-on-unanalysed-dependency",
+      "app": "apps/lowendinsight",
+      "file": "apps/lowendinsight/lib/sarif/sarif.ex",
+      "find": "    {unanalysed, analysed} = Enum.split_with(repos, &unanalysed?/1)",
+      "replace": "    {unanalysed, analysed} = {[], repos}",
+      "guarded_by": "test/sarif/sarif_test.exs",
+      "bug": "One dependency LowEndInsight could not analyse (an error, no results) raised KeyError in Lei.Sarif and lost the SARIF log for every dependency. Found by running the GitHub Action on a project that depends on left-pad."
+    },
+    {
+      "id": "npm-git-ssh-repository-not-normalised",
+      "app": "apps/lowendinsight",
+      "file": "apps/lowendinsight/lib/npm/npm_scanner.ex",
+      "find": "{:ok, cloneable(repo)}",
+      "replace": "{:ok, repo}",
+      "guarded_by": "test/npm_registry_test.exs",
+      "bug": "npm records repositories as authors wrote them; left-pad's git+ssh://git@github.com/... was refused by the analyzer, so one of npm's most depended-on packages was reported as unanalysable."
     }
   ]
 }
