@@ -240,7 +240,7 @@ jobs:
         run: |
           mix local.rebar --force
           mix local.hex --force
-          mix deps.get
+          scripts/mix-deps-get.sh
       - name: Build the package
         working-directory: apps/lowendinsight
         run: mix hex.build

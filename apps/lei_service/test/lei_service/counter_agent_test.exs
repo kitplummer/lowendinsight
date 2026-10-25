@@ -40,4 +40,32 @@ defmodule LeiService.CounterAgentTest do
     LeiService.CounterAgent.update_and_stop()
     assert Process.whereis(:counter) == nil
   end
+
+  # The counter was start_link'ed from whichever process asked first, so it
+  # died with that process whenever that process exited abnormally -- a crashed
+  # analysis job in production, any finished test here. A caller that had just
+  # seen it in Process.whereis/1 then got `exit: no process` from Agent.update.
+  # umbrella_ci failed this way on main on 2026-10-17 (seed 765216), in
+  # refused_url_batch_test, which did nothing wrong.
+  test "the counter outlives a process that started it and crashed" do
+    if Process.whereis(:counter), do: Agent.stop(:counter)
+    test = self()
+
+    starter =
+      spawn(fn ->
+        LeiService.CounterAgent.new_counter(1)
+        send(test, :started)
+        Process.sleep(:infinity)
+      end)
+
+    assert_receive :started
+    agent = Process.whereis(:counter)
+    ref = Process.monitor(agent)
+
+    Process.exit(starter, :kill)
+
+    refute_receive {:DOWN, ^ref, :process, ^agent, _}, 200
+    LeiService.CounterAgent.new_counter(1)
+    Agent.stop(:counter)
+  end
 end

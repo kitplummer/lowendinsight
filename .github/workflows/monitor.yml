@@ -57,28 +57,13 @@ jobs:
       # Checked before the smoke suite because it is the cheap, specific signal.
       # "degraded" means a dependency is down while the app still serves -- the
       # exact state that went unnoticed for months.
+      #
+      # Production probes run under scripts/ops/confirm.sh: a failure is
+      # re-checked a minute later and fails the run only if it persists. A
+      # failed run emails, and an email has to mean production is unhealthy.
       - name: Check readiness
         id: readiness
-        run: |
-          BODY=$(curl -s --max-time 15 https://lowendinsight.dev/readyz)
-          echo "readyz: $BODY"
-
-          STATUS=$(echo "$BODY" | jq -r '.status // "unreachable"')
-
-          case "$STATUS" in
-            ok)
-              echo "All dependencies healthy."
-              ;;
-            degraded)
-              FAILING=$(echo "$BODY" | jq -r '.checks | to_entries[] | select(.value != "ok") | .key' | paste -sd, -)
-              echo "::error::Production is DEGRADED. Failing dependencies: ${FAILING}. The app is still serving, which is why nothing else will tell you."
-              exit 1
-              ;;
-            *)
-              echo "::error::Production readiness is '${STATUS}'. Response: ${BODY}"
-              exit 1
-              ;;
-          esac
+        run: scripts/ops/confirm.sh readiness scripts/ops/check-readiness.sh https://lowendinsight.dev
 
       # Readiness already fails on a stuck or backed-up queue (it is an
       # optional check, so it reads as "degraded"). This prints the numbers
@@ -513,9 +498,11 @@ jobs:
           echo "tip ${TIP:0:7}, committed ${COMMITTED} (${AGE}s ago)"
 
           set +e
-          scripts/ops/deploy-status.sh "$TIP"
+          STATUS_OUT=$(scripts/ops/deploy-status.sh "$TIP" 2>&1)
           RESULT=$?
           set -e
+          printf '%s\n' "$STATUS_OUT"
+          VERDICT=$(grep -m1 -E '^(NOT DEPLOYED|COULD NOT TELL):' <<<"$STATUS_OUT" || true)
 
           case "$RESULT" in
             0)
@@ -559,7 +546,7 @@ jobs:
               if [ "$AGE" -lt "$GRACE" ]; then
                 echo "::notice::${TIP:0:7} ${WHAT}, but was committed ${AGE}s ago; within the ${GRACE}s grace."
               elif [ "$RESULT" = "1" ]; then
-                echo "::error::${TIP:0:7} has been the tip of main for ${AGE}s and is not deployed. A deploy run that declines ships nothing and still reports success, so nothing else will tell you."
+                echo "::error::${TIP:0:7} has been the tip of main for ${AGE}s and is not deployed. A deploy run that declines ships nothing and still reports success, so nothing else will tell you. ${VERDICT}"
                 exit 1
               else
                 # Past the grace, the same rule as everywhere else in this file:
@@ -582,7 +569,7 @@ jobs:
           LEI_ADMIN_API_KEY: ${{ secrets.LEI_ADMIN_API_KEY }}
           # Flipped to "live" at cutover (#141). Until then, a live key is wrong.
           STRIPE_EXPECTED_MODE: ${{ vars.STRIPE_EXPECTED_MODE || 'test' }}
-        run: scripts/canary.sh https://lowendinsight.dev
+        run: scripts/ops/confirm.sh canary scripts/canary.sh https://lowendinsight.dev
 
       # Fails when the key is absent, rather than warning and passing.
       #
@@ -603,7 +590,7 @@ jobs:
             echo "::error::LEI_SMOKE_API_KEY is not set, so the smoke suite did not run. Create a dedicated smoke-test org and add its key as a repository secret; signing up on a schedule would otherwise create a real org every 15 minutes."
             exit 1
           fi
-          ./scripts/smoke-test.sh https://lowendinsight.dev
+          scripts/ops/confirm.sh smoke ./scripts/smoke-test.sh https://lowendinsight.dev
 
       # Paging, once per incident.
       #

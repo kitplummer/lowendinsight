@@ -40,10 +40,22 @@ fi
 printf 'commit   %s\n' "${SHA:0:7}"
 
 CI=$(gh run list --repo "$REPO" --workflow umbrella_ci --limit 30 \
-  --json headSha,status,conclusion \
-  --jq ".[] | select(.headSha==\"$SHA\") | \"\(.status) \(.conclusion // \"-\")\"" 2>/dev/null | head -1)
+  --json headSha,status,conclusion,databaseId \
+  --jq ".[] | select(.headSha==\"$SHA\") | \"\(.status) \(.conclusion // \"-\") \(.databaseId)\"" 2>/dev/null | head -1)
 
 printf 'umbrella_ci  %s\n' "${CI:-no run found}"
+
+# When CI failed on the commit, that is why it is not deployed: the gate only
+# ships a commit whose CI passed. Said in the verdict, with the command, because
+# on 2026-10-24 a hex.pm 500 failed CI on a CHANGELOG change and the monitor
+# reported only "not deployed" for seven hours.
+BECAUSE=""
+case "$CI" in
+  "completed failure"*)
+    CI_RUN=$(awk '{print $3}' <<<"$CI")
+    BECAUSE=" umbrella_ci failed on this commit (run ${CI_RUN:-?}), so the deploy gate declined it. If that failure was transient (a registry or network error), a passing re-run deploys: gh run rerun ${CI_RUN:-<run>} --failed --repo ${REPO}"
+    ;;
+esac
 
 RUNS=$(gh run list --repo "$REPO" --workflow deploy --limit 30 \
   --json databaseId,headSha --jq ".[] | select(.headSha==\"$SHA\") | .databaseId" 2>/dev/null)
@@ -52,7 +64,7 @@ if [ -z "$RUNS" ]; then
   printf 'deploy       no run for this commit\n'
   case "$CI" in
     "completed success"*) die "NOT DEPLOYED: CI passed but no deploy run exists for it." 1 ;;
-    *) die "NOT DEPLOYED: CI has not finished successfully, so no deploy was triggered." 1 ;;
+    *) die "NOT DEPLOYED: CI has not finished successfully, so no deploy was triggered.${BECAUSE}" 1 ;;
   esac
 fi
 
@@ -94,4 +106,4 @@ if [ "$STATUS" = "2" ]; then
   die "COULD NOT TELL: a deploy run exists but its job state is unreadable." 2
 fi
 
-die "NOT DEPLOYED: every deploy run for this commit declined or failed." 1
+die "NOT DEPLOYED: every deploy run for this commit declined or failed.${BECAUSE}" 1

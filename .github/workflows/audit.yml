@@ -67,7 +67,7 @@ jobs:
       run: |
         mix local.rebar --force
         mix local.hex --force
-        mix deps.get
+        scripts/mix-deps-get.sh
     - name: Hex and mix_audit advisories
       if: steps.scope.outputs.audit == 'true'
       run: |
@@ -86,65 +86,12 @@ jobs:
     # survey built on it produced 329 analysed repositories with zero
     # functional_commit_currency_weeks.
     #
-    # Three contradictions, all cheap to detect:
-    #
-    #   * hex has a version the CHANGELOG still calls unreleased
-    #   * the CHANGELOG gives the tree's version a ship date, and hex does not
-    #     have it. 0.14.0 and 0.15.0 were dated 2026-10-05 and never tagged;
-    #     this step passed for three weeks because hex's newest version, 0.13.1,
-    #     was not the tree's, and the only checks were keyed on that
-    #   * the tree's version is already published, and the tree has moved since
-    #     its tag -- which means the next release has no number allocated, and
-    #     that is the state in which commits accumulate unnoticed
-    #
-    # Here rather than in the suite because it needs the network, and
-    # `@tag :network` is excluded everywhere including CI: a guard that never
-    # runs is not a guard. On a PR it reports; on the daily run it fails.
+    # scripts/ops/release-drift.sh has the three contradictions it looks for,
+    # and when each one fails rather than warns. It needs the network, and
+    # `@tag :network` is excluded everywhere including CI, so it is here rather
+    # than in the suite; release_drift_test.exs runs it against a stub hex.
     - name: The published version and the tree agree
       if: always()
-      shell: bash
-      run: |
-        set -o pipefail
-
-        VERSION=$(sed -n 's/.*version: "\([^"]*\)".*/\1/p' apps/lowendinsight/mix.exs | head -1)
-        PUBLISHED=$(curl -sf --max-time 30 https://hex.pm/api/packages/lowendinsight \
-          | jq -r '.releases[].version') || PUBLISHED=""
-        HEX=$(head -1 <<<"$PUBLISHED")
-
-        if [ -z "$HEX" ]; then
-          echo "::warning::could not read the published versions from hex; not concluding anything"
-          exit 0
-        fi
-
-        echo "tree: $VERSION   hex (newest): $HEX"
-        FAILED=0
-
-        # The tree's version carries a ship date that hex does not bear out.
-        HEADING=$(grep -m1 -F "## ${VERSION} " apps/lowendinsight/CHANGELOG.md || true)
-        if [[ "$HEADING" =~ [0-9]{4}-[0-9]{2}-[0-9]{2} ]] && ! grep -qxF "$VERSION" <<<"$PUBLISHED"; then
-          echo "::error::CHANGELOG says ${VERSION} shipped ('${HEADING}'), but hex has no ${VERSION}. Push the tag v${VERSION}, or put the section back to unreleased."
-          FAILED=1
-        fi
-
-        # A published version whose section still says unreleased.
-        if grep -qiE "^## +${HEX//./\\.} .*unreleased" apps/lowendinsight/CHANGELOG.md; then
-          echo "::error::CHANGELOG calls ${HEX} unreleased, but it is published on hex. Give it the date it shipped."
-          FAILED=1
-        fi
-
-        # The tree's version is already out, and the tree has moved since.
-        if grep -qxF "$VERSION" <<<"$PUBLISHED"; then
-          BEHIND=$(git log "v${VERSION}..HEAD" --oneline -- apps/lowendinsight | wc -l | tr -d ' ')
-
-          if [ "$BEHIND" != "0" ]; then
-            echo "::error::${BEHIND} commit(s) touch the library since v${VERSION}, which is already published. Bump the version and add a CHANGELOG section, or they ship to nobody."
-            FAILED=1
-          fi
-        fi
-
-        if [ "$FAILED" = "1" ] && [ "${{ github.event_name }}" != "pull_request" ]; then
-          exit 1
-        fi
-
-        [ "$FAILED" = "1" ] && echo "::warning::reported on a pull request; the daily run fails on this"
-        exit 0
+      env:
+        LEI_DRIFT_BASE: origin/${{ github.base_ref || 'main' }}
+      run: scripts/ops/release-drift.sh

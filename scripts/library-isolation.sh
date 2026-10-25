@@ -44,7 +44,7 @@ assert marker in s, "mix new template changed"
 open(p, "w").write(s.replace(marker, f'      {{:lowendinsight, path: "{lib}"}},'))
 EOF
 
-mix deps.get >deps.log 2>&1 || fail "deps.get" "$(tail -5 deps.log)"
+"$ROOT/scripts/mix-deps-get.sh" >deps.log 2>&1 || fail "deps.get" "$(tail -5 deps.log)"
 
 # 1. Dependencies
 RESOLVED=$(mix deps 2>/dev/null | sed -n 's/^\* \([a-z_0-9]*\).*/\1/p' | sort -u)

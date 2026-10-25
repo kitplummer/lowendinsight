@@ -248,29 +248,39 @@ defmodule LeiService.McpServerTest do
     # reading it passed the guard. Sixth time in this session that asserting
     # text exists rather than that behaviour happens produced a guard measuring
     # nothing.
+    # The stub takes whatever port the OS gives it. It used 40000 + a hash of
+    # the body, which is inside Linux's ephemeral range: when the suite's own
+    # outgoing connections held that port the stub could not bind, the client
+    # was refused, and a determined report came back as an error (preflight,
+    # 2026-10-24; reproduced by holding the port).
     defp against_stub(body) do
-      port = 40_000 + :erlang.phash2(body, 10_000)
+      portfile = Path.join(System.tmp_dir!(), "mcp-stub-#{System.unique_integer([:positive])}")
+      on_exit(fn -> File.rm(portfile) end)
 
       script = """
       python3 - <<'STUB' &
-      import http.server, json
+      import http.server, json, os
       BODY = #{inspect(body)}
       class H(http.server.BaseHTTPRequestHandler):
           def do_POST(s):
               s.send_response(200); s.send_header('Content-Type','application/json'); s.end_headers()
               s.wfile.write(BODY.encode())
           def log_message(*a): pass
-      http.server.HTTPServer(('127.0.0.1', #{port}), H).serve_forever()
+      server = http.server.HTTPServer(('127.0.0.1', 0), H)
+      with open('#{portfile}.tmp', 'w') as f: f.write(str(server.server_port))
+      os.rename('#{portfile}.tmp', '#{portfile}')
+      server.serve_forever()
       STUB
       STUB_PID=$!
       for _ in $(seq 1 40); do
-        (exec 3<>/dev/tcp/127.0.0.1/#{port}) 2>/dev/null && break
+        [ -s '#{portfile}' ] && break
         sleep 0.1
       done
+      port=$(cat '#{portfile}')
       printf '%s\\n%s\\n' \\
         '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2024-11-05","capabilities":{},"clientInfo":{"name":"t","version":"1"}}}' \\
         '{"jsonrpc":"2.0","id":2,"method":"tools/call","params":{"name":"analyze_repository","arguments":{"url":"https://github.com/o/r"}}}' \\
-        | LEI_API_KEY=stub LEI_BASE_URL=http://127.0.0.1:#{port} python3 #{@server} 2>/dev/null
+        | LEI_API_KEY=stub LEI_BASE_URL=http://127.0.0.1:$port python3 #{@server} 2>/dev/null
       kill $STUB_PID 2>/dev/null
       """
 

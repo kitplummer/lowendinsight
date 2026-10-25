@@ -18,8 +18,10 @@ set -uo pipefail
 
 TOPIC="${NTFY_TOPIC:-}"
 SERVER="${NTFY_SERVER:-https://ntfy.sh}"
-ATTEMPTS="${ALERT_PROBE_ATTEMPTS:-3}"
-GAP="${ALERT_PROBE_GAP:-10}"
+# About a minute, like every other probe in monitor.yml: three tries ten
+# seconds apart did not outlast an ntfy blip on 2026-10-12, and the run emailed.
+ATTEMPTS="${ALERT_PROBE_ATTEMPTS:-4}"
+GAP="${ALERT_PROBE_GAP:-20}"
 
 TOKEN="$(cat)"
 

@@ -51,9 +51,43 @@ defmodule LeiService.QueueHealthWiringTest do
            "a job Lifeline would still rescue (#{rescue_after}m) would be reported stuck at #{stuck_after}m"
   end
 
-  test "a degraded readiness fails the monitor" do
-    assert monitor() =~ "degraded)"
-    assert monitor() =~ "select(.value != \"ok\")"
+  describe "the monitor's readiness probe" do
+    @readiness Path.expand("../../../../scripts/ops/check-readiness.sh", __DIR__)
+
+    defp readiness(body) do
+      bin = Path.join(System.tmp_dir!(), "readyz-#{System.unique_integer([:positive])}")
+      File.mkdir_p!(bin)
+      on_exit(fn -> File.rm_rf!(bin) end)
+      File.write!(Path.join(bin, "body"), body)
+      File.write!(Path.join(bin, "curl"), "#!/usr/bin/env bash\ncat #{bin}/body\n")
+      File.chmod!(Path.join(bin, "curl"), 0o755)
+
+      System.cmd("bash", [@readiness, "https://example.test"],
+        env: [{"PATH", "#{bin}:#{System.get_env("PATH")}"}],
+        stderr_to_stdout: true
+      )
+    end
+
+    test "fails on degraded, naming the dependency" do
+      {out, code} =
+        readiness(~s({"status":"degraded","checks":{"redis":"down","database":"ok"}}))
+
+      assert code == 1
+      assert out =~ "DEGRADED. Failing dependencies: redis."
+    end
+
+    test "fails when nothing answers" do
+      {out, 1} = readiness("")
+      assert out =~ "'unreachable'"
+    end
+
+    test "passes when every dependency is ok" do
+      {_out, 0} = readiness(~s({"status":"ok","checks":{"redis":"ok"}}))
+    end
+
+    test "is what the monitor runs" do
+      assert monitor() =~ "scripts/ops/check-readiness.sh https://lowendinsight.dev"
+    end
   end
 
   test "the monitor reports the queue gauges and fails when it cannot read them" do

@@ -92,7 +92,7 @@ runs:
         cd "$GITHUB_ACTION_PATH"
         mix local.rebar --force >/dev/null
         mix local.hex --force >/dev/null
-        mix deps.get >/dev/null
+        scripts/mix-deps-get.sh
         cd apps/lowendinsight
         mix compile
 
