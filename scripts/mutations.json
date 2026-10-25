@@ -4410,6 +4410,60 @@
       "replace": "  \"completed failure-never\"*)",
       "guarded_by": "test/lei_service/deploy_reporting_test.exs",
       "bug": "The monitor's error said only 'not deployed' while the cause, umbrella_ci failing on the tip, was in the log three lookups away, so a transient failure that one re-run fixes stayed red for seven hours."
+    },
+    {
+      "id": "production-probe-fails-on-one-blip",
+      "app": "apps/lei_service",
+      "file": "scripts/ops/confirm.sh",
+      "find": "[ \"$FIRST\" -eq 0 ] && { printf '%s\\n' \"$FIRST_OUT\"; exit 0; }",
+      "replace": "[ \"$FIRST\" -eq 0 ] && { printf '%s\\n' \"$FIRST_OUT\"; exit 0; }; exit \"$FIRST\"",
+      "guarded_by": "test/lei_service/confirm_probe_test.exs",
+      "bug": "The monitor emailed for one empty homepage fetch, one SSL connect error and an ntfy blip between 2026-10-10 and 10-24, each gone by the next run; a failure email that is sometimes noise stops being read."
+    },
+    {
+      "id": "cleared-probe-failure-annotated-as-error",
+      "app": "apps/lei_service",
+      "file": "scripts/ops/confirm.sh",
+      "find": "sed 's/^::error::/::warning::/' <<<\"$FIRST_OUT\"",
+      "replace": "printf '%s\\n' \"$FIRST_OUT\"",
+      "guarded_by": "test/lei_service/confirm_probe_test.exs",
+      "bug": "A probe failure that cleared on re-check left its red error annotations on a green run, saying the opposite of what happened."
+    },
+    {
+      "id": "release-drift-red-during-release",
+      "app": "apps/lei_service",
+      "file": "scripts/ops/release-drift.sh",
+      "find": "if [ \"$AGE_HOURS\" -gt \"$GRACE_HOURS\" ]; then",
+      "replace": "if [ \"$AGE_HOURS\" -ge 0 ]; then",
+      "guarded_by": "test/lei_service/release_drift_test.exs",
+      "bug": "The daily audit went red for every release between merging the dated CHANGELOG and pushing the tag: a scheduled failure email that meant nothing was wrong."
+    },
+    {
+      "id": "release-drift-passes-when-hex-unreadable",
+      "app": "apps/lei_service",
+      "file": "scripts/ops/release-drift.sh",
+      "find": "  fail_daily \"Could not read lowendinsight's published versions",
+      "replace": "  true || fail_daily \"Could not read lowendinsight's published versions",
+      "guarded_by": "test/lei_service/release_drift_test.exs",
+      "bug": "When hex.pm could not be read the release guard passed with a warning: 'could not tell' reported as agreement."
+    },
+    {
+      "id": "library-change-after-release-reaches-main",
+      "app": "apps/lei_service",
+      "file": "scripts/ops/release-drift.sh",
+      "find": "    MOVED=$(git diff --name-only \"${BASE}...HEAD\" -- apps/lowendinsight | wc -l | tr -d ' ')",
+      "replace": "    MOVED=0",
+      "guarded_by": "test/lei_service/release_drift_test.exs",
+      "bug": "A library change merged after a release only warned on its PR, then failed the daily audit on main every day until someone bumped the version."
+    },
+    {
+      "id": "counter-dies-with-its-starter",
+      "app": "apps/lei_service",
+      "file": "apps/lei_service/lib/lei_service/counter_agent.ex",
+      "find": "    case Agent.start(fn -> {%{}, %{completed: 0, total: number_of_processes}} end,",
+      "replace": "    case Agent.start_link(fn -> {%{}, %{completed: 0, total: number_of_processes}} end,",
+      "guarded_by": "test/lei_service/counter_agent_test.exs",
+      "bug": "The node-wide :counter agent was linked to whichever process started it, so a crashed analysis job (or a finished test) took it down under every concurrent caller: umbrella_ci failed on main on 2026-10-17 in a test that did nothing wrong."
     }
   ]
 }

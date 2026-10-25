@@ -2,15 +2,22 @@ defmodule LeiService.CounterAgent do
   use Agent
   require Logger
 
+  # Unlinked. :counter is shared by every analysis on the node, and linked to
+  # whichever process started it, it died when that process exited abnormally:
+  # one crashed job took the counter from every job running beside it, and a
+  # caller that had just seen it alive got `exit: no process`
+  # (counter_agent_test.exs, 2026-10-17).
   def new_counter(number_of_processes) do
-    if !Process.whereis(:counter) do
-      Agent.start_link(fn -> {%{}, %{completed: 0, total: number_of_processes}} end,
-        name: :counter
-      )
-    else
-      Agent.update(:counter, fn {proc, log} ->
-        {proc, Map.put(log, :total, log.total + number_of_processes)}
-      end)
+    case Agent.start(fn -> {%{}, %{completed: 0, total: number_of_processes}} end,
+           name: :counter
+         ) do
+      {:ok, _pid} ->
+        :ok
+
+      {:error, {:already_started, _pid}} ->
+        Agent.update(:counter, fn {proc, log} ->
+          {proc, Map.put(log, :total, log.total + number_of_processes)}
+        end)
     end
 
     update()

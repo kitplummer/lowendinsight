@@ -71,10 +71,14 @@ defmodule LeiService.DepsFetchRetryTest do
     assert calls == "1"
   end
 
-  test "no workflow fetches dependencies without the retry" do
-    files = [
-      Path.join(@root, "action.yml") | Path.wildcard(Path.join(@root, ".github/workflows/*.yml"))
-    ]
+  test "no workflow or CI script fetches dependencies without the retry" do
+    files =
+      [
+        Path.join(@root, "action.yml")
+        | Path.wildcard(Path.join(@root, ".github/workflows/*.yml"))
+      ] ++
+        (Path.wildcard(Path.join(@root, "scripts/**/*.sh")) --
+           [Path.join(@root, "scripts/mix-deps-get.sh")])
 
     bare =
       for path <- files,
