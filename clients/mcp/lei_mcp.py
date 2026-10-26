@@ -36,7 +36,7 @@ import urllib.request
 
 PROTOCOL_VERSION = "2024-11-05"
 SERVER_NAME = "lowendinsight"
-SERVER_VERSION = "0.16.0-beta.1"
+SERVER_VERSION = "0.16.0-beta.2"
 
 BASE_URL = os.environ.get("LEI_BASE_URL", "https://lowendinsight.dev").rstrip("/")
 API_KEY = os.environ.get("LEI_API_KEY", "").strip()

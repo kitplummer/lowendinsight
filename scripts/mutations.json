@@ -1796,7 +1796,7 @@
       "id": "batch-fresh-serves-cache",
       "bug": "cache_mode 'fresh' answered from cache anyway, so a caller asking for a re-analysis got the old report and was priced as a cache hit.",
       "file": "apps/lowendinsight/lib/lei/batch_analyzer.ex",
-      "find": "  defp partition_by_cache(dependencies, \"fresh\"), do: {[], dependencies}",
+      "find": "  defp partition_by_cache(dependencies, \"fresh\"), do: {[], [], dependencies}",
       "replace": "  defp partition_by_cache(dependencies, \"fresh\"), do: partition_by_cache(dependencies, \"stale\")",
       "guarded_by": "test/lei/batch_scheduling_test.exs",
       "app": "apps/lowendinsight"
@@ -1805,8 +1805,8 @@
       "id": "batch-dependency-retries-unfixable",
       "bug": "A package with no repository retried until max_attempts, holding a worker and delaying real work, instead of being cancelled.",
       "file": "apps/lei_service/lib/lei_service/batch_dependency_worker.ex",
-      "find": "      {:error, reason} when reason in [:no_repository, :not_found] ->\n        {:cancel,",
-      "replace": "      {:error, reason} when reason in [:no_repository, :not_found] ->\n        {:error,",
+      "find": "        Lei.BatchAnalyzer.mark_unresolvable(args, reason)\n        {:cancel, \"#{eco}/#{package}: #{inspect(reason)}\"}\n\n      {:error, {:unsupported_ecosystem",
+      "replace": "        Lei.BatchAnalyzer.mark_unresolvable(args, reason)\n        {:error, \"#{eco}/#{package}: #{inspect(reason)}\"}\n\n      {:error, {:unsupported_ecosystem",
       "guarded_by": "test/lei_service/batch_dependency_worker_test.exs",
       "app": "apps/lei_service"
     },
@@ -4482,6 +4482,24 @@
       "replace": "for attempt in 3; do",
       "guarded_by": "test/lei_service/dependency_audit_registry_test.exs",
       "bug": "hex.audit exits non-zero when it cannot fetch a registry entry, exactly as for an advisory; one hex.pm timeout (parse_trans, 2026-10-25) failed preflight and would have failed the daily audit."
+    },
+    {
+      "id": "batch-pending-marker-billed-as-hit",
+      "app": "apps/lowendinsight",
+      "file": "apps/lowendinsight/lib/lei/batch_analyzer.ex",
+      "find": "when marker in [\"pending\", \"unresolvable\"] ->",
+      "replace": "when marker in [\"never\"] ->",
+      "guarded_by": "test/lei/batch_scheduling_test.exs",
+      "bug": "A dependency asked about again while its batch job ran came back status \"cached\" with the pending marker as its analysis and no risk, and was billed as a cache hit."
+    },
+    {
+      "id": "batch-unresolvable-cancelled-silently",
+      "app": "apps/lei_service",
+      "file": "apps/lei_service/lib/lei_service/batch_dependency_worker.ex",
+      "find": "      {:error, reason} when reason in [:no_repository, :not_found] ->\n        Lei.BatchAnalyzer.mark_unresolvable(args, reason)\n",
+      "replace": "      {:error, reason} when reason in [:no_repository, :not_found] ->\n",
+      "guarded_by": "test/lei_service/batch_dependency_worker_test.exs",
+      "bug": "A package with no repository was cancelled and recorded nowhere, so every batch request queued it again and the caller was never told why."
     }
   ]
 }

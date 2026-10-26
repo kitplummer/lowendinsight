@@ -33,11 +33,14 @@ defmodule LeiService.BatchDependencyWorker do
       {:ok, url} ->
         analyse(eco, package, version, url, args["org_id"])
 
-      # Nothing about a retry changes these answers.
+      # Nothing about a retry changes these answers, so they are recorded:
+      # cancelled silently, the next request queued the package again.
       {:error, reason} when reason in [:no_repository, :not_found] ->
+        Lei.BatchAnalyzer.mark_unresolvable(args, reason)
         {:cancel, "#{eco}/#{package}: #{inspect(reason)}"}
 
       {:error, {:unsupported_ecosystem, _} = reason} ->
+        Lei.BatchAnalyzer.mark_unresolvable(args, reason)
         {:cancel, "#{eco}/#{package}: #{inspect(reason)}"}
 
       {:error, reason} ->
