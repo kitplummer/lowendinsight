@@ -166,7 +166,7 @@ jobs:
       - name: Package
         run: |
           PRE=(); [ "${{ needs.plan.outputs.prerelease }}" = "true" ] && PRE=(--pre-release)
-          npx vsce package "${PRE[@]}" -o lowendinsight.vsix
+          npx vsce package --no-dependencies "${PRE[@]}" -o lowendinsight.vsix
       - uses: actions/upload-artifact@v7
         with:
           name: vscode-extension

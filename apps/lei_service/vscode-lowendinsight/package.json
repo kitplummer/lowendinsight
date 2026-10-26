@@ -92,8 +92,8 @@
     "vscode:prepublish": "npm run compile",
     "compile": "node -e \"require('fs').rmSync('out',{recursive:true,force:true})\" && tsc -p ./",
     "watch": "tsc -watch -p ./",
-    "test": "npm run compile && node --test out/test/",
-    "package": "vsce package --pre-release"
+    "test": "npm run compile && node --test out/test/*.test.js",
+    "package": "vsce package --no-dependencies --pre-release"
   },
   "devDependencies": {
     "@types/node": "^20.0.0",

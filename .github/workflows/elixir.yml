@@ -85,7 +85,7 @@ jobs:
     - name: Compile and test
       run: npm test
     - name: Package
-      run: npx vsce package --pre-release -o lowendinsight.vsix
+      run: npx vsce package --no-dependencies --pre-release -o lowendinsight.vsix
 
   # Production backups broke when credit_entries was merged: the migration
   # created a table the backup role could not read, and pg_dump failed. The
