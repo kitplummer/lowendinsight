@@ -3,35 +3,30 @@ import { LeiDiagnostics } from "./diagnostics";
 import { LeiTreeProvider } from "./treeView";
 import { LeiStatusBar } from "./statusBar";
 import { LeiHoverProvider } from "./hoverProvider";
-import { findManifests, parseManifest, tryResolveGitUrl } from "./manifestParser";
-import { analyzeUrls } from "./leiClient";
-import {
-  AnalyzedDependency,
-  ManifestDependency,
-  ParsedManifest,
-  RepoReport,
-} from "./types";
+import { findManifests, parseManifest } from "./workspace";
+import { analyzeBatch, analyzeUrls, ApiConfig, Coordinate, LeiApiError, SIGNUP_URL } from "./api";
+import { assemble, plan } from "./assemble";
+import { ParsedManifest } from "./types";
 
+// The key lives in VS Code's secret storage, not settings.json: settings are
+// plain text and Settings Sync copies them between machines.
+const KEY_SECRET = "lowendinsight.apiKey";
+
+let context: vscode.ExtensionContext;
 let diagnostics: LeiDiagnostics;
 let treeProvider: LeiTreeProvider;
 let statusBar: LeiStatusBar;
 let hoverProvider: LeiHoverProvider;
-let analysisResults: AnalyzedDependency[] = [];
 let debounceTimer: ReturnType<typeof setTimeout> | undefined;
+let running = false;
 
-export function activate(context: vscode.ExtensionContext): void {
+export async function activate(ctx: vscode.ExtensionContext): Promise<void> {
+  context = ctx;
   diagnostics = new LeiDiagnostics();
   treeProvider = new LeiTreeProvider();
   statusBar = new LeiStatusBar();
   hoverProvider = new LeiHoverProvider();
 
-  // Register tree view
-  const treeView = vscode.window.createTreeView("lowendinsight.riskView", {
-    treeDataProvider: treeProvider,
-    showCollapseAll: true,
-  });
-
-  // Register hover provider for all manifest file types
   const manifestSelectors: vscode.DocumentSelector = [
     { pattern: "**/package.json" },
     { pattern: "**/mix.exs" },
@@ -43,186 +38,141 @@ export function activate(context: vscode.ExtensionContext): void {
     { pattern: "**/build.gradle" },
   ];
 
-  const hoverDisposable = vscode.languages.registerHoverProvider(
-    manifestSelectors,
-    hoverProvider
-  );
-
-  // Register commands
-  const analyzeCmd = vscode.commands.registerCommand(
-    "lowendinsight.analyze",
-    () => runAnalysis()
-  );
-
-  const analyzeFileCmd = vscode.commands.registerCommand(
-    "lowendinsight.analyzeFile",
-    () => {
-      const editor = vscode.window.activeTextEditor;
-      if (editor) {
-        runAnalysis([editor.document.uri]);
-      }
-    }
-  );
-
-  const clearCmd = vscode.commands.registerCommand(
-    "lowendinsight.clearDiagnostics",
-    () => {
-      diagnostics.clear();
-      analysisResults = [];
-      treeProvider.update([]);
-      hoverProvider.update([]);
-      statusBar.update([]);
-    }
-  );
-
-  // FileSystemWatcher for manifest changes
   const watcher = vscode.workspace.createFileSystemWatcher(
     "**/{package.json,mix.exs,Cargo.toml,go.mod,requirements.txt,Gemfile,pom.xml,build.gradle}"
   );
-
-  const onManifestChange = (uri: vscode.Uri) => {
-    const cfg = vscode.workspace.getConfiguration("lowendinsight");
-    if (!cfg.get<boolean>("autoAnalyze", true)) return;
-
-    // Debounce to avoid rapid re-analysis
+  const onManifestChange = (uri?: vscode.Uri) => {
+    if (!vscode.workspace.getConfiguration("lowendinsight").get<boolean>("autoAnalyze", true)) return;
     if (debounceTimer) clearTimeout(debounceTimer);
-    debounceTimer = setTimeout(() => runAnalysis([uri]), 2000);
+    debounceTimer = setTimeout(() => runAnalysis(uri ? [uri] : undefined, { quiet: true }), 2000);
   };
-
   watcher.onDidChange(onManifestChange);
   watcher.onDidCreate(onManifestChange);
-  watcher.onDidDelete(() => {
-    // Re-run full analysis when a manifest is deleted
-    if (debounceTimer) clearTimeout(debounceTimer);
-    debounceTimer = setTimeout(() => runAnalysis(), 2000);
-  });
+  watcher.onDidDelete(() => onManifestChange());
 
-  context.subscriptions.push(
+  ctx.subscriptions.push(
     diagnostics,
-    treeView,
+    vscode.window.createTreeView("lowendinsight.riskView", {
+      treeDataProvider: treeProvider,
+      showCollapseAll: true,
+    }),
     treeProvider,
-    hoverDisposable,
-    analyzeCmd,
-    analyzeFileCmd,
-    clearCmd,
+    vscode.languages.registerHoverProvider(manifestSelectors, hoverProvider),
+    vscode.commands.registerCommand("lowendinsight.analyze", () => runAnalysis()),
+    vscode.commands.registerCommand("lowendinsight.analyzeFile", () => {
+      const editor = vscode.window.activeTextEditor;
+      if (editor) runAnalysis([editor.document.uri]);
+    }),
+    vscode.commands.registerCommand("lowendinsight.clearDiagnostics", () => show([])),
+    vscode.commands.registerCommand("lowendinsight.setApiKey", setApiKey),
+    vscode.commands.registerCommand("lowendinsight.getApiKey", () =>
+      vscode.env.openExternal(vscode.Uri.parse(SIGNUP_URL))
+    ),
     watcher,
     statusBar
   );
 
-  // Auto-analyze on activation
-  const cfg = vscode.workspace.getConfiguration("lowendinsight");
-  if (cfg.get<boolean>("autoAnalyze", true)) {
-    runAnalysis();
+  // Nothing leaves the machine until a key is set: without one the request
+  // would be refused anyway, and the dependency list would have been sent to a
+  // third party by opening a folder.
+  if (await apiKey()) {
+    if (vscode.workspace.getConfiguration("lowendinsight").get<boolean>("autoAnalyze", true)) {
+      runAnalysis(undefined, { quiet: true });
+    }
+  } else {
+    statusBar.showNoKey();
   }
 }
 
-async function runAnalysis(uris?: vscode.Uri[]): Promise<void> {
+async function apiKey(): Promise<string> {
+  return (await context.secrets.get(KEY_SECRET)) ?? "";
+}
+
+async function config(): Promise<ApiConfig> {
+  return {
+    apiUrl: vscode.workspace
+      .getConfiguration("lowendinsight")
+      .get<string>("apiUrl", "https://lowendinsight.dev"),
+    apiKey: await apiKey(),
+  };
+}
+
+async function setApiKey(): Promise<void> {
+  const key = await vscode.window.showInputBox({
+    title: "LowEndInsight API key",
+    prompt: `Paste your API key (lei_…). No key yet? Get one free during the beta at ${SIGNUP_URL}`,
+    password: true,
+    ignoreFocusOut: true,
+    validateInput: (v) => (v.trim() === "" || v.trim().startsWith("lei_") ? undefined : "API keys start with lei_"),
+  });
+  if (key === undefined) return;
+
+  if (key.trim() === "") {
+    await context.secrets.delete(KEY_SECRET);
+    statusBar.showNoKey();
+    return;
+  }
+  await context.secrets.store(KEY_SECRET, key.trim());
+  runAnalysis();
+}
+
+async function runAnalysis(uris?: vscode.Uri[], opts: { quiet?: boolean } = {}): Promise<void> {
+  if (running) return;
+  running = true;
   statusBar.showAnalyzing();
 
   try {
-    // Find and parse manifests
-    const manifestUris = uris ?? (await findManifests());
     const manifests: ParsedManifest[] = [];
-
-    for (const uri of manifestUris) {
+    for (const uri of uris ?? (await findManifests())) {
       const parsed = await parseManifest(uri);
-      if (parsed && parsed.dependencies.length > 0) {
-        manifests.push(parsed);
+      if (parsed && parsed.dependencies.length > 0) manifests.push(parsed);
+    }
+
+    const urls = new Set<string>();
+    const coordinates: Coordinate[] = [];
+    for (const m of manifests) {
+      for (const dep of m.dependencies) {
+        const p = plan(dep, m);
+        if (p.kind === "url") urls.add(p.url);
+        if (p.kind === "batch") coordinates.push(p.coordinate);
       }
     }
 
-    if (manifests.length === 0) {
-      statusBar.update([]);
-      return;
-    }
-
-    // Collect all unique git URLs to analyze
-    const urlToDeps = new Map<string, { dep: ManifestDependency; manifestPath: string }[]>();
-
-    for (const manifest of manifests) {
-      for (const dep of manifest.dependencies) {
-        const gitUrl = tryResolveGitUrl(dep, manifest.type);
-        if (gitUrl) {
-          const existing = urlToDeps.get(gitUrl) ?? [];
-          existing.push({ dep, manifestPath: manifest.filePath });
-          urlToDeps.set(gitUrl, existing);
-        }
-      }
-    }
-
-    const urls = [...urlToDeps.keys()];
-
-    if (urls.length === 0) {
-      // No resolvable git URLs, show deps without analysis
-      analysisResults = manifests.flatMap((m) =>
-        m.dependencies.map((dep) => ({
-          dep,
-          manifestPath: m.filePath,
-        }))
-      );
-      diagnostics.update(analysisResults);
-      treeProvider.update(analysisResults);
-      hoverProvider.update(analysisResults);
-      statusBar.update(analysisResults);
-      return;
-    }
-
-    // Call LEI API in batches of 10
-    const batchSize = 10;
-    const repoReports = new Map<string, RepoReport>();
-
-    for (let i = 0; i < urls.length; i += batchSize) {
-      const batch = urls.slice(i, i + batchSize);
-      try {
-        const report = await analyzeUrls(batch);
-        if (report.report?.repos) {
-          for (const repo of report.report.repos) {
-            repoReports.set(repo.data.repo, repo);
-          }
-        }
-      } catch (err) {
-        const msg = err instanceof Error ? err.message : String(err);
-        vscode.window.showWarningMessage(
-          `LEI analysis batch failed: ${msg}`
-        );
-      }
-    }
-
-    // Map results back to dependencies
-    analysisResults = [];
-
-    for (const [url, deps] of urlToDeps) {
-      const report = repoReports.get(url);
-      for (const { dep, manifestPath } of deps) {
-        analysisResults.push({
-          dep,
-          manifestPath,
-          repoUrl: url,
-          report,
-          risk: report?.data.risk,
-        });
-      }
-    }
-
-    // Also include deps without resolved URLs (no risk data)
-    for (const manifest of manifests) {
-      for (const dep of manifest.dependencies) {
-        const gitUrl = tryResolveGitUrl(dep, manifest.type);
-        if (!gitUrl) {
-          analysisResults.push({ dep, manifestPath: manifest.filePath });
-        }
-      }
-    }
-
-    diagnostics.update(analysisResults);
-    treeProvider.update(analysisResults);
-    hoverProvider.update(analysisResults);
-    statusBar.update(analysisResults);
+    const cfg = await config();
+    const [batch, byUrl] = await Promise.all([
+      analyzeBatch(cfg, coordinates),
+      analyzeUrls(cfg, [...urls]),
+    ]);
+    show(assemble(manifests, batch, byUrl));
   } catch (err) {
-    const msg = err instanceof Error ? err.message : String(err);
-    statusBar.showError(msg);
-    vscode.window.showErrorMessage(`LowEndInsight analysis failed: ${msg}`);
+    reportError(err, opts.quiet ?? false);
+  } finally {
+    running = false;
   }
+}
+
+function show(analyzed: ReturnType<typeof assemble>): void {
+  diagnostics.update(analyzed);
+  treeProvider.update(analyzed);
+  hoverProvider.update(analyzed);
+  statusBar.update(analyzed);
+}
+
+async function reportError(err: unknown, quiet: boolean): Promise<void> {
+  const msg = err instanceof Error ? err.message : String(err);
+  const kind = err instanceof LeiApiError ? err.kind : undefined;
+
+  if (kind === "no-key" || kind === "invalid-key" || kind === "forbidden" || kind === "payment-required") {
+    statusBar.showNoKey(msg);
+    if (quiet && kind === "no-key") return;
+    const choice = await vscode.window.showWarningMessage(msg, "Set API key", "Get a free key");
+    if (choice === "Set API key") vscode.commands.executeCommand("lowendinsight.setApiKey");
+    if (choice === "Get a free key") vscode.commands.executeCommand("lowendinsight.getApiKey");
+    return;
+  }
+
+  statusBar.showError(msg);
+  if (!quiet) vscode.window.showErrorMessage(`LowEndInsight: ${msg}`);
 }
 
 export function deactivate(): void {

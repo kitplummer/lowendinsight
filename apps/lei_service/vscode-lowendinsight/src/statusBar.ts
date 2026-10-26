@@ -23,6 +23,7 @@ export class LeiStatusBar {
   }
 
   update(analyzed: AnalyzedDependency[]): void {
+    this.item.command = "lowendinsight.analyze";
     if (analyzed.length === 0) {
       this.item.text = "$(shield) LEI: No deps";
       this.item.backgroundColor = undefined;
@@ -56,6 +57,11 @@ export class LeiStatusBar {
     if (counts.medium) parts.push(`${counts.medium}M`);
     if (counts.low) parts.push(`${counts.low}L`);
 
+    // Counted, not omitted: five lows and forty unanalysed is not "5L".
+    const pending = analyzed.filter((a) => a.coverage === "pending").length;
+    const unanalysed = analyzed.filter((a) => a.coverage !== "analysed").length;
+    if (unanalysed) parts.push(`${unanalysed} not analysed`);
+
     this.item.text = `$(shield) LEI: ${parts.join(" ")}`;
 
     if (worstRisk === "critical") {
@@ -70,7 +76,17 @@ export class LeiStatusBar {
       this.item.backgroundColor = undefined;
     }
 
-    this.item.tooltip = `LowEndInsight: ${analyzed.length} deps analyzed\nCritical: ${counts.critical} | High: ${counts.high} | Medium: ${counts.medium} | Low: ${counts.low}`;
+    this.item.tooltip =
+      `LowEndInsight: ${analyzed.length - unanalysed} of ${analyzed.length} dependencies analysed\n` +
+      `Critical: ${counts.critical} | High: ${counts.high} | Medium: ${counts.medium} | Low: ${counts.low}` +
+      (unanalysed ? `\n${unanalysed} not analysed (${pending} still running); see the LowEndInsight view` : "");
+  }
+
+  showNoKey(why?: string): void {
+    this.item.text = "$(key) LEI: set API key";
+    this.item.tooltip = why ?? "LowEndInsight needs an API key. Click to set one; it is free during the beta.";
+    this.item.command = "lowendinsight.setApiKey";
+    this.item.backgroundColor = new vscode.ThemeColor("statusBarItem.warningBackground");
   }
 
   showAnalyzing(): void {

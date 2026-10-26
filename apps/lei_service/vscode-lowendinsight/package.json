@@ -1,10 +1,10 @@
 {
   "name": "vscode-lowendinsight",
   "displayName": "LowEndInsight",
-  "description": "(Beta) Bus-factor and supply-chain risk analysis for your dependencies",
-  "version": "0.1.0",
+  "description": "(Beta) Bus-factor and maintenance risk for your dependencies, from LowEndInsight",
+  "version": "0.16.2",
   "preview": true,
-  "publisher": "gtri",
+  "publisher": "revolve",
   "license": "BSD-3-Clause",
   "engines": {
     "vscode": "^1.85.0"
@@ -37,33 +37,13 @@
       "properties": {
         "lowendinsight.apiUrl": {
           "type": "string",
-          "default": "http://localhost:4000",
-          "description": "URL of the LowEndInsight API server"
-        },
-        "lowendinsight.apiToken": {
-          "type": "string",
-          "default": "",
-          "description": "JWT Bearer token for LEI API authentication"
-        },
-        "lowendinsight.cacheMode": {
-          "type": "string",
-          "enum": [
-            "blocking",
-            "async",
-            "stale"
-          ],
-          "default": "blocking",
-          "description": "Cache mode for API requests"
-        },
-        "lowendinsight.cacheTimeout": {
-          "type": "number",
-          "default": 60000,
-          "description": "Timeout in ms for blocking cache mode"
+          "default": "https://lowendinsight.dev",
+          "description": "The LowEndInsight service. Change it only for a self-hosted deployment."
         },
         "lowendinsight.autoAnalyze": {
           "type": "boolean",
           "default": true,
-          "description": "Automatically analyze when manifest files change"
+          "description": "Analyse when a workspace opens and when a manifest changes, once an API key is set (LEI: Set API Key). The dependency list is sent to the service at apiUrl."
         }
       }
     },
@@ -80,6 +60,14 @@
       {
         "command": "lowendinsight.clearDiagnostics",
         "title": "LEI: Clear Diagnostics"
+      },
+      {
+        "command": "lowendinsight.setApiKey",
+        "title": "LEI: Set API Key"
+      },
+      {
+        "command": "lowendinsight.getApiKey",
+        "title": "LEI: Get a Free API Key"
       }
     ],
     "viewsContainers": {
@@ -102,13 +90,25 @@
   },
   "scripts": {
     "vscode:prepublish": "npm run compile",
-    "compile": "tsc -p ./",
+    "compile": "node -e \"require('fs').rmSync('out',{recursive:true,force:true})\" && tsc -p ./",
     "watch": "tsc -watch -p ./",
-    "lint": "eslint src --ext ts"
+    "test": "npm run compile && node --test out/test/",
+    "package": "vsce package --pre-release"
   },
   "devDependencies": {
     "@types/node": "^20.0.0",
     "@types/vscode": "^1.85.0",
+    "@vscode/vsce": "^3.9.2",
+    "ovsx": "^1.1.1",
     "typescript": "^5.3.0"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/kitplummer/lowendinsight",
+    "directory": "apps/lei_service/vscode-lowendinsight"
+  },
+  "homepage": "https://lowendinsight.dev",
+  "bugs": {
+    "url": "https://github.com/kitplummer/lowendinsight/issues"
   }
 }

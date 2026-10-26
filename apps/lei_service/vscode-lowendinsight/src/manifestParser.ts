@@ -1,11 +1,11 @@
-import * as vscode from "vscode";
+// Pure: no VS Code import, so src/test/manifestParser.test.ts can run it.
 import {
   ManifestDependency,
   ManifestType,
   ParsedManifest,
 } from "./types";
 
-const MANIFEST_GLOBS: Record<ManifestType, string> = {
+export const MANIFEST_GLOBS: Record<ManifestType, string> = {
   npm: "**/package.json",
   mix: "**/mix.exs",
   cargo: "**/Cargo.toml",
@@ -15,9 +15,6 @@ const MANIFEST_GLOBS: Record<ManifestType, string> = {
   maven: "**/pom.xml",
   gradle: "**/build.gradle",
 };
-
-// GitHub URL patterns for resolving package names
-const GITHUB_PREFIX = "https://github.com/";
 
 export function getManifestType(fileName: string): ManifestType | undefined {
   const base = fileName.split("/").pop() ?? "";
@@ -32,52 +29,25 @@ export function getManifestType(fileName: string): ManifestType | undefined {
   return undefined;
 }
 
-export async function findManifests(): Promise<vscode.Uri[]> {
-  const uris: vscode.Uri[] = [];
-  for (const glob of Object.values(MANIFEST_GLOBS)) {
-    const found = await vscode.workspace.findFiles(
-      glob,
-      "**/node_modules/**"
-    );
-    uris.push(...found);
-  }
-  return uris;
-}
+/** The dependencies a manifest of `type` declares, with their positions. */
+export function parseManifestText(type: ManifestType, text: string): ManifestDependency[] {
 
-export async function parseManifest(
-  uri: vscode.Uri
-): Promise<ParsedManifest | undefined> {
-  const type = getManifestType(uri.fsPath);
-  if (!type) return undefined;
-
-  const doc = await vscode.workspace.openTextDocument(uri);
-  const text = doc.getText();
-
-  let deps: ManifestDependency[];
   switch (type) {
     case "npm":
-      deps = parseNpm(text);
-      break;
+      return parseNpm(text);
     case "mix":
-      deps = parseMix(text);
-      break;
+      return parseMix(text);
     case "cargo":
-      deps = parseCargo(text);
-      break;
+      return parseCargo(text);
     case "go":
-      deps = parseGo(text);
-      break;
+      return parseGo(text);
     case "pip":
-      deps = parsePip(text);
-      break;
+      return parsePip(text);
     case "gem":
-      deps = parseGem(text);
-      break;
+      return parseGem(text);
     default:
-      deps = [];
+      return [];
   }
-
-  return { filePath: uri.fsPath, type, dependencies: deps };
 }
 
 function parseNpm(text: string): ManifestDependency[] {
@@ -323,28 +293,18 @@ function parseGem(text: string): ManifestDependency[] {
 }
 
 /**
- * Try to resolve a package name to a GitHub URL.
- * For packages that don't have explicit git URLs, we attempt
- * to look them up via common naming conventions.
+ * The repository a dependency names directly, if it does: a git URL in the
+ * manifest, or a Go module path on GitHub. Everything else goes to the
+ * service by package name, which asks the registry.
+ *
+ * This used to guess `github.com/org/pkg` for an npm `@org/pkg`, so
+ * `@types/node` became github.com/types/node, which does not exist.
  */
 export function tryResolveGitUrl(
   dep: ManifestDependency,
   type: ManifestType
 ): string | undefined {
   if (dep.gitUrl) return dep.gitUrl;
-
-  // Go modules already contain the URL
-  if (type === "go" && dep.name.startsWith("github.com/")) {
-    return `https://${dep.name}`;
-  }
-
-  // For npm scoped packages like @org/pkg, try github.com/org/pkg
-  if (type === "npm" && dep.name.startsWith("@")) {
-    const parts = dep.name.replace("@", "").split("/");
-    if (parts.length === 2) {
-      return `${GITHUB_PREFIX}${parts[0]}/${parts[1]}`;
-    }
-  }
-
+  if (type === "go" && dep.name.startsWith("github.com/")) return `https://${dep.name}`;
   return undefined;
 }

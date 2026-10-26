@@ -9,6 +9,14 @@ const RISK_EMOJI: Record<RiskLevel, string> = {
   low: "ok",
 };
 
+// Everything in a hover except the labels comes from the API, and contributor
+// names come from git commit authors -- anyone's to choose. Rendered as plain
+// Markdown text, never trusted: a trusted MarkdownString runs `command:` links,
+// so an author named like one could run a VS Code command from a hover.
+function text(value: unknown): string {
+  return String(value ?? "unknown").replace(/[\\`*_{}[\]()#+\-.!|<>]/g, "\\$&");
+}
+
 export class LeiHoverProvider implements vscode.HoverProvider {
   private analyzed: AnalyzedDependency[] = [];
 
@@ -16,14 +24,9 @@ export class LeiHoverProvider implements vscode.HoverProvider {
     this.analyzed = analyzed;
   }
 
-  provideHover(
-    document: vscode.TextDocument,
-    position: vscode.Position
-  ): vscode.Hover | undefined {
-    // Only provide hovers for manifest files
+  provideHover(document: vscode.TextDocument, position: vscode.Position): vscode.Hover | undefined {
     if (!getManifestType(document.uri.fsPath)) return undefined;
 
-    // Find matching dependency at this position
     const dep = this.analyzed.find(
       (a) =>
         a.manifestPath === document.uri.fsPath &&
@@ -31,59 +34,47 @@ export class LeiHoverProvider implements vscode.HoverProvider {
         position.character >= a.dep.startChar &&
         position.character <= a.dep.endChar
     );
+    if (!dep) return undefined;
 
-    if (!dep || !dep.report) return undefined;
-
-    const data = dep.report.data;
-    const results = data.results;
     const md = new vscode.MarkdownString();
-    md.isTrusted = true;
+    md.isTrusted = false;
+    md.supportHtml = false;
+    md.appendMarkdown(`### LowEndInsight: ${text(dep.dep.name)}\n\n`);
 
-    md.appendMarkdown(
-      `### LowEndInsight: ${dep.dep.name}\n\n`
-    );
-    md.appendMarkdown(
-      `**Overall Risk:** \`${data.risk.toUpperCase()}\`\n\n`
-    );
+    const range = new vscode.Range(dep.dep.line, dep.dep.startChar, dep.dep.line, dep.dep.endChar);
+    const data = dep.report?.data;
 
-    if (data.repo) {
-      md.appendMarkdown(`**Repository:** ${data.repo}\n\n`);
+    if (dep.coverage !== "analysed" || !data) {
+      md.appendMarkdown(`**Not analysed:** ${text(dep.note ?? dep.coverage)}\n`);
+      return new vscode.Hover(md, range);
     }
+
+    const results = data.results ?? ({} as Partial<typeof data.results>);
+    const risk = (r: RiskLevel | undefined) => (r ? `${RISK_EMOJI[r]} ${r}` : "not determined");
+
+    md.appendMarkdown(`**Overall Risk:** \`${text(dep.risk).toUpperCase()}\`\n\n`);
+    if (data.repo) md.appendMarkdown(`**Repository:** ${text(data.repo)}\n\n`);
 
     md.appendMarkdown("| Metric | Value | Risk |\n");
     md.appendMarkdown("|--------|-------|------|\n");
+    md.appendMarkdown(`| Contributors | ${text(results.contributor_count)} | ${risk(results.contributor_risk)} |\n`);
     md.appendMarkdown(
-      `| Contributors | ${results.contributor_count} | ${RISK_EMOJI[results.contributor_risk]} ${results.contributor_risk} |\n`
+      `| Functional Contributors | ${text(results.functional_contributors)} | ${risk(results.functional_contributors_risk)} |\n`
     );
     md.appendMarkdown(
-      `| Functional Contributors | ${results.functional_contributors} | ${RISK_EMOJI[results.functional_contributors_risk]} ${results.functional_contributors_risk} |\n`
+      `| Commit Currency | ${text(results.commit_currency_weeks)} weeks | ${risk(results.commit_currency_risk)} |\n`
     );
+    const pct = results.recent_commit_size_in_percent_of_codebase;
     md.appendMarkdown(
-      `| Commit Currency | ${results.commit_currency_weeks} weeks | ${RISK_EMOJI[results.commit_currency_risk]} ${results.commit_currency_risk} |\n`
-    );
-    md.appendMarkdown(
-      `| Large Commit | ${(results.recent_commit_size_in_percent_of_codebase * 100).toFixed(1)}% | ${RISK_EMOJI[results.large_recent_commit_risk]} ${results.large_recent_commit_risk} |\n`
+      `| Large Commit | ${typeof pct === "number" ? (pct * 100).toFixed(1) + "%" : "unknown"} | ${risk(results.large_recent_commit_risk)} |\n`
     );
 
-    if (
-      results.functional_contributor_names &&
-      results.functional_contributor_names.length > 0
-    ) {
-      md.appendMarkdown(
-        `\n**Key Contributors:** ${results.functional_contributor_names.join(", ")}\n`
-      );
+    if (results.functional_contributor_names?.length) {
+      md.appendMarkdown(`\n**Key Contributors:** ${results.functional_contributor_names.map(text).join(", ")}\n`);
     }
-
-    md.appendMarkdown(
-      `\n*Analyzed by LEI v${dep.report.header.library_version}*`
-    );
-
-    const range = new vscode.Range(
-      dep.dep.line,
-      dep.dep.startChar,
-      dep.dep.line,
-      dep.dep.endChar
-    );
+    if (dep.report?.header?.library_version) {
+      md.appendMarkdown(`\n*Analyzed by LEI v${text(dep.report.header.library_version)}*`);
+    }
 
     return new vscode.Hover(md, range);
   }

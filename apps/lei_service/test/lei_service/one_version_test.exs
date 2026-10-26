@@ -21,4 +21,29 @@ defmodule LeiService.OneVersionTest do
     [_, umbrella] = Regex.run(~r/version:\s*"([^"]+)"/, File.read!(@umbrella))
     assert umbrella == to_string(Application.spec(:lowendinsight, :vsn))
   end
+
+  # The Marketplace and Open VSX accept only x.y.z, so a beta cannot be the
+  # extension's version verbatim. 0.16.0-beta.N ships as 0.16.N, flagged
+  # pre-release; release.yml publishes under that number and this keeps the
+  # file on it. A stable release must bump the minor: 0.16.0 after 0.16.N
+  # would be lower than every beta of its own series, which the registries
+  # refuse.
+  @extension Path.expand("../../vscode-lowendinsight/package.json", __DIR__)
+
+  test "the editor extension is the library's version, in registry form" do
+    version = to_string(Application.spec(:lowendinsight, :vsn))
+    package = File.read!(@extension) |> Jason.decode!()
+
+    expected =
+      case Regex.run(~r/^(\d+)\.(\d+)\.0-beta\.(\d+)$/, version) do
+        [_, major, minor, beta] -> "#{major}.#{minor}.#{beta}"
+        nil -> version
+      end
+
+    assert package["version"] == expected,
+           "the extension is #{package["version"]}; #{version} ships as #{expected}"
+
+    assert package["publisher"] == "revolve"
+    assert package["preview"] == String.contains?(version, "-")
+  end
 end
