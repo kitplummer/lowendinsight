@@ -81,6 +81,29 @@ defmodule LeiService.WorkflowPinningTest do
     end
   end
 
+  # `ubuntu-latest` moves to a new Ubuntu release on GitHub's schedule, not
+  # ours. A failed run has to mean something here is unhealthy; one caused by
+  # the runner image changing overnight means nothing about this repository and
+  # arrives as the same email. The image changes when a diff says so.
+  test "every job names its runner image" do
+    floating =
+      for path <- Path.wildcard(Path.join(@workflows, "*.yml")),
+          {line, n} <- Enum.with_index(String.split(File.read!(path), "\n"), 1),
+          line =~ ~r/runs-on:.*-latest\b/,
+          do: "#{Path.basename(path)}:#{n}: #{String.trim(line)}"
+
+    assert floating == [], "these jobs run on a moving image:\n  #{Enum.join(floating, "\n  ")}"
+
+    pinned =
+      for path <- Path.wildcard(Path.join(@workflows, "*.yml")),
+          line <- String.split(File.read!(path), "\n"),
+          line =~ ~r/^\s*runs-on:/,
+          do: line
+
+    assert length(pinned) >= 19,
+           "found #{length(pinned)} runs-on lines; the check cannot see the jobs"
+  end
+
   test "the unresolvable list has not quietly grown" do
     # An allowlist is how this check stops being a check.
     assert @unresolvable == []

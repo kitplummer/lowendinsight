@@ -36,7 +36,7 @@ jobs:
   # Which commit, and whether to deploy it at all.
   gate:
     name: CI passed on the tip of main
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     # A push to main that passed. Not the nightly scheduled run, which has
     # nothing new to deploy, and not a failure.
     if: >-
@@ -96,7 +96,7 @@ jobs:
     name: Deploy and verify
     needs: gate
     if: needs.gate.outputs.deploy == 'true'
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     environment: production
     steps:
       - uses: actions/checkout@v7
