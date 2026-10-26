@@ -4,6 +4,22 @@ Notable changes to the `lowendinsight` library and the hosted service in this
 repository. The library is published to Hex; the service is deployed from the
 same tree (ADR-003).
 
+## 0.16.0-beta.2 — Unreleased
+
+### Fixed
+
+- **Batch analysis reported a queued dependency as analysed.** Asking
+  `POST /v1/analyze/batch` again about a dependency whose job was still
+  running returned `status: "cached"` with no risk, and priced it as a cache
+  hit. It is now `"pending"` with its job id, and priced as neither a hit nor
+  a miss.
+- **A dependency with no repository was queued forever.** A package the
+  registry does not have, one with no repository link, or an ecosystem that is
+  not resolved was cancelled and recorded nowhere, so every request queued it
+  again and never said why. It is now reported `"failed"` with the reason for a
+  day (`Lei.BatchAnalyzer.mark_unresolvable/3`). An analysis that ran and
+  determined nothing is still not recorded, so the next request tries again.
+
 ## 0.16.0-beta.1 — 2026-10-24
 
 The first beta. Every published interface now says so in its version:

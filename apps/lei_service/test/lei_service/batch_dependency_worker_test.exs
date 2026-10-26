@@ -61,6 +61,25 @@ defmodule LeiService.BatchDependencyWorkerTest do
     assert reason =~ "no_repository"
   end
 
+  # Cancelled and recorded nowhere, the dependency read "pending" until the
+  # marker expired, then "uncached", and the next request queued it again: a
+  # client polling for it waited out its timeout and was never told why.
+  describe "what the next request for it says" do
+    defp next_result do
+      [r] = Lei.BatchAnalyzer.analyze([@dep], schedule: fn _ -> flunk("queued again") end).results
+      r
+    end
+
+    test "after a package with no repository: failed, with the reason" do
+      configure(fn _, _, _ -> {:error, :no_repository} end, fn _ -> flunk("no analysis") end)
+      {:cancel, _} = BatchDependencyWorker.perform(job(@dep))
+
+      assert %{status: "failed", error: error} = next_result()
+      assert error =~ "no_repository"
+      assert Lei.BatchAnalyzer.cache_split([@dep]) == {0, 0}
+    end
+  end
+
   test "an ecosystem we cannot resolve is cancelled" do
     configure(
       fn _, _, _ -> {:error, {:unsupported_ecosystem, "cocoapods"}} end,

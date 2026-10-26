@@ -26,7 +26,7 @@ defmodule Lei.BatchAnalyzer do
     start_time = System.monotonic_time(:millisecond)
 
     # Parallel cache lookups
-    {cached, misses} = partition_by_cache(dependencies, cache_mode)
+    {cached, held, misses} = partition_by_cache(dependencies, cache_mode)
 
     # For cache misses, queue analysis jobs through the caller's scheduler
     {pending_jobs, uncached, failed} = process_misses(misses, schedule)
@@ -45,6 +45,8 @@ defmodule Lei.BatchAnalyzer do
         build_result(dep, nil, "pending", job_id)
       end)
 
+    held_results = Enum.map(held, fn {dep, marker} -> held_result(dep, marker) end)
+
     uncached_results =
       uncached
       |> Enum.map(fn dep -> build_result(dep, nil, "uncached") end)
@@ -55,7 +57,7 @@ defmodule Lei.BatchAnalyzer do
         build_result(dep, nil, "failed", nil, reason)
       end)
 
-    all_results = results ++ pending_results ++ uncached_results ++ failed_results
+    all_results = results ++ pending_results ++ held_results ++ uncached_results ++ failed_results
     risk_breakdown = compute_risk_breakdown(results)
 
     # Worst first, and entries with no rank last rather than absent: a shorter
@@ -81,9 +83,9 @@ defmodule Lei.BatchAnalyzer do
       summary: %{
         total: length(dependencies),
         cached: length(cached),
-        pending: length(pending_jobs),
+        pending: length(pending_jobs) + Enum.count(held_results, &(&1.status == "pending")),
         uncached: length(uncached),
-        failed: length(failed),
+        failed: length(failed) + Enum.count(held_results, &(&1.status == "failed")),
         risk_breakdown: risk_breakdown
       },
       results: all_results,
@@ -97,27 +99,62 @@ defmodule Lei.BatchAnalyzer do
   The same lookup `analyze/2` partitions on.
   """
   def cache_split(dependencies, opts \\ []) do
-    {cached, misses} = partition_by_cache(dependencies, Keyword.get(opts, :cache_mode, "stale"))
+    {cached, _held, misses} =
+      partition_by_cache(dependencies, Keyword.get(opts, :cache_mode, "stale"))
+
     {length(cached), length(misses)}
+  end
+
+  @doc """
+  Record that `dep` has no repository to analyse, so asking again reports why
+  instead of queueing it again. For a day: a registry can gain the link.
+
+  The service's worker cancelled such a job and recorded nothing, so the
+  dependency read "pending", then "uncached", and was queued again on every
+  request -- forever, with no reason ever reaching the caller.
+  """
+  def mark_unresolvable(dep, reason, ttl \\ 86_400) do
+    Lei.BatchCache.put(
+      dep["ecosystem"],
+      dep["package"],
+      dep["version"],
+      %{status: "unresolvable", error: inspect(reason)},
+      ttl: ttl
+    )
   end
 
   # "fresh" asks for the analysis to be run again, so nothing counts as
   # cached -- neither for the results nor for what the work costs.
-  defp partition_by_cache(dependencies, "fresh"), do: {[], dependencies}
+  defp partition_by_cache(dependencies, "fresh"), do: {[], [], dependencies}
 
+  # Three ways, not two. A pending or unresolvable marker is a cache entry but
+  # not an analysis: counted as a hit, a dependency asked about while its job
+  # ran came back "cached" with the marker as its analysis, and was billed for
+  # it. Held entries are reported for what they are and priced as neither.
   defp partition_by_cache(dependencies, _cache_mode) do
     dependencies
-    |> Enum.reduce({[], []}, fn dep, {cached, misses} ->
+    |> Enum.reduce({[], [], []}, fn dep, {cached, held, misses} ->
       case Lei.BatchCache.get(dep["ecosystem"], dep["package"], dep["version"]) do
+        {:ok, %{result: %{status: marker}} = entry} when marker in ["pending", "unresolvable"] ->
+          {cached, [{dep, entry.result} | held], misses}
+
         {:ok, entry} ->
-          {[{dep, entry} | cached], misses}
+          {[{dep, entry} | cached], held, misses}
 
         {:error, _} ->
-          {cached, [dep | misses]}
+          {cached, held, [dep | misses]}
       end
     end)
-    |> then(fn {cached, misses} -> {Enum.reverse(cached), Enum.reverse(misses)} end)
+    |> then(fn {cached, held, misses} ->
+      {Enum.reverse(cached), Enum.reverse(held), Enum.reverse(misses)}
+    end)
   end
+
+  defp held_result(dep, %{status: "pending"} = marker),
+    do: build_result(dep, nil, "pending", marker[:job_id])
+
+  defp held_result(dep, %{status: "unresolvable", error: error}),
+    do: dep |> build_result(nil, "failed") |> Map.put(:error, error)
 
   # Without a scheduler there is nothing to queue the work: say so, rather
   # than reporting a job that does not exist.

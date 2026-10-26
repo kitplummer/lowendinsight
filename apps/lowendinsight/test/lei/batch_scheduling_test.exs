@@ -85,4 +85,72 @@ defmodule Lei.BatchSchedulingTest do
     assert entry.result.status == "pending"
     assert entry.result.job_id == "oban-1"
   end
+
+  # The pending marker is a cache entry, so partition_by_cache counted it as a
+  # hit: asking again while the job ran returned status "cached" with the
+  # marker as its "analysis" and no risk, and admission billed it as a cache
+  # hit. A client polling for its result was charged per poll for nothing.
+  describe "asking again while the analysis is queued" do
+    setup do
+      schedule = fn dep -> {:ok, "oban-#{dep["package"]}"} end
+      Lei.BatchAnalyzer.analyze(deps(1), schedule: schedule)
+      %{schedule: schedule}
+    end
+
+    test "reports it pending, with the same job", %{schedule: schedule} do
+      [again] = Lei.BatchAnalyzer.analyze(deps(1), schedule: schedule).results
+
+      assert again.status == "pending"
+      assert again.job_id == "oban-p1"
+      refute Map.has_key?(again, :analysis)
+    end
+
+    test "is priced as neither a hit nor a miss" do
+      assert Lei.BatchAnalyzer.cache_split(deps(1)) == {0, 0}
+    end
+
+    test "does not queue it a second time" do
+      test_pid = self()
+
+      schedule = fn dep ->
+        send(test_pid, {:scheduled, dep["package"]})
+        {:ok, "x"}
+      end
+
+      Lei.BatchAnalyzer.analyze(deps(1), schedule: schedule)
+      refute_received {:scheduled, _}
+    end
+  end
+
+  # The service's worker cancelled a package it could not resolve and recorded
+  # nothing, so the marker read "pending" for five minutes, then "uncached",
+  # and the next request queued it again -- forever, and a client polling for
+  # it waited out its timeout with no reason given.
+  describe "a dependency recorded as unresolvable" do
+    setup do
+      Lei.BatchAnalyzer.mark_unresolvable(hd(deps(1)), :no_repository)
+      :ok
+    end
+
+    test "is reported failed, with the reason" do
+      [only] = Lei.BatchAnalyzer.analyze(deps(1), schedule: fn _ -> {:ok, "x"} end).results
+
+      assert only.status == "failed"
+      assert only.error =~ "no_repository"
+    end
+
+    test "is not queued again, or charged" do
+      test_pid = self()
+
+      schedule = fn dep ->
+        send(test_pid, {:scheduled, dep["package"]})
+        {:ok, "x"}
+      end
+
+      Lei.BatchAnalyzer.analyze(deps(1), schedule: schedule)
+
+      refute_received {:scheduled, _}
+      assert Lei.BatchAnalyzer.cache_split(deps(1)) == {0, 0}
+    end
+  end
 end

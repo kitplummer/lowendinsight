@@ -214,6 +214,14 @@ defmodule LeiService.AgentPaymentTest do
       org = Wallets.find_by_address(@payer)
       before = wait_for_balance(org.id)
 
+      # The paid request queued the analysis. Asked again while it is queued,
+      # it is pending and priced at nothing, so finish it, as the worker would:
+      # the key is then served a result and charged for it.
+      Lei.BatchCache.put("npm", "left-pad", "1.3.0", %{
+        data: %{repo: "https://github.com/o/left-pad", risk: "low", results: %{}},
+        header: %{}
+      })
+
       conn = post_batch([{"authorization", "Bearer " <> raw_key}])
 
       assert conn.status == 200, conn.resp_body
