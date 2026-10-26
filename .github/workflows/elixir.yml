@@ -27,7 +27,7 @@ jobs:
   # format and warnings-as-errors, the two preflight stages no other job covers.
   # Kept as its own job so a formatting failure does not hide a test failure.
   lint:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     env:
       MIX_ENV: test
     steps:
@@ -75,7 +75,7 @@ jobs:
   # Fly. There is no reason for it to be found in production, so it is checked
   # here against the same schema the application migrates.
   backup-grants:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     env:
       MIX_ENV: test
     services:
@@ -109,7 +109,7 @@ jobs:
   # The library as a project outside the umbrella sees it: only its own
   # dependencies, no configuration, no database (ADR-003).
   library-isolation:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     steps:
     - uses: actions/checkout@v7
     - uses: erlef/setup-beam@54075bcc5e249e4758d363f27d099f55d843f124 # v1.24.1
@@ -125,7 +125,7 @@ jobs:
 
   # LEI library tests — requires Postgres for API key/auth features
   lei-lib:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     env:
       MIX_ENV: test
       CI: true
@@ -202,7 +202,7 @@ jobs:
 
   # LEI-get API tests — requires Postgres + Redis
   lei-get:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     env:
       MIX_ENV: test
       GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -258,7 +258,7 @@ jobs:
   # scripts/verify-guards.sh --changed-since); the nightly schedule runs all.
   guard-verification:
     name: Guard verification
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     env:
       MIX_ENV: test
       GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

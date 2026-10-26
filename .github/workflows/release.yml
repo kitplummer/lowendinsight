@@ -36,7 +36,7 @@ concurrency:
 
 jobs:
   plan:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     outputs:
       version: ${{ steps.plan.outputs.version }}
       prerelease: ${{ steps.plan.outputs.prerelease }}
@@ -136,7 +136,7 @@ jobs:
   # Zarf packages the image it finds locally, so they are one job.
   packages:
     needs: [plan, ci]
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     permissions:
       contents: read
       packages: write
@@ -229,7 +229,7 @@ jobs:
 
   hex:
     needs: [plan, packages]
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v7
       - uses: erlef/setup-beam@54075bcc5e249e4758d363f27d099f55d843f124 # v1.24.1
@@ -254,7 +254,7 @@ jobs:
   github-release:
     needs: [plan, packages, hex]
     if: needs.plan.outputs.publish == 'true'
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     permissions:
       contents: write
     env:

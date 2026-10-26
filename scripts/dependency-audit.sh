@@ -41,8 +41,19 @@ IDS=$(grep -vE '^\s*(#|$)' "$ACK" | awk '{print $1}' | paste -sd, -)
 
 # The mix.exs `hex: [ignore_advisories:]` option is not honoured from the
 # umbrella root (Hex 2.5.1); the environment variable is.
-OUT=$(HEX_IGNORE_ADVISORIES="$IDS" mix hex.audit 2>&1)
-STATUS=$?
+#
+# `hex.audit` exits non-zero both for a finding and for a registry entry it
+# could not fetch (preflight, 2026-10-25: parse_trans, `:timeout`). Only the
+# second is retried; one still unfetched after three attempts fails below,
+# because the audit did not happen.
+DELAY="${LEI_AUDIT_RETRY_DELAY:-15}"
+for attempt in 1 2 3; do
+  OUT=$(HEX_IGNORE_ADVISORIES="$IDS" mix hex.audit 2>&1)
+  STATUS=$?
+  [ "$STATUS" -ne 0 ] && grep -q "registry entry could not be fetched" <<<"$OUT" && [ "$attempt" -lt 3 ] || break
+  echo "::warning::hex.audit could not fetch a registry entry (attempt ${attempt} of 3); retrying in ${DELAY}s"
+  sleep "$DELAY"
+done
 printf '%s\n' "$OUT"
 echo
 
@@ -54,6 +65,11 @@ if grep -q "does not match any advisory" <<<"$OUT"; then
   # A GitHub Actions annotation, so it shows on the PR without failing it.
   echo "::warning::An acknowledged advisory no longer applies; remove it from scripts/acknowledged-advisories.txt (the daily --strict audit fails until it is)"
   STALE_ACK=1
+fi
+
+if [ "$STATUS" -ne 0 ] && grep -q "registry entry could not be fetched" <<<"$OUT"; then
+  echo "FAIL: hex.pm did not return every registry entry in three attempts, so these packages were not audited (above)"
+  exit 1
 fi
 
 if [ "$STATUS" -ne 0 ]; then
