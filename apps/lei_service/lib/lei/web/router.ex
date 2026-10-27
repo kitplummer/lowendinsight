@@ -375,18 +375,11 @@ defmodule Lei.Web.Router do
     # get from refusal to result on its own.
     conn = Lei.Payments.Gate.settle(conn)
 
-    case validate_batch_request(conn.body_params) do
+    case Lei.Batch.validate(conn.body_params) do
       {:ok, dependencies, opts} ->
         # Refusals -- free tier exhausted, credits exhausted, or no org at all --
-        # are sent by the gate, with payment challenges where one applies. It
-        # was called with no price, so a batch of any size was admitted to an
-        # org that could afford one analysis.
-        {hits, misses} = Lei.BatchAnalyzer.cache_split(dependencies, opts)
-
-        admission = [
-          required_credits: Lei.Credits.cost_in_credits(hits, misses),
-          usage: {hits, misses}
-        ]
+        # are sent by the gate, with payment challenges where one applies.
+        {split, admission} = Lei.Batch.price(dependencies, opts)
 
         case Lei.Payments.Gate.admit(conn, admission) do
           {:halt, conn} ->
@@ -395,35 +388,7 @@ defmodule Lei.Web.Router do
           # Charged at admission for the split priced above, which is what the
           # billing block reports.
           {:ok, conn, {org_id, _api_key_id, tier}} ->
-            # The library has no queue: it schedules through this (ADR-004).
-            result =
-              Lei.BatchAnalyzer.analyze(dependencies, [schedule: scheduler(org_id)] ++ opts)
-
-            cost = Lei.UsageTracker.calculate_cost(hits, misses)
-
-            # Admission charged for every miss, before any job existed (#152).
-            # Anything that did not reach the queue is given back: the ledger
-            # write and the Oban insert go through different repos and cannot
-            # share a transaction, so the money follows the work rather than
-            # committing with it (#217).
-            # Not summary.failed: that includes dependencies already recorded
-            # as unresolvable, which admission never charged for.
-            unqueued = get_in(result, [:summary, :unqueued]) || 0
-            credited = credit_unqueued(org_id, unqueued)
-
-            enriched =
-              Map.put(result, :billing, %{
-                cache_hits: hits,
-                cache_misses: misses,
-                cost_cents: Decimal.to_float(cost),
-                unqueued: unqueued,
-                credited_back_cents: credited,
-                tier: tier || "unknown"
-              })
-
-            conn
-            |> put_resp_content_type("application/json")
-            |> send_resp(200, Poison.encode!(enriched))
+            json_resp(conn, 200, Lei.Batch.run(dependencies, opts, {org_id, tier}, split))
         end
 
       {:too_many, body} ->
@@ -845,101 +810,6 @@ defmodule Lei.Web.Router do
     |> put_resp_content_type("text/html")
     |> send_resp(conn.status || 200, body)
   end
-
-  defp validate_batch_request(params) do
-    dependencies = params["dependencies"]
-
-    # The third entry point that names a list of repositories. The other two
-    # share urls_analyzable/1 in the endpoint; this one has its own validation,
-    # and a cap missing from one route is a cap nobody has (ADR-008). Returned
-    # as its own tag so it renders as a 422 with the count and the limit, like
-    # the other two, rather than as a bare 400 string.
-    with :ok <- Lei.RequestScope.check(List.wrap(dependencies)) do
-      validate_batch_dependencies(dependencies, params)
-    else
-      {:error, body} -> {:too_many, body}
-    end
-  end
-
-  defp validate_batch_dependencies(dependencies, params) do
-    cond do
-      is_nil(dependencies) ->
-        {:error, "missing required field: dependencies"}
-
-      not is_list(dependencies) ->
-        {:error, "dependencies must be an array"}
-
-      Enum.empty?(dependencies) ->
-        {:error, "dependencies must not be empty"}
-
-      not Enum.all?(dependencies, &valid_dependency?/1) ->
-        {:error, "each dependency must have ecosystem, package, and version fields"}
-
-      true ->
-        opts = [
-          cache_mode: params["cache_mode"] || "stale",
-          include_transitive: params["include_transitive"] || false
-        ]
-
-        {:ok, dependencies, opts}
-    end
-  end
-
-  # One job per uncached dependency, returning the job's own id so a caller
-  # can poll work that exists. Oban's uniqueness means a dependency already
-  # queued in the last 15 minutes returns that job rather than a second one.
-  # Overridable so a failure to enqueue can be exercised without breaking Oban
-  # itself. The queue belongs to the caller of the library (ADR-004), and this
-  # is that caller.
-  # The scheduler carries the org so the worker can credit back an analysis
-  # that determines nothing (#258). Admission charged for it before any
-  # analysis ran, and the outcome is only known later, so the refund needs to
-  # reach whoever paid.
-  defp scheduler(org_id) do
-    Application.get_env(:lei_service, :batch_scheduler) ||
-      fn dep -> enqueue_dependency(dep, org_id) end
-  end
-
-  # Credits back what was charged for and never queued (#217). The shared
-  # helper writes the entry; this decides how much and reports it.
-  defp credit_unqueued(_org_id, 0), do: 0.0
-
-  defp credit_unqueued(org_id, unqueued) when unqueued > 0 do
-    credits = Lei.Credits.cost_in_credits(0, unqueued)
-
-    case Lei.Credits.credit_unqueued(org_id, credits, %{"unqueued" => unqueued}) do
-      {:ok, _} -> Lei.UsageTracker.calculate_cost(0, unqueued) |> Decimal.to_float()
-      {:error, _reason} -> 0.0
-    end
-  end
-
-  defp enqueue_dependency(dep, org_id) do
-    %{
-      "ecosystem" => dep["ecosystem"],
-      "package" => dep["package"],
-      "version" => dep["version"],
-      "org_id" => org_id
-    }
-    |> LeiService.BatchDependencyWorker.new()
-    |> Oban.insert()
-    |> case do
-      {:ok, job} ->
-        {:ok, to_string(job.id)}
-
-      {:error, reason} ->
-        Logger.error(
-          "batch: could not queue #{dep["ecosystem"]}/#{dep["package"]}: #{inspect(reason)}"
-        )
-
-        {:error, :not_queued}
-    end
-  end
-
-  defp valid_dependency?(dep) when is_map(dep) do
-    is_binary(dep["ecosystem"]) and is_binary(dep["package"]) and is_binary(dep["version"])
-  end
-
-  defp valid_dependency?(_), do: false
 
   defp json_resp(conn, status, data) do
     conn

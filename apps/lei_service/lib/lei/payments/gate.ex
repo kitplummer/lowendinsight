@@ -82,15 +82,40 @@ defmodule Lei.Payments.Gate do
   def admit(%Plug.Conn{halted: true} = conn, _opts), do: {:halt, conn}
 
   def admit(conn, opts) do
+    case decide(conn, opts) do
+      {:ok, context} -> {:ok, conn, context}
+      refusal -> {:halt, refuse(conn, refusal)}
+    end
+  end
+
+  @doc """
+  What `admit/2` decides, without answering anyone: `{:ok, {org_id,
+  api_key_id, tier}}`, or a refusal for `refuse/2` to send.
+
+  The decision and the answer are apart because the answer depends on the
+  protocol. An HTTP caller is sent a 402 with payment challenges; an MCP
+  client is not an HTTP caller at the tool level, and a refusal reaches it as
+  a tool result. Both must reach the same decision, and an admitted request
+  has been charged either way.
+
+  Refusals:
+
+    * `{:payment_required, org_id, credits}` -- no org, or a credit-funded org
+      holding less than the request costs; `credits` is the top-up to ask for
+    * `{:quota_exceeded, detail}` -- the free tier's monthly allowance is spent
+    * `:billing_unavailable` -- the ledger could not be written. Refused, not
+      served unbilled
+  """
+  def decide(conn, opts \\ []) do
     required = Keyword.get(opts, :required_credits, 0)
     {hits, misses} = Keyword.get(opts, :usage, {0, 0})
 
     case billing_context(conn) do
       {nil, _, _} = context ->
         if conn.assigns[:auth_method] == :jwt do
-          {:ok, conn, context}
+          {:ok, context}
         else
-          {:halt, Http.challenge(conn, nil, top_up(0, required))}
+          {:payment_required, nil, top_up(0, required)}
         end
 
       # Checked and charged in one step, under a lock on the org. Checking here
@@ -99,42 +124,49 @@ defmodule Lei.Payments.Gate do
       {org_id, api_key_id, _tier} = context ->
         case Lei.UsageTracker.admit_usage(org_id, api_key_id, hits, misses, required) do
           {:ok, _usage} ->
-            {:ok, conn, context}
+            {:ok, context}
 
           {:error, {:insufficient_credits, balance}} ->
-            {:halt, Http.challenge(conn, org_id, top_up(balance, required))}
+            {:payment_required, org_id, top_up(balance, required)}
 
           {:error, {:quota_exceeded, info}} ->
-            limit_reached(conn, info)
+            {:quota_exceeded, info}
 
-          # The ledger could not be written. Refused, not served unbilled.
           {:error, reason} ->
             Logger.error("admission failed for org #{org_id}: #{inspect(reason)}")
-            {:halt, json(conn, 503, %{error: "billing_unavailable"})}
+            :billing_unavailable
         end
     end
   end
 
+  @doc "Sends an HTTP caller the answer to a refusal from `decide/2`, and halts."
+  def refuse(conn, {:payment_required, org_id, credits}),
+    do: Http.challenge(conn, org_id, credits)
+
+  def refuse(conn, {:quota_exceeded, detail}), do: limit_reached(conn, detail)
+
+  def refuse(conn, :billing_unavailable),
+    do: json(conn, 503, %{error: "billing_unavailable"})
+
   defp limit_reached(conn, detail) do
-    {:halt,
-     json(
-       conn,
-       402,
-       Map.merge(
-         %{
-           error: "free_tier_quota_exceeded",
-           # Derived, not hardcoded. This was
-           # https://lowendinsight.fly.dev/signup?tier=pro -- Fly's assigned
-           # hostname rather than the one the service is named after, and the
-           # only customer-facing URL still on it. Both resolve to the same
-           # machine today, which is why it survived; that stops being true
-           # the moment the app is renamed or moves off Fly, and a link sent
-           # to a paying customer is the worst place to find out.
-           upgrade_url: base_url() <> "/signup?tier=pro"
-         },
-         detail
-       )
-     )}
+    json(
+      conn,
+      402,
+      Map.merge(
+        %{
+          error: "free_tier_quota_exceeded",
+          # Derived, not hardcoded. This was
+          # https://lowendinsight.fly.dev/signup?tier=pro -- Fly's assigned
+          # hostname rather than the one the service is named after, and the
+          # only customer-facing URL still on it. Both resolve to the same
+          # machine today, which is why it survived; that stops being true
+          # the moment the app is renamed or moves off Fly, and a link sent
+          # to a paying customer is the worst place to find out.
+          upgrade_url: base_url() <> "/signup?tier=pro"
+        },
+        detail
+      )
+    )
   end
 
   @doc "`{org_id, api_key_id, tier}` for the request, from its key or its payment."

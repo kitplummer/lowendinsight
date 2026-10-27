@@ -1768,7 +1768,7 @@
     {
       "id": "batch-misses-not-queued",
       "bug": "The batch endpoint charged for cache misses and queued nothing: the caller got a job id naming no work, and the analysis never ran (ADR-004 step 4).",
-      "file": "apps/lei_service/lib/lei/web/router.ex",
+      "file": "apps/lei_service/lib/lei/batch.ex",
       "find": "[schedule: scheduler(org_id)] ++ opts",
       "replace": "opts",
       "guarded_by": "test/lei_service/batch_enqueue_test.exs",
@@ -2786,8 +2786,8 @@
       "id": "upgrade-url-on-flys-hostname",
       "bug": "The 402 a free-tier customer receives linked to https://lowendinsight.fly.dev/signup?tier=pro -- Fly's assigned hostname rather than the service's own. Both resolve to the same machine, so it worked and nobody noticed; it stops working the moment the app is renamed or moves off Fly.",
       "file": "apps/lei_service/lib/lei/payments/gate.ex",
-      "find": "           upgrade_url: base_url() <> \"/signup?tier=pro\"",
-      "replace": "           upgrade_url: \"https://lowendinsight.fly.dev/signup?tier=pro\"",
+      "find": "          upgrade_url: base_url() <> \"/signup?tier=pro\"",
+      "replace": "          upgrade_url: \"https://lowendinsight.fly.dev/signup?tier=pro\"",
       "guarded_by": "test/lei/payments/upgrade_url_test.exs",
       "app": "apps/lei_service"
     },
@@ -2812,18 +2812,18 @@
     {
       "id": "unqueued-work-stays-charged",
       "bug": "A batch charged at admission for every cache miss, then enqueued jobs through a different repo. A dependency that failed to enqueue was reported as failed in the response and stayed paid for: money taken for work that would never run (#217).",
-      "file": "apps/lei_service/lib/lei/web/router.ex",
-      "find": "            credited = credit_unqueued(org_id, unqueued)",
-      "replace": "            credited = credit_unqueued(org_id, 0)",
+      "file": "apps/lei_service/lib/lei/batch.ex",
+      "find": "    credited = credit_unqueued(org_id, unqueued)",
+      "replace": "    credited = credit_unqueued(org_id, 0)",
       "guarded_by": "test/lei/web/batch_unqueued_refund_test.exs",
       "app": "apps/lei_service"
     },
     {
       "id": "unqueued-credit-covers-the-whole-batch",
       "bug": "The compensating credit was written for every cache miss rather than only the ones that failed to queue, so a batch that queued successfully was refunded work it had actually been given.",
-      "file": "apps/lei_service/lib/lei/web/router.ex",
-      "find": "            unqueued = get_in(result, [:summary, :unqueued]) || 0",
-      "replace": "            unqueued = misses",
+      "file": "apps/lei_service/lib/lei/batch.ex",
+      "find": "    unqueued = get_in(result, [:summary, :unqueued]) || 0",
+      "replace": "    unqueued = misses",
       "guarded_by": "test/lei/web/batch_unqueued_refund_test.exs",
       "app": "apps/lei_service"
     },
@@ -3181,7 +3181,7 @@
     {
       "id": "dependency-job-drops-the-org",
       "bug": "Without org_id in the job args the worker has nobody to credit, and every refund silently becomes the no-org branch: the money is kept and a warning is logged.",
-      "file": "apps/lei_service/lib/lei/web/router.ex",
+      "file": "apps/lei_service/lib/lei/batch.ex",
       "find": "      \"org_id\" => org_id\n    }",
       "replace": "    }",
       "guarded_by": "test/lei_service/undetermined_refund_test.exs",
@@ -4009,7 +4009,7 @@
     {
       "id": "repo-cap-missing-from-the-batch-path",
       "bug": "The batch route has its own validation rather than sharing urls_analyzable/1, which is exactly how a cap ends up applying to two entry points out of three. A cap missing from one route is a cap nobody has.",
-      "file": "apps/lei_service/lib/lei/web/router.ex",
+      "file": "apps/lei_service/lib/lei/batch.ex",
       "find": "    with :ok <- Lei.RequestScope.check(List.wrap(dependencies)) do\n      validate_batch_dependencies(dependencies, params)\n    else\n      {:error, body} -> {:too_many, body}\n    end",
       "replace": "    validate_batch_dependencies(dependencies, params)",
       "guarded_by": "test/lei_service/request_scope_test.exs",
@@ -4495,7 +4495,7 @@
     {
       "id": "batch-refunds-held-failures",
       "app": "apps/lei_service",
-      "file": "apps/lei_service/lib/lei/web/router.ex",
+      "file": "apps/lei_service/lib/lei/batch.ex",
       "find": "unqueued = get_in(result, [:summary, :unqueued]) || 0",
       "replace": "unqueued = get_in(result, [:summary, :failed]) || 0",
       "guarded_by": "test/lei/web/batch_unqueued_refund_test.exs",
@@ -4635,6 +4635,15 @@
       "replace": "Keyword.put_new(assigns, :pro_rate_limit, 600)",
       "guarded_by": "test/lei_service/one_rate_limit_test.exs",
       "bug": "The signup page stated rate limits as numbers of its own, so the page and what was enforced could disagree; for POST /v1/analyze they did."
+    },
+    {
+      "id": "gate-decide-sends-the-refusal",
+      "app": "apps/lei_service",
+      "file": "apps/lei_service/lib/lei/payments/gate.ex",
+      "find": "          {:payment_required, nil, top_up(0, required)}",
+      "replace": "          refuse(conn, {:payment_required, nil, top_up(0, required)})",
+      "guarded_by": "test/lei/payments/gate_decide_test.exs",
+      "bug": "Deciding admission also answered the caller with an HTTP 402: a caller that is not answered over HTTP -- an MCP tool call -- could not be told no in its own protocol."
     }
   ]
 }

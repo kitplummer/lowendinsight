@@ -183,10 +183,10 @@ defmodule LeiService.UndeterminedRefundTest do
   describe "the enqueue carries the org" do
     # Without it the worker has nobody to credit, and every refund above
     # silently becomes the no-org branch.
-    @router Path.expand("../../lib/lei/web/router.ex", __DIR__)
+    @batch Path.expand("../../lib/lei/batch.ex", __DIR__)
 
     test "org_id is in the job args" do
-      source = File.read!(@router)
+      source = File.read!(@batch)
 
       assert source =~ ~s("org_id" => org_id),
              "the dependency job does not carry the org, so nothing can be credited back"
