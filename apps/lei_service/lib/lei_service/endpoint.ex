@@ -1000,6 +1000,14 @@ defmodule LeiService.Endpoint do
     |> halt()
   end
 
+  # Its own auth, rate limit and answers: /mcp is not under /v1, where the API's
+  # auth plugs run, and a refusal there is a tool result rather than a 402.
+  defp maybe_route_auth(%Plug.Conn{path_info: ["mcp"]} = conn, _opts) do
+    conn
+    |> Lei.Mcp.call(Lei.Mcp.init([]))
+    |> halt()
+  end
+
   # Lei.Web.Router declares its routes with the full path, so nothing is
   # stripped here.
   defp maybe_route_auth(%Plug.Conn{request_path: path} = conn, _opts) do
