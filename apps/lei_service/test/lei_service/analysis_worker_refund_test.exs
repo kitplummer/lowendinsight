@@ -112,7 +112,7 @@ defmodule LeiService.AnalysisWorkerRefundTest do
   describe "the job carries the org" do
     # Without it every refund above silently becomes the no-org branch.
     @supervisor Path.expand("../../lib/lei_service/analysis_supervisor.ex", __DIR__)
-    @endpoint Path.expand("../../lib/lei_service/endpoint.ex", __DIR__)
+    @analyze Path.expand("../../lib/lei/analyze.ex", __DIR__)
 
     test "both enqueue paths include org_id" do
       # perform_analysis/4 and enqueue/4 build their own args. Asserting the
@@ -134,8 +134,9 @@ defmodule LeiService.AnalysisWorkerRefundTest do
              "the worker computes a report and never refunds against it"
     end
 
-    test "the endpoint puts the admitted org into opts" do
-      assert File.read!(@endpoint) =~ "org_id: billing_org(billing)"
+    test "/v1/analyze puts the admitted org into opts" do
+      # The route's request runs in Lei.Analyze, which MCP shares.
+      assert File.read!(@analyze) =~ "org_id: billing_org(billing)"
     end
   end
 end
