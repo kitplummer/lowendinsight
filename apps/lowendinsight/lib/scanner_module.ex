@@ -35,14 +35,18 @@ defmodule ScannerModule do
     end
   end
 
-  def scan(path) do
-    in_directory(path, fn -> scan_in_place(path) end)
+  @doc """
+  Scans the manifests under `path`. `exclude:` names directories, relative to
+  `path`, whose manifests are left out (`ProjectIdent`).
+  """
+  def scan(path, opts \\ []) do
+    in_directory(path, fn -> scan_in_place(path, opts) end)
   end
 
-  defp scan_in_place(path) do
+  defp scan_in_place(path, opts) do
     start_time = DateTime.utc_now()
 
-    project_types_identified = ProjectIdent.get_project_types_identified(path)
+    project_types_identified = ProjectIdent.get_project_types_identified(path, opts)
 
     mix? = Map.has_key?(project_types_identified, :mix)
     node? = Map.has_key?(project_types_identified, :node)

@@ -22,9 +22,18 @@ permissions:
   actions: read
   contents: read
 
+# A newer commit on a pull request replaces the run for the older one. On main,
+# a push waits for the run before it rather than cancelling it.
+concurrency:
+  group: lei-sarif-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
 jobs:
   lei-sarif:
     runs-on: ubuntu-24.04
+    # About eleven minutes when it scans what we ship. On 2026-10-27 it took up
+    # to two hours, with nothing to stop it; one that hangs now fails.
+    timeout-minutes: 30
     steps:
     - uses: actions/checkout@v7
       with:
@@ -33,6 +42,11 @@ jobs:
     - name: LowEndInsight (this repository's action)
       id: lei
       uses: ./
+      with:
+        # The editor extension has no runtime dependencies. Its lockfile is 341
+        # dev-only build tools, and analysing them took the scan from eleven
+        # minutes to two hours (#331).
+        exclude: apps/lei_service/vscode-lowendinsight
 
     - name: Upload SARIF to GitHub Security tab
       uses: github/codeql-action/upload-sarif@9b3254085494b55a0f7c4c2b3d2d52cc712ce370 # v4.39.1

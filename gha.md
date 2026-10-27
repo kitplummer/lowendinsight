@@ -65,6 +65,7 @@ tool notification, which code scanning shows on the tool's status page.
 | `sarif` | `'true'` | `'true'` writes SARIF; `'false'` writes a JSON report. |
 | `sarif_file` | `lei-results.sarif` | SARIF output path, relative to the workspace. |
 | `path` | `.` | Directory to scan, relative to the workspace. |
+| `exclude` | | SARIF mode: directories to leave out, relative to `path`, one per line. What is left out is printed; a directory that does not exist fails the scan. |
 | `directory` | `.` | JSON mode: where the report is written (and committed from). |
 | `branch` | | JSON mode: commit the report and push it here. Empty pushes nothing. |
 | `github_token` | | JSON mode with `branch`: a token that can push. |

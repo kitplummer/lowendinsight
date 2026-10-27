@@ -36,8 +36,12 @@ defmodule ProjectIdent do
   @doc """
   get_project_types_identified: takes in a Repository and will return a list of maps
   of found project types within the repo.
+
+  `exclude:` names directories, relative to the repository, whose manifests are
+  left out. A directory, not a prefix: excluding `editor/e` leaves `editor/ext`
+  in.
   """
-  def get_project_types_identified(repo) do
+  def get_project_types_identified(repo, opts \\ []) do
     ## Non-metric data about repo
     mix_type = %ProjectType{
       name: :mix,
@@ -98,11 +102,23 @@ defmodule ProjectIdent do
       gradle_type
     ]
 
-    if is_map(repo) && Map.has_key?(repo, :__struct__) do
-      categorize_repo(repo, project_types) |> Helpers.convert_config_to_list()
-    else
-      repo = %{path: repo}
-      categorize_repo(repo, project_types) |> Helpers.convert_config_to_list()
-    end
+    repo = if is_map(repo) && Map.has_key?(repo, :__struct__), do: repo, else: %{path: repo}
+
+    repo
+    |> categorize_repo(project_types)
+    |> Helpers.convert_config_to_list()
+    |> without(repo.path, Keyword.get(opts, :exclude, []))
+  end
+
+  defp without(found, _root, []), do: found
+
+  defp without(found, root, excluded) do
+    prefixes = Enum.map(excluded, &(Path.expand(&1, Path.expand(root)) <> "/"))
+    kept? = fn file -> not Enum.any?(prefixes, &String.starts_with?(Path.expand(file), &1)) end
+
+    found
+    |> Enum.map(fn {type, files} -> {type, Enum.filter(files, kept?)} end)
+    |> Enum.reject(fn {_type, files} -> files == [] end)
+    |> Map.new()
   end
 end
