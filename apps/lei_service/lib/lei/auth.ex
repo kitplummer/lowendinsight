@@ -135,7 +135,7 @@ defmodule Lei.Auth do
           |> put_resp_header("x-ratelimit-remaining", to_string(remaining))
 
         {:error, :rate_limited, retry_after} ->
-          retry_secs = div(retry_after, 1000) + 1
+          retry_secs = Lei.RateLimiter.retry_after_seconds(retry_after)
 
           conn
           |> put_resp_header("retry-after", to_string(retry_secs))

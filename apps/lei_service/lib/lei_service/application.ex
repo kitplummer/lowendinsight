@@ -24,10 +24,6 @@ defmodule LeiService.Application do
   end
 
   defp children do
-    # Must exist before any request is served; see RateLimiter.init_table/0 for
-    # why it cannot be created in the plug's init/1.
-    LeiService.Plugs.RateLimiter.init_table()
-
     # Created here, by a process that lives as long as the application. An ETS
     # table dies with the process that created it, and created lazily these
     # belonged to whichever request counted first -- so every webhook outcome

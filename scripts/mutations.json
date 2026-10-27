@@ -29,15 +29,6 @@
       "app": "apps/lei_service"
     },
     {
-      "id": "rate-limiter-table",
-      "bug": "POST /v1/analyze raised for every authenticated caller; the ETS table was created in Plug init/1, which runs at compile time (#91)",
-      "file": "apps/lei_service/lib/lei_service/plugs/rate_limiter.ex",
-      "find": "    # Belt and braces: rate limiting must never be the reason an analysis fails.\n    init_table()\n\n",
-      "replace": "",
-      "guarded_by": "test/lei_service/rate_limiter_table_test.exs",
-      "app": "apps/lei_service"
-    },
-    {
       "id": "signup-success-session",
       "bug": "Every completed Pro checkout ended on a 500; get_session/2 was called without fetching the session (#90)",
       "file": "apps/lei_service/lib/lei/web/router.ex",
@@ -4590,6 +4581,60 @@
       "replace": "",
       "guarded_by": "test/lei_service/sarif_scan_scope_test.exs",
       "bug": "The SARIF job had no timeout: a slow or hung scan held a runner for hours and runs piled up behind it."
+    },
+    {
+      "id": "sbom-route-not-rate-limited",
+      "app": "apps/lei_service",
+      "file": "apps/lei_service/lib/lei_service/plugs/rate_limiter.ex",
+      "find": "  @limited [\"/v1/analyze\", \"/v1/analyze/sbom\"]",
+      "replace": "  @limited [\"/v1/analyze\"]",
+      "guarded_by": "test/lei_service/one_rate_limit_test.exs",
+      "bug": "The limiter matched the path /v1/analyze exactly, so POST /v1/analyze/sbom had no per-key limit."
+    },
+    {
+      "id": "analyze-routes-have-separate-allowances",
+      "app": "apps/lei_service",
+      "file": "apps/lei_service/lib/lei_service/plugs/rate_limiter.ex",
+      "find": "Lei.RateLimiter.check(\"api:#{api_key.key_prefix}\", api_key.org.tier)",
+      "replace": "Lei.RateLimiter.check(\"analyze:#{api_key.key_prefix}\", api_key.org.tier)",
+      "guarded_by": "test/lei_service/one_rate_limit_test.exs",
+      "bug": "POST /v1/analyze counted in a bucket of its own while the batch route counted in api:, so a key had one allowance per route rather than the one its tier states."
+    },
+    {
+      "id": "analyze-rate-limit-ignores-tier",
+      "app": "apps/lei_service",
+      "file": "apps/lei_service/lib/lei_service/plugs/rate_limiter.ex",
+      "find": "Lei.RateLimiter.check(\"api:#{api_key.key_prefix}\", api_key.org.tier)",
+      "replace": "Lei.RateLimiter.check(\"api:#{api_key.key_prefix}\", \"free\")",
+      "guarded_by": "test/lei_service/one_rate_limit_test.exs",
+      "bug": "POST /v1/analyze allowed a fixed 10 a minute whatever the tier, so a Pro key was limited like a free one."
+    },
+    {
+      "id": "signup-states-its-own-rate-limit",
+      "app": "apps/lei_service",
+      "file": "apps/lei_service/lib/lei/web/router.ex",
+      "find": "Keyword.put_new(assigns, :free_rate_limit, Lei.RateLimiter.limit(\"free\"))",
+      "replace": "Keyword.put_new(assigns, :free_rate_limit, 60)",
+      "guarded_by": "test/lei_service/one_rate_limit_test.exs",
+      "bug": "The signup page promised 60 requests a minute while POST /v1/analyze enforced 10: the page stated a number of its own rather than the configured limit."
+    },
+    {
+      "id": "retry-after-off-by-one",
+      "app": "apps/lei_service",
+      "file": "apps/lei_service/lib/lei/rate_limiter.ex",
+      "find": "def retry_after_seconds(retry_after_ms), do: div(retry_after_ms + 999, 1000)",
+      "replace": "def retry_after_seconds(retry_after_ms), do: div(retry_after_ms, 1000) + 1",
+      "guarded_by": "test/lei/rate_limiter_test.exs",
+      "bug": "A refusal said Retry-After 61 for a 60-second window when the requests landed in one millisecond; the other limiters rounded down, so a client that waited exactly as told was refused again."
+    },
+    {
+      "id": "signup-states-its-own-pro-limit",
+      "app": "apps/lei_service",
+      "file": "apps/lei_service/lib/lei/web/router.ex",
+      "find": "Keyword.put_new(assigns, :pro_rate_limit, Lei.RateLimiter.limit(\"pro\"))",
+      "replace": "Keyword.put_new(assigns, :pro_rate_limit, 600)",
+      "guarded_by": "test/lei_service/one_rate_limit_test.exs",
+      "bug": "The signup page stated rate limits as numbers of its own, so the page and what was enforced could disagree; for POST /v1/analyze they did."
     }
   ]
 }

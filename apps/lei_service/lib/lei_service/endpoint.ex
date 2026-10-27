@@ -156,8 +156,11 @@ defmodule LeiService.Endpoint do
       ip = Lei.Payments.RateLimit.client_ip(conn)
 
       case Lei.RateLimiter.check("try_it:#{ip}", "try_it") do
-        {:ok, _remaining} -> :ok
-        {:error, :rate_limited, retry_after_ms} -> {:limited, max(div(retry_after_ms, 1000), 1)}
+        {:ok, _remaining} ->
+          :ok
+
+        {:error, :rate_limited, retry_after_ms} ->
+          {:limited, Lei.RateLimiter.retry_after_seconds(retry_after_ms)}
       end
     end
   end

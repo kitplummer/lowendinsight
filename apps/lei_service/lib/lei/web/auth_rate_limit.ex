@@ -32,7 +32,7 @@ defmodule Lei.Web.AuthRateLimit do
         conn
 
       {:error, :rate_limited, retry_after_ms} ->
-        retry_after = max(div(retry_after_ms, 1000), 1)
+        retry_after = Lei.RateLimiter.retry_after_seconds(retry_after_ms)
 
         # The address, never the credential attempted: a log line holding a
         # recovery code or an API key is the leak this route protects against.
