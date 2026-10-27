@@ -406,7 +406,9 @@ defmodule Lei.Web.Router do
             # write and the Oban insert go through different repos and cannot
             # share a transaction, so the money follows the work rather than
             # committing with it (#217).
-            unqueued = get_in(result, [:summary, :failed]) || 0
+            # Not summary.failed: that includes dependencies already recorded
+            # as unresolvable, which admission never charged for.
+            unqueued = get_in(result, [:summary, :unqueued]) || 0
             credited = credit_unqueued(org_id, unqueued)
 
             enriched =

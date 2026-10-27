@@ -168,4 +168,24 @@ defmodule Lei.Web.BatchUnqueuedRefundTest do
     assert entry.metadata["unqueued"] == 2
     assert entry.external_ref =~ "unqueued:"
   end
+
+  # 2026-10-27, umbrella_ci on main: a paying agent's balance came out 50
+  # credits above what it bought. A dependency already recorded as
+  # unresolvable (#329) is reported "failed" and priced at nothing -- it was
+  # never a miss -- but the route credited back every "failed" entry as an
+  # unqueued miss. Each request naming one was paid for a charge it never had.
+  test "a dependency already known to be unresolvable is not credited back", ctx do
+    scheduler(fn _dep -> {:ok, "job-ok"} end)
+    [dep] = deps(1)
+    Lei.BatchAnalyzer.mark_unresolvable(dep, :no_repository)
+
+    body = ctx.key |> post_batch([dep]) |> Map.fetch!(:resp_body) |> Poison.decode!()
+
+    # Still reported as failed, with its reason: that is #329's fix.
+    assert body["summary"]["failed"] == 1
+    assert body["billing"]["unqueued"] == 0
+    assert body["billing"]["credited_back_cents"] == 0
+    refute Map.has_key?(credits_by_reason(ctx.org.id), "adjustment:unqueued")
+    assert Credits.balance(ctx.org.id) == 0
+  end
 end

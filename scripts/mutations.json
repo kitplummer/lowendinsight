@@ -2831,7 +2831,7 @@
       "id": "unqueued-credit-covers-the-whole-batch",
       "bug": "The compensating credit was written for every cache miss rather than only the ones that failed to queue, so a batch that queued successfully was refunded work it had actually been given.",
       "file": "apps/lei_service/lib/lei/web/router.ex",
-      "find": "            unqueued = get_in(result, [:summary, :failed]) || 0",
+      "find": "            unqueued = get_in(result, [:summary, :unqueued]) || 0",
       "replace": "            unqueued = misses",
       "guarded_by": "test/lei/web/batch_unqueued_refund_test.exs",
       "app": "apps/lei_service"
@@ -4500,6 +4500,15 @@
       "replace": "      {:error, reason} when reason in [:no_repository, :not_found] ->\n",
       "guarded_by": "test/lei_service/batch_dependency_worker_test.exs",
       "bug": "A package with no repository was cancelled and recorded nowhere, so every batch request queued it again and the caller was never told why."
+    },
+    {
+      "id": "batch-refunds-held-failures",
+      "app": "apps/lei_service",
+      "file": "apps/lei_service/lib/lei/web/router.ex",
+      "find": "unqueued = get_in(result, [:summary, :unqueued]) || 0",
+      "replace": "unqueued = get_in(result, [:summary, :failed]) || 0",
+      "guarded_by": "test/lei/web/batch_unqueued_refund_test.exs",
+      "bug": "A dependency already recorded as unresolvable is reported failed and priced at nothing, but the batch route credited back every failed entry as an unqueued miss, so each request naming one was paid credits it was never charged."
     }
   ]
 }
