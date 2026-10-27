@@ -204,6 +204,80 @@ defmodule LeiService.DeployReportingTest do
       assert code == 1
     end
 
+    # 2026-10-27 16:13: the monitor failed with "could not determine whether
+    # d1b0223 is deployed". The deploy run it asked about had finished fourteen
+    # hours earlier, and the same script a few minutes later said DEPLOYED. One
+    # `gh run view` failed, its stderr went to /dev/null, and a failed read was
+    # reported exactly like a job that does not exist yet.
+    defp stub_gh_flaky(dir, failures) do
+      count = Path.join(dir, "jobs_calls")
+
+      File.write!(Path.join(dir, "bin/gh"), """
+      #!/usr/bin/env bash
+      case "$*" in
+        *"--workflow umbrella_ci"*) echo "completed success 4242" ;;
+        *"--workflow deploy"*)      echo "111" ;;
+        *"--json jobs"*)
+          n=$(( $(cat #{count} 2>/dev/null || echo 0) + 1 )); echo "$n" > #{count}
+          if [ "$n" -le #{failures} ]; then
+            echo "HTTP 502: Bad Gateway (https://api.github.com/repos/x/y/actions/runs/111)" >&2
+            exit 1
+          fi
+          echo "success" ;;
+        *"--json conclusion"*)      echo "success" ;;
+      esac
+      """)
+
+      File.chmod!(Path.join(dir, "bin/gh"), 0o755)
+    end
+
+    defp run_status_now(dir, sha) do
+      System.cmd("bash", [@script, sha],
+        env: [
+          {"PATH", Path.join(dir, "bin") <> ":" <> System.get_env("PATH")},
+          {"DEPLOY_STATUS_RETRY_DELAY", "0"}
+        ],
+        stderr_to_stdout: true
+      )
+    end
+
+    test "one failed read of a finished run is retried, not reported", %{dir: dir} do
+      stub_gh_flaky(dir, 1)
+
+      {out, code} = run_status_now(dir, @sha)
+
+      assert code == 0, "a single failed gh call was reported as could-not-tell:\n#{out}"
+      assert out =~ "DEPLOYED"
+    end
+
+    test "a read that keeps failing is could-not-tell, and says why", %{dir: dir} do
+      stub_gh_flaky(dir, 99)
+
+      {out, code} = run_status_now(dir, @sha)
+
+      assert code == 2
+      assert out =~ "COULD NOT TELL"
+      refute out =~ "is live"
+      assert out =~ "HTTP 502", "gh's own error was discarded, so the failure cannot be diagnosed"
+    end
+
+    test "deploy runs that cannot be listed are could-not-tell, not none", %{dir: dir} do
+      File.write!(Path.join(dir, "bin/gh"), """
+      #!/usr/bin/env bash
+      case "$*" in
+        *"--workflow umbrella_ci"*) echo "completed success 4242" ;;
+        *"--workflow deploy"*)      echo "HTTP 502: Bad Gateway" >&2; exit 1 ;;
+      esac
+      """)
+
+      File.chmod!(Path.join(dir, "bin/gh"), 0o755)
+
+      {out, code} = run_status_now(dir, @sha)
+
+      assert code == 2, "a failed listing was read as no deploy run:\n#{out}"
+      refute out =~ "no run for this commit"
+    end
+
     test "an unreadable job state is could-not-tell, never deployed", %{dir: dir} do
       # An answer it cannot produce must not be the reassuring one.
       stub_gh(dir, "")

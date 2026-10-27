@@ -24,6 +24,25 @@ die() { printf '%s\n' "$1" >&2; exit "${2:-2}"; }
 
 command -v gh >/dev/null || die "gh is required but not installed"
 
+# Every read goes through this. A failed `gh` call printed nothing and was
+# read as an empty answer: on 2026-10-27 one failed `gh run view` of a deploy
+# that had finished fourteen hours earlier became "could not tell", and the
+# monitor failed. A read is retried; if it still fails, gh's own error is
+# printed and the caller gets a non-zero status, never an empty success.
+GH_ERR=$(mktemp)
+trap 'rm -f "$GH_ERR"' EXIT
+gh_read() {
+  local attempt
+  for attempt in 1 2 3; do
+    if gh "$@" 2>"$GH_ERR"; then
+      return 0
+    fi
+    [ "$attempt" -lt 3 ] && sleep "${DEPLOY_STATUS_RETRY_DELAY:-5}"
+  done
+  printf 'gh failed 3 times: %s\n' "$(head -c 300 "$GH_ERR")" >&2
+  return 1
+}
+
 if [ $# -ge 1 ]; then
   SHA="$1"
 else
@@ -39,9 +58,9 @@ fi
 
 printf 'commit   %s\n' "${SHA:0:7}"
 
-CI=$(gh run list --repo "$REPO" --workflow umbrella_ci --limit 30 \
+CI=$(gh_read run list --repo "$REPO" --workflow umbrella_ci --limit 30 \
   --json headSha,status,conclusion,databaseId \
-  --jq ".[] | select(.headSha==\"$SHA\") | \"\(.status) \(.conclusion // \"-\") \(.databaseId)\"" 2>/dev/null | head -1)
+  --jq ".[] | select(.headSha==\"$SHA\") | \"\(.status) \(.conclusion // \"-\") \(.databaseId)\"" | head -1)
 
 printf 'umbrella_ci  %s\n' "${CI:-no run found}"
 
@@ -57,8 +76,10 @@ case "$CI" in
     ;;
 esac
 
-RUNS=$(gh run list --repo "$REPO" --workflow deploy --limit 30 \
-  --json databaseId,headSha --jq ".[] | select(.headSha==\"$SHA\") | .databaseId" 2>/dev/null)
+# Not knowing which deploy runs exist is not the same as there being none.
+RUNS=$(gh_read run list --repo "$REPO" --workflow deploy --limit 30 \
+  --json databaseId,headSha --jq ".[] | select(.headSha==\"$SHA\") | .databaseId") ||
+  die "COULD NOT TELL: the deploy runs could not be listed." 2
 
 if [ -z "$RUNS" ]; then
   printf 'deploy       no run for this commit\n'
@@ -70,10 +91,10 @@ fi
 
 STATUS=1
 for RUN in $RUNS; do
-  CONCLUSION=$(gh run view "$RUN" --repo "$REPO" --json jobs \
-    --jq ".jobs[] | select(.name==\"$JOB\") | .conclusion" 2>/dev/null)
+  CONCLUSION=$(gh_read run view "$RUN" --repo "$REPO" --json jobs \
+    --jq ".jobs[] | select(.name==\"$JOB\") | .conclusion")
 
-  RUN_CONCLUSION=$(gh run view "$RUN" --repo "$REPO" --json conclusion --jq '.conclusion' 2>/dev/null)
+  RUN_CONCLUSION=$(gh_read run view "$RUN" --repo "$REPO" --json conclusion --jq '.conclusion')
 
   case "${CONCLUSION:-missing}" in
     success)
