@@ -33,7 +33,7 @@ defmodule Lei.Acp.RateLimit do
         conn
 
       {:error, :rate_limited, retry_after_ms} ->
-        retry_after = max(div(retry_after_ms, 1000), 1)
+        retry_after = Lei.RateLimiter.retry_after_seconds(retry_after_ms)
         Logger.warning("ACP rate limit: bucket=#{bucket} ip=#{ip} retry_after=#{retry_after}s")
 
         conn

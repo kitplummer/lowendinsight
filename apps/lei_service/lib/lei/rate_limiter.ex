@@ -89,6 +89,17 @@ defmodule Lei.RateLimiter do
     |> max(window_ms())
   end
 
+  @doc """
+  The Retry-After, in whole seconds, for a refusal that may succeed after
+  `retry_after_ms`. Rounded up -- waiting that long is always enough -- and
+  never zero, which would say retry now.
+  """
+  def retry_after_seconds(retry_after_ms) when retry_after_ms <= 0, do: 1
+  def retry_after_seconds(retry_after_ms), do: div(retry_after_ms + 999, 1000)
+
+  @doc "A tier's allowance per window: what is enforced, and what pages state."
+  def limit(tier), do: limit_for(tier)
+
   defp limit_for(tier) do
     limits = Application.get_env(:lei_service, :rate_limits, @default_limits)
     Map.get(limits, String.to_existing_atom(tier), @default_limits.free)

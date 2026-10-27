@@ -821,6 +821,10 @@ defmodule Lei.Web.Router do
     # disappears by itself when beta ends rather than waiting for someone to
     # remember a template (ADR-007).
     assigns = Keyword.put_new(assigns, :beta?, Lei.Billing.beta?())
+    # The allowance a page states is the one enforced. The signup page said 60
+    # while POST /v1/analyze allowed 10 (2026-10-27).
+    assigns = Keyword.put_new(assigns, :free_rate_limit, Lei.RateLimiter.limit("free"))
+    assigns = Keyword.put_new(assigns, :pro_rate_limit, Lei.RateLimiter.limit("pro"))
     # Lei.Web.HTMLEngine escapes every <%= %>. Plain EEx escaped nothing, so org
     # and key names were written into the page as markup.
     inner =

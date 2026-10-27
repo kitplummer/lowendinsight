@@ -119,4 +119,26 @@ defmodule Lei.RateLimiterTest do
     assert is_integer(retry_after)
     assert retry_after >= 0
   end
+
+  # The Retry-After a refusal states. Two formulas were in use, wrong in
+  # opposite directions (2026-10-27): `div(ms, 1000) + 1` answered 61 for a
+  # 60-second window when the requests landed in one millisecond, and
+  # `max(div(ms, 1000), 1)` answered 59 for 59.5 seconds, so a client that
+  # waited exactly as told was refused again.
+  describe "retry_after_seconds/1" do
+    test "rounds up, so waiting that long is always enough" do
+      assert Lei.RateLimiter.retry_after_seconds(59_500) == 60
+      assert Lei.RateLimiter.retry_after_seconds(1) == 1
+    end
+
+    test "a whole number of seconds is not rounded past itself" do
+      assert Lei.RateLimiter.retry_after_seconds(60_000) == 60
+      assert Lei.RateLimiter.retry_after_seconds(1_000) == 1
+    end
+
+    test "never zero, which would say retry now" do
+      assert Lei.RateLimiter.retry_after_seconds(0) == 1
+      assert Lei.RateLimiter.retry_after_seconds(-5) == 1
+    end
+  end
 end
