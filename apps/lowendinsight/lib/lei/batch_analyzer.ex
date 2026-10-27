@@ -86,6 +86,10 @@ defmodule Lei.BatchAnalyzer do
         pending: length(pending_jobs) + Enum.count(held_results, &(&1.status == "pending")),
         uncached: length(uncached),
         failed: length(failed) + Enum.count(held_results, &(&1.status == "failed")),
+        # Misses the scheduler refused: the only failures a caller was charged
+        # for. A dependency already recorded as unresolvable is "failed" too,
+        # but it was never a miss and never priced, so it is not counted here.
+        unqueued: length(failed),
         risk_breakdown: risk_breakdown
       },
       results: all_results,

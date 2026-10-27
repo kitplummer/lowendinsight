@@ -34,6 +34,10 @@ defmodule LeiService.AgentPaymentTest do
     Ecto.Adapters.SQL.Sandbox.mode(LeiService.Repo, {:shared, self()})
     Lei.RateLimiter.clear()
     LeiService.Plugs.RateLimiter.clear()
+    # Every test here asks about npm/left-pad 1.3.0, and so do other files: a
+    # marker one of them left in Redis decided what this file's tests were
+    # charged, depending on seed (umbrella_ci on main, 2026-10-27).
+    Lei.BatchCache.clear()
 
     keys = [
       :stripe_secret_key,

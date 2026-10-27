@@ -19,6 +19,10 @@ same tree (ADR-003).
   again and never said why. It is now reported `"failed"` with the reason for a
   day (`Lei.BatchAnalyzer.mark_unresolvable/3`). An analysis that ran and
   determined nothing is still not recorded, so the next request tries again.
+  The batch summary gains `unqueued`: the misses that could not be queued,
+  which are the only failures a caller was charged for. `failed` also counts
+  dependencies already recorded as unresolvable, which were never charged, so
+  the service credits back `unqueued`, not `failed`.
 
 ## 0.16.0-beta.1 — 2026-10-24
 
