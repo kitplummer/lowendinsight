@@ -4509,6 +4509,33 @@
       "replace": "unqueued = get_in(result, [:summary, :failed]) || 0",
       "guarded_by": "test/lei/web/batch_unqueued_refund_test.exs",
       "bug": "A dependency already recorded as unresolvable is reported failed and priced at nothing, but the batch route credited back every failed entry as an unqueued miss, so each request naming one was paid credits it was never charged."
+    },
+    {
+      "id": "deploy-status-one-failed-read-could-not-tell",
+      "app": "apps/lei_service",
+      "file": "scripts/ops/deploy-status.sh",
+      "find": "  for attempt in 1 2 3; do\n",
+      "replace": "  for attempt in 1; do\n",
+      "guarded_by": "test/lei_service/deploy_reporting_test.exs",
+      "bug": "One failed gh read of a deploy that had finished fourteen hours earlier was reported as could-not-tell, and the monitor went red (2026-10-27 16:13)."
+    },
+    {
+      "id": "deploy-status-discards-gh-error",
+      "app": "apps/lei_service",
+      "file": "scripts/ops/deploy-status.sh",
+      "find": "  printf 'gh failed 3 times: %s\\n' \"$(head -c 300 \"$GH_ERR\")\" >&2\n",
+      "replace": "",
+      "guarded_by": "test/lei_service/deploy_reporting_test.exs",
+      "bug": "gh's stderr went to /dev/null, so a failed read could not be told from a job that does not exist yet, and the monitor's failure could not be diagnosed."
+    },
+    {
+      "id": "deploy-status-failed-listing-reads-as-none",
+      "app": "apps/lei_service",
+      "file": "scripts/ops/deploy-status.sh",
+      "find": " ||\n  die \"COULD NOT TELL: the deploy runs could not be listed.\" 2\n",
+      "replace": "\n",
+      "guarded_by": "test/lei_service/deploy_reporting_test.exs",
+      "bug": "A failed listing of deploy runs read as no deploy run for the commit, and was reported NOT DEPLOYED rather than could-not-tell."
     }
   ]
 }
