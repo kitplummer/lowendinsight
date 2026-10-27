@@ -31,6 +31,11 @@ defmodule LeiService.UnbilledPathsTest do
           do: {k, Application.fetch_env(:lei_service, k)}
 
     on_exit(fn ->
+      # The Try It tests below exhaust 127.0.0.1's allowance on purpose. Left
+      # exhausted, it failed whichever module ran next and sent a fresh Try It
+      # analysis (endpoint_test, on main, 2026-10-27).
+      Lei.RateLimiter.clear()
+
       for {k, v} <- saved do
         case v do
           {:ok, value} -> Application.put_env(:lei_service, k, value)

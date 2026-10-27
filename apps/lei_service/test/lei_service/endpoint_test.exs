@@ -19,6 +19,11 @@ defmodule LeiService.EndpointTest do
   setup do
     :ok = Ecto.Adapters.SQL.Sandbox.checkout(LeiService.Repo)
     Ecto.Adapters.SQL.Sandbox.mode(LeiService.Repo, {:shared, self()})
+    # The Try It tests here send fresh analyses from 127.0.0.1, whose per-IP
+    # allowance is node-global. Assumed unused, it was whatever the module that
+    # ran before had left: unbilled_paths_test exhausts it on purpose, and when
+    # it ran just before this one, /url= answered 429 (main, 2026-10-27).
+    Lei.RateLimiter.clear()
     :ok
   end
 
