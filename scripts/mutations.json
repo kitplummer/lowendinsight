@@ -2786,8 +2786,8 @@
       "id": "upgrade-url-on-flys-hostname",
       "bug": "The 402 a free-tier customer receives linked to https://lowendinsight.fly.dev/signup?tier=pro -- Fly's assigned hostname rather than the service's own. Both resolve to the same machine, so it worked and nobody noticed; it stops working the moment the app is renamed or moves off Fly.",
       "file": "apps/lei_service/lib/lei/payments/gate.ex",
-      "find": "          upgrade_url: base_url() <> \"/signup?tier=pro\"",
-      "replace": "          upgrade_url: \"https://lowendinsight.fly.dev/signup?tier=pro\"",
+      "find": "  def upgrade_url, do: base_url() <> \"/signup?tier=pro\"",
+      "replace": "  def upgrade_url, do: \"https://lowendinsight.fly.dev/signup?tier=pro\"",
       "guarded_by": "test/lei/payments/upgrade_url_test.exs",
       "app": "apps/lei_service"
     },
@@ -4644,6 +4644,78 @@
       "replace": "          refuse(conn, {:payment_required, nil, top_up(0, required)})",
       "guarded_by": "test/lei/payments/gate_decide_test.exs",
       "bug": "Deciding admission also answered the caller with an HTTP 402: a caller that is not answered over HTTP -- an MCP tool call -- could not be told no in its own protocol."
+    },
+    {
+      "id": "mcp-unauthenticated",
+      "app": "apps/lei_service",
+      "file": "apps/lei_service/lib/lei/mcp.ex",
+      "find": "      _ -> {:halt, unauthorized(conn, nil)}",
+      "replace": "      _ -> {:ok, conn}",
+      "guarded_by": "test/lei_service/mcp_test.exs",
+      "bug": "/mcp served a caller with no credentials: anyone could run analyses billed to nobody."
+    },
+    {
+      "id": "mcp-scope-ignored",
+      "app": "apps/lei_service",
+      "file": "apps/lei_service/lib/lei/mcp.ex",
+      "find": "        if \"analyze\" in api_key.scopes or \"admin\" in api_key.scopes do",
+      "replace": "        if true do",
+      "guarded_by": "test/lei_service/mcp_test.exs",
+      "bug": "A key without the analyze scope could run analyses through /mcp that the API refuses it."
+    },
+    {
+      "id": "mcp-any-origin",
+      "app": "apps/lei_service",
+      "file": "apps/lei_service/lib/lei/mcp.ex",
+      "find": "        if origin in allowed_origins(),",
+      "replace": "        if true,",
+      "guarded_by": "test/lei_service/mcp_test.exs",
+      "bug": "A page on any origin could drive /mcp from a browser holding a local key: the DNS-rebinding case the protocol requires servers to refuse."
+    },
+    {
+      "id": "mcp-outside-the-allowance",
+      "app": "apps/lei_service",
+      "file": "apps/lei_service/lib/lei/mcp.ex",
+      "find": "         {:ok, conn} <- check_rate_limit(conn) do",
+      "replace": "         {:ok, conn} <- {:ok, conn} do",
+      "guarded_by": "test/lei_service/mcp_test.exs",
+      "bug": "/mcp was a second, unlimited allowance beside the key's one (#335)."
+    },
+    {
+      "id": "mcp-check-packages-unbilled",
+      "app": "apps/lei_service",
+      "file": "apps/lei_service/lib/lei/mcp.ex",
+      "find": "        case Gate.decide(conn, admission) do",
+      "replace": "        case Gate.decide(conn, []) do",
+      "guarded_by": "test/lei_service/mcp_test.exs",
+      "bug": "check_packages ran its batch without charging for it: the batch route's price did not reach /mcp."
+    },
+    {
+      "id": "mcp-not-routed",
+      "app": "apps/lei_service",
+      "file": "apps/lei_service/lib/lei_service/endpoint.ex",
+      "find": "  defp maybe_route_auth(%Plug.Conn{path_info: [\"mcp\"]} = conn, _opts) do",
+      "replace": "  defp maybe_route_auth(%Plug.Conn{path_info: [\"mcp-unrouted\"]} = conn, _opts) do",
+      "guarded_by": "test/lei_service/mcp_test.exs",
+      "bug": "/mcp worked as a module and was never reached through the endpoint production serves (#147)."
+    },
+    {
+      "id": "mcp-adoption-uncounted",
+      "app": "apps/lei_service",
+      "file": "apps/lei_service/lib/lei/mcp.ex",
+      "find": "    Lei.Adoption.record_bucket(\"mcp-remote\")\n",
+      "replace": "",
+      "guarded_by": "test/lei_service/mcp_test.exs",
+      "bug": "Remote MCP use was not counted, so whether the MCP server is used could only be answered with an opinion."
+    },
+    {
+      "id": "mcp-indexes-into-non-objects",
+      "app": "apps/lei_service",
+      "file": "apps/lei_service/lib/lei/mcp.ex",
+      "find": "  defp object(_), do: %{}\n",
+      "replace": "  defp object(other), do: other\n",
+      "guarded_by": "test/lei_service/mcp_test.exs",
+      "bug": "params or arguments sent as a list were indexed with a string key, which raises: a client's malformed call became a 500 instead of an answer it could read."
     }
   ]
 }

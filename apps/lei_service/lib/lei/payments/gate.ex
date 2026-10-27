@@ -162,12 +162,15 @@ defmodule Lei.Payments.Gate do
           # machine today, which is why it survived; that stops being true
           # the moment the app is renamed or moves off Fly, and a link sent
           # to a paying customer is the worst place to find out.
-          upgrade_url: base_url() <> "/signup?tier=pro"
+          upgrade_url: upgrade_url()
         },
         detail
       )
     )
   end
+
+  @doc "Where a free org is sent to upgrade. Every refusal names the same place."
+  def upgrade_url, do: base_url() <> "/signup?tier=pro"
 
   @doc "`{org_id, api_key_id, tier}` for the request, from its key or its payment."
   def billing_context(conn) do

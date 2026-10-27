@@ -65,14 +65,27 @@ defmodule Lei.Adoption do
   The buckets that exist, so a reader can tell an absent bucket from a zero one.
   """
   @spec buckets() :: [String.t()]
-  def buckets, do: ["mcp", "cli", "internal", "agent", "script", "browser", "other", "none"]
+  def buckets,
+    do: ["mcp", "mcp-remote", "cli", "internal", "agent", "script", "browser", "other", "none"]
 
   @doc """
   Count one call from `user_agent`. Returns `:ok` whatever happens.
   """
   @spec record(String.t() | nil, Date.t()) :: :ok
-  def record(user_agent, on \\ Date.utc_today()) do
-    key = key(bucket(user_agent), on)
+  def record(user_agent, on \\ Date.utc_today()), do: record_bucket(bucket(user_agent), on)
+
+  @doc """
+  Count one call in a bucket chosen by the server rather than by a user agent.
+
+  `/mcp` is a remote MCP server: whoever connects to it is an MCP client, and
+  what its user agent says is the client's business. Counting it by user agent
+  would scatter the one question this counter is for -- is the MCP server used
+  -- across `agent`, `script` and `other`.
+  """
+  @spec record_bucket(String.t(), Date.t()) :: :ok
+  def record_bucket(bucket, on \\ Date.utc_today()) do
+    true = bucket in buckets()
+    key = key(bucket, on)
 
     case Redix.pipeline(conn(), [["INCR", key], ["EXPIRE", key, @retention_days * 86_400]]) do
       {:ok, _} ->
