@@ -6,6 +6,15 @@ same tree (ADR-003).
 
 ## 0.16.0-beta.2 — Unreleased
 
+### Added
+
+- **Leave a directory out of a scan.** `mix lei.sarif --exclude DIR`
+  (repeatable, relative to the scanned path), `ScannerModule.scan(path,
+  exclude: [...])`, and the action's `exclude` input in SARIF mode. What is
+  left out is printed, and a directory that does not exist is refused rather
+  than excluding nothing. This repository's own scan took up to two hours
+  analysing the dev-only build tools in the editor extension's lockfile.
+
 ### Fixed
 
 - **Batch analysis reported a queued dependency as analysed.** Asking

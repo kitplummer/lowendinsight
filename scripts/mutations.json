@@ -4536,6 +4536,60 @@
       "replace": "\n",
       "guarded_by": "test/lei_service/deploy_reporting_test.exs",
       "bug": "A failed listing of deploy runs read as no deploy run for the commit, and was reported NOT DEPLOYED rather than could-not-tell."
+    },
+    {
+      "id": "scan-exclude-ignored",
+      "app": "apps/lowendinsight",
+      "file": "apps/lowendinsight/lib/project_ident.ex",
+      "find": "    |> without(repo.path, Keyword.get(opts, :exclude, []))\n",
+      "replace": "",
+      "guarded_by": "test/scan_exclude_test.exs",
+      "bug": "There was no way to leave a directory out of a scan: this repository's SARIF scan analysed 341 dev-only build tools of the editor extension and took up to two hours."
+    },
+    {
+      "id": "scan-exclude-is-a-prefix",
+      "app": "apps/lowendinsight",
+      "file": "apps/lowendinsight/lib/project_ident.ex",
+      "find": "prefixes = Enum.map(excluded, &(Path.expand(&1, Path.expand(root)) <> \"/\"))",
+      "replace": "prefixes = Enum.map(excluded, &Path.expand(&1, Path.expand(root)))",
+      "guarded_by": "test/scan_exclude_test.exs",
+      "bug": "An exclusion matched as a string prefix would leave out editor/ext when asked to exclude editor/e: more left out of a supply-chain scan than was asked."
+    },
+    {
+      "id": "scan-exclude-missing-dir-accepted",
+      "app": "apps/lowendinsight",
+      "file": "apps/lowendinsight/lib/mix/tasks/lei/sarif.ex",
+      "find": "    case Enum.reject(exclude, &File.dir?(Path.join(path, &1))) do",
+      "replace": "    case [] do",
+      "guarded_by": "test/scan_exclude_test.exs",
+      "bug": "An exclusion naming a directory that does not exist excluded nothing, silently: a typo, or a directory since renamed."
+    },
+    {
+      "id": "scan-exclude-not-reported",
+      "app": "apps/lowendinsight",
+      "file": "apps/lowendinsight/lib/mix/tasks/lei/sarif.ex",
+      "find": "        report_excluded(path, exclude)\n",
+      "replace": "        :ok\n",
+      "guarded_by": "test/scan_exclude_test.exs",
+      "bug": "What a scan leaves out is a decision about a supply-chain report; it was not said anywhere in the output."
+    },
+    {
+      "id": "sarif-self-scan-includes-extension",
+      "app": "apps/lei_service",
+      "file": ".github/workflows/lei_sarif.yml",
+      "find": "        exclude: apps/lei_service/vscode-lowendinsight\n",
+      "replace": "",
+      "guarded_by": "test/lei_service/sarif_scan_scope_test.exs",
+      "bug": "The self-scan analysed the editor extension's 341 dev-only build tools and took up to two hours per run."
+    },
+    {
+      "id": "sarif-self-scan-unbounded",
+      "app": "apps/lei_service",
+      "file": ".github/workflows/lei_sarif.yml",
+      "find": "    timeout-minutes: 30\n",
+      "replace": "",
+      "guarded_by": "test/lei_service/sarif_scan_scope_test.exs",
+      "bug": "The SARIF job had no timeout: a slow or hung scan held a runner for hours and runs piled up behind it."
     }
   ]
 }

@@ -10,11 +10,14 @@ defmodule Mix.Tasks.Lei.Sarif do
 
   ## Usage
 
-      mix lei.sarif [path] [--output <file>]
+      mix lei.sarif [path] [--output <file>] [--exclude <dir>]...
 
   ## Options
 
     * `--output` / `-o` - Write SARIF to file instead of stdout
+    * `--exclude` - Leave out the manifests under this directory, relative to
+      `path`. Repeatable. What it leaves out is printed, and a directory that
+      does not exist is refused rather than excluding nothing.
 
   ## Examples
 
@@ -25,15 +28,16 @@ defmodule Mix.Tasks.Lei.Sarif do
 
   use Mix.Task
 
-  @switches [output: :string]
+  @switches [output: :string, exclude: :keep]
   @aliases [o: :output]
 
   @impl Mix.Task
   def run(args) do
     Mix.Task.run("app.start")
 
-    with {:ok, %{path: path, output: output}} <- parse_args(args) do
-      scan_and_write(path, output)
+    with {:ok, %{path: path, output: output, exclude: exclude}} <- parse_args(args),
+         :ok <- check_excluded(path, exclude) do
+      scan_and_write(path, output, exclude)
     else
       {:error, msg} -> Mix.shell().error(msg)
     end
@@ -57,22 +61,58 @@ defmodule Mix.Tasks.Lei.Sarif do
             [p | _] -> p
           end
 
-        {:ok, %{path: path, output: Keyword.get(opts, :output)}}
+        {:ok,
+         %{
+           path: path,
+           output: Keyword.get(opts, :output),
+           exclude: Keyword.get_values(opts, :exclude)
+         }}
 
       invalid ->
         names = Enum.map_join(invalid, ", ", fn {name, _value} -> name end)
 
-        {:error, "Unknown option(s): #{names}. Usage: mix lei.sarif [path] [--output <file>]"}
+        {:error,
+         "Unknown option(s): #{names}. Usage: mix lei.sarif [path] [--output <file>] [--exclude <dir>]..."}
     end
   end
 
-  defp scan_and_write(path, output) do
+  # An exclusion that names no directory excludes nothing, silently: a typo, or
+  # a directory renamed since the workflow was written. Refused instead.
+  defp check_excluded(_path, []), do: :ok
+
+  defp check_excluded(path, exclude) do
+    case Enum.reject(exclude, &File.dir?(Path.join(path, &1))) do
+      [] ->
+        report_excluded(path, exclude)
+
+      missing ->
+        {:error, "--exclude names no directory under #{path}: #{Enum.join(missing, ", ")}"}
+    end
+  end
+
+  # Leaving something out of a supply-chain scan is a decision, so it is said.
+  defp report_excluded(path, exclude) do
+    all = ProjectIdent.get_project_types_identified(path)
+    kept = ProjectIdent.get_project_types_identified(path, exclude: exclude)
+    left_out = (Map.values(all) |> List.flatten()) -- (Map.values(kept) |> List.flatten())
+    root = Path.expand(path)
+
+    Mix.shell().info(
+      "Excluded from the scan (#{Enum.join(exclude, ", ")}): " <>
+        case left_out do
+          [] -> "no manifests"
+          files -> Enum.map_join(files, ", ", &Path.relative_to(Path.expand(&1), root))
+        end
+    )
+  end
+
+  defp scan_and_write(path, output, exclude) do
     case File.exists?(path) do
       false ->
         Mix.shell().error("Invalid path: #{path}")
 
       true ->
-        json = ScannerModule.scan(path)
+        json = ScannerModule.scan(path, exclude: exclude)
         report = Poison.decode!(json, keys: :atoms)
 
         case Lei.Sarif.generate(report) do

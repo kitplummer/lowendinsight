@@ -28,6 +28,10 @@ inputs:
     description: 'The directory to scan, relative to the workspace.'
     required: false
     default: '.'
+  exclude:
+    description: "SARIF mode: directories to leave out, relative to `path`, one per line. What is left out is printed; a directory that does not exist fails the scan."
+    required: false
+    default: ''
   branch:
     description: "JSON mode: push the report to this branch. Empty writes the file and pushes nothing."
     required: false
@@ -106,6 +110,7 @@ runs:
         IN_SARIF: ${{ inputs.sarif }}
         IN_SARIF_FILE: ${{ inputs.sarif_file }}
         IN_PATH: ${{ inputs.path }}
+        IN_EXCLUDE: ${{ inputs.exclude }}
         IN_BRANCH: ${{ inputs.branch }}
         IN_TOKEN: ${{ inputs.github_token }}
         IN_REPOSITORY: ${{ inputs.repository }}
@@ -118,15 +123,26 @@ runs:
         [ -d "$TARGET" ] || { echo "::error::path '$IN_PATH' is not a directory in the workspace"; exit 1; }
         cd "$GITHUB_ACTION_PATH/apps/lowendinsight"
 
+        # One directory per line; blank lines and surrounding space ignored.
+        EXCLUDE=()
+        while IFS= read -r dir; do
+          dir=$(printf '%s' "$dir" | sed -e 's/^[[:space:]]*//' -e 's/[[:space:]]*$//')
+          [ -n "$dir" ] && EXCLUDE+=(--exclude "$dir")
+        done <<<"$IN_EXCLUDE"
+
         if [ "$IN_SARIF" = "true" ]; then
           OUT=$(realpath -m "$GITHUB_WORKSPACE/$IN_SARIF_FILE")
-          mix lei.sarif "$TARGET" --output "$OUT"
+          mix lei.sarif "$TARGET" --output "$OUT" "${EXCLUDE[@]}"
           # A run that wrote nothing is not a scan.
           jq -e '.runs | length > 0' "$OUT" >/dev/null || { echo "::error::$OUT is not a SARIF log with a run in it"; exit 1; }
           echo "sarif_file=$OUT" >> "$GITHUB_OUTPUT"
           echo "SARIF written to $OUT"
           exit 0
         fi
+
+        # mix lei.scan has no --exclude. Scanning everything would be the
+        # opposite of what was asked, so it is refused.
+        [ ${#EXCLUDE[@]} -eq 0 ] || { echo "::error::exclude is supported in SARIF mode only"; exit 1; }
 
         DIR=$(realpath -m "$GITHUB_WORKSPACE/$IN_DIRECTORY")
         mkdir -p "$DIR"
