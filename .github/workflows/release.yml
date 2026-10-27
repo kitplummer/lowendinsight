@@ -17,6 +17,13 @@ name: release
 #
 # A dry run builds every artifact from the tree's version and publishes nothing.
 #
+# The editor extension is built and tested with everything else, and published
+# after Hex: the Marketplace and Open VSX, like Hex, never take a version twice.
+# They accept only x.y.z, so 0.16.0-beta.N ships as 0.16.N, flagged
+# pre-release (one_version_test.exs). A stable release must bump the minor or
+# the major -- 0.16.0 after 0.16.N is a lower version, and both registries
+# refuse it.
+#
 # A version with a pre-release suffix (0.16.0-beta.1) is a pre-release
 # everywhere: Hex marks it so and resolvers skip it unless asked, the GitHub
 # Release is flagged prerelease and never "latest", and the image gets only its
@@ -134,8 +141,40 @@ jobs:
 
   # The image, the Zarf package and the UDS bundle share one Docker daemon:
   # Zarf packages the image it finds locally, so they are one job.
-  packages:
+  vscode:
     needs: [plan, ci]
+    runs-on: ubuntu-24.04
+    defaults:
+      run:
+        working-directory: apps/lei_service/vscode-lowendinsight
+    env:
+      VERSION: ${{ needs.plan.outputs.version }}
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: apps/lei_service/vscode-lowendinsight/package-lock.json
+      - run: npm ci
+      - run: npm test
+      - name: The extension is this release, in registry form
+        run: |
+          EXPECTED=$(sed -E 's/^([0-9]+)\.([0-9]+)\.0-beta\.([0-9]+)$/\1.\2.\3/' <<<"$VERSION")
+          ACTUAL=$(jq -r .version package.json)
+          [ "$ACTUAL" = "$EXPECTED" ] || { echo "::error::package.json is $ACTUAL; ${VERSION} ships as ${EXPECTED}"; exit 1; }
+      - name: Package
+        run: |
+          PRE=(); [ "${{ needs.plan.outputs.prerelease }}" = "true" ] && PRE=(--pre-release)
+          npx vsce package --no-dependencies "${PRE[@]}" -o lowendinsight.vsix
+      - uses: actions/upload-artifact@v7
+        with:
+          name: vscode-extension
+          path: apps/lei_service/vscode-lowendinsight/lowendinsight.vsix
+          if-no-files-found: error
+
+  packages:
+    needs: [plan, ci, vscode]
     runs-on: ubuntu-24.04
     permissions:
       contents: read
@@ -251,8 +290,45 @@ jobs:
           HEX_API_KEY: ${{ secrets.HEX_API_KEY }}
         run: mix hex.publish --yes
 
+  # After Hex, for the same reason Hex is last among the rest. A missing token
+  # fails here rather than skipping: a release that says it shipped the
+  # extension and did not is the failure this workflow was rewritten to stop.
+  vscode-publish:
+    needs: [plan, hex, vscode]
+    if: needs.plan.outputs.publish == 'true'
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: apps/lei_service/vscode-lowendinsight/package-lock.json
+      - run: npm ci
+        working-directory: apps/lei_service/vscode-lowendinsight
+      - uses: actions/download-artifact@v8
+        with:
+          name: vscode-extension
+          path: apps/lei_service/vscode-lowendinsight
+      - name: Publish to the Visual Studio Marketplace
+        working-directory: apps/lei_service/vscode-lowendinsight
+        env:
+          VSCE_PAT: ${{ secrets.VSCE_PAT }}
+        run: |
+          [ -n "$VSCE_PAT" ] || { echo "::error::VSCE_PAT is not set; the extension was not published. gh secret set VSCE_PAT"; exit 1; }
+          PRE=(); [ "${{ needs.plan.outputs.prerelease }}" = "true" ] && PRE=(--pre-release)
+          npx vsce publish "${PRE[@]}" --packagePath lowendinsight.vsix
+      - name: Publish to Open VSX
+        working-directory: apps/lei_service/vscode-lowendinsight
+        env:
+          OVSX_PAT: ${{ secrets.OVSX_PAT }}
+        run: |
+          [ -n "$OVSX_PAT" ] || { echo "::error::OVSX_PAT is not set; the extension was not published to Open VSX. gh secret set OVSX_PAT"; exit 1; }
+          PRE=(); [ "${{ needs.plan.outputs.prerelease }}" = "true" ] && PRE=(--pre-release)
+          npx ovsx publish lowendinsight.vsix "${PRE[@]}"
+
   github-release:
-    needs: [plan, packages, hex]
+    needs: [plan, packages, hex, vscode-publish]
     if: needs.plan.outputs.publish == 'true'
     runs-on: ubuntu-24.04
     permissions:
@@ -263,6 +339,9 @@ jobs:
       - uses: actions/download-artifact@v8
         with:
           name: release-notes
+      - uses: actions/download-artifact@v8
+        with:
+          name: vscode-extension
       - name: Release body
         run: |
           {
@@ -285,5 +364,6 @@ jobs:
       - uses: softprops/action-gh-release@efb35369e0ad2afab669f228072c1b0d510eae64 # v3.0.3
         with:
           body_path: body.md
+          files: lowendinsight.vsix
           prerelease: ${{ needs.plan.outputs.prerelease == 'true' }}
           make_latest: ${{ needs.plan.outputs.prerelease == 'true' && 'false' || 'true' }}

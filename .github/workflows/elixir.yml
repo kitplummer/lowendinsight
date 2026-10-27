@@ -66,6 +66,27 @@ jobs:
           node --check "$f" && echo "  ok $f"
         done
 
+  # The editor extension. No workflow built it until 0.16.0-beta.2: it defaulted
+  # to localhost, skipped every dependency without an explicit git URL, and
+  # treated the service's 402 as a generic error, and nothing noticed.
+  vscode-extension:
+    runs-on: ubuntu-24.04
+    defaults:
+      run:
+        working-directory: apps/lei_service/vscode-lowendinsight
+    steps:
+    - uses: actions/checkout@v7
+    - uses: actions/setup-node@v7
+      with:
+        node-version: 24
+        cache: npm
+        cache-dependency-path: apps/lei_service/vscode-lowendinsight/package-lock.json
+    - run: npm ci
+    - name: Compile and test
+      run: npm test
+    - name: Package
+      run: npx vsce package --no-dependencies --pre-release -o lowendinsight.vsix
+
   # Production backups broke when credit_entries was merged: the migration
   # created a table the backup role could not read, and pg_dump failed. The
   # runbook already carried ALTER DEFAULT PRIVILEGES to prevent it, applied for

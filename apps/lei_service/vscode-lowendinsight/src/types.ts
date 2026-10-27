@@ -102,10 +102,19 @@ export type ManifestType =
   | "maven"
   | "gradle";
 
+/**
+ * Whether a dependency was analysed, and if not, why. A dependency with no
+ * risk used to be shown with nothing at all, which reads as nothing found.
+ */
+export type Coverage = "analysed" | "pending" | "failed" | "unsupported";
+
 /** Resolved dependency with LEI analysis results attached. */
 export interface AnalyzedDependency {
   dep: ManifestDependency;
   manifestPath: string;
+  coverage: Coverage;
+  /** Why it is not analysed, when it is not. */
+  note?: string;
   repoUrl?: string;
   report?: RepoReport;
   risk?: RiskLevel;

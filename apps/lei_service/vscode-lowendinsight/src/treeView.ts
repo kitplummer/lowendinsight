@@ -10,7 +10,7 @@ const RISK_ICONS: Record<RiskLevel, vscode.ThemeIcon> = {
   low: new vscode.ThemeIcon("pass", new vscode.ThemeColor("testing.iconPassed")),
 };
 
-type TreeItem = RiskGroupItem | DepItem | DetailItem;
+type TreeItem = RiskGroupItem | UnanalysedGroupItem | DepItem | DetailItem;
 
 class RiskGroupItem extends vscode.TreeItem {
   constructor(
@@ -26,6 +26,16 @@ class RiskGroupItem extends vscode.TreeItem {
   }
 }
 
+// Dependencies with no risk, and why: they used to be left out of the tree
+// entirely, so a manifest of forty with five analysed showed five.
+class UnanalysedGroupItem extends vscode.TreeItem {
+  constructor(public readonly deps: AnalyzedDependency[]) {
+    super(`NOT ANALYSED (${deps.length})`, vscode.TreeItemCollapsibleState.Collapsed);
+    this.iconPath = new vscode.ThemeIcon("question");
+    this.contextValue = "unanalysedGroup";
+  }
+}
+
 class DepItem extends vscode.TreeItem {
   constructor(public readonly dep: AnalyzedDependency) {
     super(dep.dep.name, vscode.TreeItemCollapsibleState.Collapsed);
@@ -34,6 +44,12 @@ class DepItem extends vscode.TreeItem {
       ? dep.repoUrl.replace("https://github.com/", "")
       : dep.dep.version ?? "";
     this.contextValue = "dependency";
+
+    if (dep.coverage !== "analysed") {
+      this.collapsibleState = vscode.TreeItemCollapsibleState.None;
+      this.description = dep.note ?? dep.coverage;
+      this.tooltip = `${dep.dep.name}: ${dep.note ?? dep.coverage}`;
+    }
 
     if (dep.manifestPath) {
       this.command = {
@@ -85,13 +101,17 @@ export class LeiTreeProvider
   getChildren(element?: TreeItem): TreeItem[] {
     if (!element) {
       // Root: group by risk level
-      return RISK_ORDER.map((risk) => {
-        const deps = this.analyzed.filter((a) => a.risk === risk);
+      const groups: TreeItem[] = RISK_ORDER.map((risk) => {
+        const deps = this.analyzed.filter((a) => a.coverage === "analysed" && a.risk === risk);
         return new RiskGroupItem(risk, deps);
       }).filter((g) => g.deps.length > 0);
+
+      const unanalysed = this.analyzed.filter((a) => a.coverage !== "analysed");
+      if (unanalysed.length > 0) groups.push(new UnanalysedGroupItem(unanalysed));
+      return groups;
     }
 
-    if (element instanceof RiskGroupItem) {
+    if (element instanceof RiskGroupItem || element instanceof UnanalysedGroupItem) {
       return element.deps.map((d) => new DepItem(d));
     }
 
