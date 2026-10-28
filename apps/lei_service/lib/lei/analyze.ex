@@ -112,7 +112,7 @@ defmodule Lei.Analyze do
              opts
            ) do
         {:ok, result} ->
-          log_request(context.api_key, billing, request.urls, result)
+          log_request(context, billing, request.urls, result)
           {:ok, add_billing(context.api_key, split, result)}
 
         # Accepted and still running. Charged at admission; the report is
@@ -159,6 +159,80 @@ defmodule Lei.Analyze do
     }
   end
 
+  @job_id ~r/\A[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}\z/
+
+  @doc """
+  The job `run/4` started, by its id: `{:ok, json}`, `{:not_found, message}`
+  or `{:unavailable, message}`. Reading a job bills nothing -- the analysis
+  was charged at admission.
+
+  An incomplete job may be refreshed, at most once per job per window.
+  """
+  # A job is read by its id, which is the credential for it. Anything that is
+  # not UUID-shaped is refused before Redis is asked: the id was used directly
+  # as a key, so any value in the database could be read through this route.
+  def job(uuid) when is_binary(uuid) do
+    if Regex.match?(@job_id, uuid), do: read_job(uuid), else: job_not_found()
+  end
+
+  def job(_uuid), do: job_not_found()
+
+  defp job_not_found, do: {:not_found, "invalid UUID provided, no job found."}
+
+  defp read_job(uuid) do
+    try do
+      case LeiService.Datastore.get_job(uuid) do
+        {:ok, job} ->
+          job_obj = Poison.decode!(job)
+
+          case job_obj["state"] do
+            "complete" -> {:ok, job}
+            _incomplete -> {:ok, refresh_incomplete(uuid, job, job_obj)}
+          end
+
+        {:error, _job} ->
+          job_not_found()
+      end
+    rescue
+      e ->
+        # Logged in full, answered without detail: an exception's message can
+        # carry internal state.
+        Logger.error("Error fetching job #{uuid}: #{inspect(e)}")
+        {:unavailable, "Internal error fetching job"}
+    end
+  end
+
+  # Refreshing an incomplete job can start analysis of its uncached URLs. That
+  # used to happen on every poll, so a repository that keeps failing was
+  # re-cloned on every request. Now at most once per job per window, under a
+  # Redis lock; a poll inside the window gets the job as it stands. A running
+  # analysis writes the finished job itself, so nothing waits on the refresh.
+  @job_refresh_window_ms 300_000
+
+  defp refresh_incomplete(uuid, job, job_obj) do
+    case Redix.command(:redix, [
+           "SET",
+           "job_refresh:" <> uuid,
+           "1",
+           "NX",
+           "PX",
+           @job_refresh_window_ms
+         ]) do
+      {:ok, "OK"} ->
+        refresher =
+          Application.get_env(
+            :lei_service,
+            :job_refresher,
+            &LeiService.Analysis.refresh_job/1
+          )
+
+        Poison.encode!(refresher.(job_obj))
+
+      _ ->
+        job
+    end
+  end
+
   defp cache_split(urls) when is_list(urls) do
     urls = Enum.filter(urls, &is_binary/1)
     hits = Enum.count(urls, &LeiService.Datastore.in_cache?/1)
@@ -183,9 +257,9 @@ defmodule Lei.Analyze do
   defp billing_org({org_id, _api_key_id, _tier}), do: org_id
   defp billing_org(_), do: nil
 
-  defp log_request(api_key, {org_id, key_id, _tier}, urls, result) when is_binary(result) do
+  defp log_request(context, {org_id, key_id, _tier}, urls, result) when is_binary(result) do
     org =
-      case api_key do
+      case context.api_key do
         %{org: %Lei.Org{id: ^org_id} = org} -> org
         _ -> org_id && Lei.Repo.get(Lei.Org, org_id)
       end
@@ -201,10 +275,10 @@ defmodule Lei.Analyze do
           nil
       end
 
-    LeiService.RequestLogger.log_request("/v1/analyze", org, key_id, urls, cache_status)
+    LeiService.RequestLogger.log_request(context.route, org, key_id, urls, cache_status)
   end
 
-  defp log_request(_api_key, _billing, _urls, _result), do: :ok
+  defp log_request(_context, _billing, _urls, _result), do: :ok
 
   defp add_billing(nil, _split, result), do: result
 

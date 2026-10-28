@@ -667,69 +667,13 @@ defmodule LeiService.Endpoint do
     |> send_resp(404, Poison.encode!(%{:error => "UUID not provided or found."}))
   end
 
-  @job_id ~r/\A[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}\z/
-
-  # A job is read by its id, which is the credential for it. Anything that is
-  # not UUID-shaped is refused before Redis is asked: the id was used directly
-  # as a key, so any value in the database could be read through this route.
+  # The job's JSON, read by Lei.Analyze.job/1, which MCP's get_analysis
+  # shares.
   defp fetch_job(uuid) do
-    if Regex.match?(@job_id, uuid), do: read_job(uuid), else: job_not_found()
-  end
-
-  defp job_not_found,
-    do: {404, Poison.encode!(%{:error => "invalid UUID provided, no job found."})}
-
-  defp read_job(uuid) do
-    try do
-      case LeiService.Datastore.get_job(uuid) do
-        {:ok, job} ->
-          job_obj = Poison.decode!(job)
-
-          case job_obj["state"] do
-            "complete" -> {200, job}
-            _incomplete -> {200, refresh_incomplete(uuid, job, job_obj)}
-          end
-
-        {:error, _job} ->
-          job_not_found()
-      end
-    rescue
-      e ->
-        # Logged in full, answered without detail: an exception's message can
-        # carry internal state.
-        Logger.error("Error fetching job #{uuid}: #{inspect(e)}")
-        {500, Poison.encode!(%{error: "Internal error fetching job"})}
-    end
-  end
-
-  # Refreshing an incomplete job can start analysis of its uncached URLs. That
-  # used to happen on every poll, so a repository that keeps failing was
-  # re-cloned on every request. Now at most once per job per window, under a
-  # Redis lock; a poll inside the window gets the job as it stands. A running
-  # analysis writes the finished job itself, so nothing waits on the refresh.
-  @job_refresh_window_ms 300_000
-
-  defp refresh_incomplete(uuid, job, job_obj) do
-    case Redix.command(:redix, [
-           "SET",
-           "job_refresh:" <> uuid,
-           "1",
-           "NX",
-           "PX",
-           @job_refresh_window_ms
-         ]) do
-      {:ok, "OK"} ->
-        refresher =
-          Application.get_env(
-            :lei_service,
-            :job_refresher,
-            &LeiService.Analysis.refresh_job/1
-          )
-
-        Poison.encode!(refresher.(job_obj))
-
-      _ ->
-        job
+    case Lei.Analyze.job(uuid) do
+      {:ok, job} -> {200, job}
+      {:not_found, message} -> {404, Poison.encode!(%{:error => message})}
+      {:unavailable, message} -> {500, Poison.encode!(%{error: message})}
     end
   end
 

@@ -27,6 +27,12 @@ defmodule Lei.Mcp do
   `check_packages` is `POST /v1/analyze/batch`: `Lei.Batch` validates, prices
   and runs it, and `Lei.Payments.Gate.decide/2` admits and charges it. Only
   the answer differs.
+
+  `analyze_repositories` is `POST /v1/analyze` the same way, through
+  `Lei.Analyze`. Work that does not finish within the call is charged at
+  admission and collected with `get_analysis`, which is
+  `GET /v1/analyze/{uuid}` and bills nothing -- so an agent is told to collect
+  rather than ask again, which would be charged again.
   """
 
   @behaviour Plug
@@ -79,6 +85,56 @@ defmodule Lei.Mcp do
     },
     annotations: %{readOnlyHint: true, openWorldHint: true}
   }
+
+  @analyze_repositories %{
+    name: "analyze_repositories",
+    title: "Analyze repositories",
+    description:
+      "Call this when you have a project's git repository URL rather than a " <>
+        "package name -- a fork, a vendored library, a project with no " <>
+        "registry release -- and you are about to depend on it or say whether " <>
+        "it is maintained. Your training data has a cutoff, and a repository " <>
+        "that looked active in it may have gone quiet since. Pass every " <>
+        "repository you are weighing in one call. One already analysed comes " <>
+        "back with its risk now. One that is not is analysed, which takes up " <>
+        "to a few minutes: if it is not done within the call, the result is " <>
+        "\"incomplete\" with a uuid -- call get_analysis with that uuid to " <>
+        "collect it, which is not charged. Calling this tool again instead " <>
+        "is charged again.",
+    inputSchema: %{
+      type: "object",
+      properties: %{
+        urls: %{
+          type: "array",
+          minItems: 1,
+          items: %{
+            type: "string",
+            description: "A git repository URL, e.g. https://github.com/owner/repo"
+          }
+        }
+      },
+      required: ["urls"]
+    },
+    annotations: %{readOnlyHint: true, openWorldHint: true}
+  }
+
+  @get_analysis %{
+    name: "get_analysis",
+    title: "Get analysis",
+    description:
+      "Collect the result of an analyze_repositories call that came back " <>
+        "\"incomplete\", by its uuid. Not charged: the analysis was paid for " <>
+        "when it was requested. If it is still incomplete, wait a minute and " <>
+        "call this again.",
+    inputSchema: %{
+      type: "object",
+      properties: %{uuid: %{type: "string"}},
+      required: ["uuid"]
+    },
+    annotations: %{readOnlyHint: true, openWorldHint: false}
+  }
+
+  @tools [@check_packages, @analyze_repositories, @get_analysis]
 
   @doc "The protocol versions served, newest first."
   def protocol_versions, do: @protocol_versions
@@ -262,11 +318,21 @@ defmodule Lei.Mcp do
 
   defp request(_conn, "ping", _params), do: {:result, %{}}
 
-  defp request(_conn, "tools/list", _params), do: {:result, %{tools: [@check_packages]}}
+  defp request(_conn, "tools/list", _params), do: {:result, %{tools: @tools}}
 
   defp request(conn, "tools/call", %{"name" => "check_packages"} = params) do
     Lei.Adoption.record_bucket("mcp-remote")
     {:result, check_packages(conn, object(params["arguments"]))}
+  end
+
+  defp request(conn, "tools/call", %{"name" => "analyze_repositories"} = params) do
+    Lei.Adoption.record_bucket("mcp-remote")
+    {:result, analyze_repositories(conn, object(params["arguments"]))}
+  end
+
+  # Collecting is not adoption: the call that started the work was counted.
+  defp request(_conn, "tools/call", %{"name" => "get_analysis"} = params) do
+    {:result, get_analysis(object(params["arguments"]))}
   end
 
   defp request(_conn, "tools/call", %{"name" => name}),
@@ -296,6 +362,65 @@ defmodule Lei.Mcp do
         tool_error(message, %{error: message})
     end
   end
+
+  # POST /v1/analyze, through the same Lei.Analyze path, with the route's
+  # defaults: blocking, up to the default timeout.
+  defp analyze_repositories(conn, arguments) do
+    case Lei.Analyze.validate(%{"urls" => arguments["urls"]}) do
+      {:ok, request} ->
+        {split, admission} = Lei.Analyze.price(request.urls)
+
+        case Gate.decide(conn, admission) do
+          {:ok, billing} ->
+            context = %{
+              uuid: UUID.uuid4(),
+              start_time: DateTime.utc_now(),
+              route: "/mcp",
+              api_key: conn.assigns[:current_api_key]
+            }
+
+            analyzed(Lei.Analyze.run(request, billing, split, context))
+
+          refusal ->
+            refused(refusal)
+        end
+
+      {:invalid, body} ->
+        tool_error(body[:message] || body[:error], body)
+    end
+  end
+
+  defp analyzed({:ok, body}), do: job_result(Poison.decode!(body))
+  defp analyzed({:incomplete, body}), do: job_result(stringify(body))
+  defp analyzed({:error, error}), do: tool_error(to_string(error), %{error: error})
+  defp analyzed({:not_queued, body}), do: tool_error(body.message, body)
+
+  defp get_analysis(arguments) do
+    case Lei.Analyze.job(arguments["uuid"]) do
+      {:ok, job} -> job_result(Poison.decode!(job))
+      {_refused, message} -> tool_error(message, %{error: message})
+    end
+  end
+
+  # An incomplete job says how to collect it, so the model is not left to
+  # guess -- and does not guess "call analyze_repositories again", which is
+  # charged again.
+  defp job_result(%{"state" => "complete"} = job), do: tool_result(job)
+
+  defp job_result(%{"uuid" => uuid} = job) do
+    tool_result(
+      Map.put(
+        job,
+        "next",
+        "Still running. Call get_analysis with uuid #{uuid} in a minute to " <>
+          "collect it; that is not charged."
+      )
+    )
+  end
+
+  defp job_result(job), do: tool_result(job)
+
+  defp stringify(map), do: map |> Poison.encode!() |> Poison.decode!()
 
   # Said in terms of what to do next, for a model reading it.
   defp refused({:quota_exceeded, detail}) do
