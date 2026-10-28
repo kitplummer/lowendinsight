@@ -43,6 +43,18 @@ defmodule Lei.AnalyzeTest do
     url
   end
 
+  # Work goes through Oban, which tests run in :manual mode: queued, not run.
+  defp use_workers! do
+    saved = Application.get_env(:lei_service, :use_workers)
+    Application.put_env(:lei_service, :use_workers, true)
+
+    on_exit(fn ->
+      if is_nil(saved),
+        do: Application.delete_env(:lei_service, :use_workers),
+        else: Application.put_env(:lei_service, :use_workers, saved)
+    end)
+  end
+
   defp context(api_key) do
     %{
       uuid: UUID.uuid4(),
@@ -108,15 +120,33 @@ defmodule Lei.AnalyzeTest do
       refute Map.has_key?(Poison.decode!(body), "billing")
     end
 
-    test "work that cannot be queued is credited back and reported", ctx do
-      saved = Application.get_env(:lei_service, :use_workers)
-      Application.put_env(:lei_service, :use_workers, true)
+    test "the billing block reports what admission charged, not what the response counted",
+         ctx do
+      # An async request answers with a partial report whose metadata carries
+      # no cache counts. Admission charged the miss before any work ran (#152),
+      # so a block built from the response told the caller it cost nothing.
+      use_workers!()
 
-      on_exit(fn ->
-        if is_nil(saved),
-          do: Application.delete_env(:lei_service, :use_workers),
-          else: Application.put_env(:lei_service, :use_workers, saved)
-      end)
+      {:ok, request} =
+        Lei.Analyze.validate(%{
+          "urls" => [unique_url("analyze-async")],
+          "cache_mode" => "async"
+        })
+
+      {split, _admission} = Lei.Analyze.price(request.urls)
+      assert split == {0, 1}
+      billing = {ctx.org.id, ctx.api_key.id, ctx.org.tier}
+
+      assert {:ok, body} = Lei.Analyze.run(request, billing, split, context(ctx.api_key))
+
+      expected = Lei.UsageTracker.calculate_cost(0, 1) |> Decimal.to_float()
+
+      assert %{"billing" => %{"cache_hits" => 0, "cache_misses" => 1, "cost_cents" => ^expected}} =
+               Poison.decode!(body)
+    end
+
+    test "work that cannot be queued is credited back and reported", ctx do
+      use_workers!()
 
       # The real failure, as AnalyzeUnqueuedCreditTest produces it: undone with
       # the test's transaction.

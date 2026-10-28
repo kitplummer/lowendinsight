@@ -4721,8 +4721,17 @@
       "id": "analyze-result-without-billing",
       "bug": "Lei.Analyze.run/4 answers a key holder's report without the billing block /v1/analyze has always added, so the route -- and MCP's analyze_repositories, which shares it -- stops telling the caller what the request cost.",
       "file": "apps/lei_service/lib/lei/analyze.ex",
-      "find": "          {:ok, add_billing(context.api_key, result)}",
+      "find": "          {:ok, add_billing(context.api_key, split, result)}",
       "replace": "          {:ok, result}",
+      "guarded_by": "test/lei/analyze_test.exs",
+      "app": "apps/lei_service"
+    },
+    {
+      "id": "analyze-billing-block-from-response",
+      "bug": "/v1/analyze's billing block counted the response's cache status instead of what admission charged, so an async or stale request -- whose response carries no counts -- reported a charged miss as costing nothing.",
+      "file": "apps/lei_service/lib/lei/analyze.ex",
+      "find": "  defp add_billing(api_key, {hits, misses}, result) when is_binary(result) do\n    case Poison.decode(result) do\n      {:ok, decoded} ->\n",
+      "replace": "  defp add_billing(api_key, {_hits, _misses}, result) when is_binary(result) do\n    case Poison.decode(result) do\n      {:ok, decoded} ->\n        hits = get_in(decoded, [\"metadata\", \"cache_status\", \"hits\"]) || 0\n        misses = get_in(decoded, [\"metadata\", \"cache_status\", \"misses\"]) || 0\n",
       "guarded_by": "test/lei/analyze_test.exs",
       "app": "apps/lei_service"
     }
