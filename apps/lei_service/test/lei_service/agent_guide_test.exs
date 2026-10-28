@@ -178,6 +178,21 @@ defmodule LeiService.AgentGuideTest do
       assert conn.resp_body =~ "WWW-Authenticate: Payment"
     end
 
+    test "llms.txt points agents at /mcp, with every tool it serves" do
+      # An agent does not browse, it uses what is in its tool list; llms.txt
+      # is where an agent, or the person setting one up, learns there is a
+      # server to add. The names come from Lei.Mcp, so a tool added there and
+      # not here fails.
+      body = llms().resp_body
+
+      assert body =~ "https://lowendinsight.dev/mcp"
+      assert body =~ "Authorization: Bearer"
+
+      for tool <- Lei.Mcp.tools() do
+        assert body =~ "`#{tool.name}`", "llms.txt does not name #{tool.name}"
+      end
+    end
+
     test "the batch route tells callers to send the whole resolved set" do
       # Directness and anything else derived from the shape of the set is
       # wrong, silently, for a partial list: a subset with its roots omitted
