@@ -233,8 +233,6 @@ defmodule LeiService.Endpoint do
     |> send_resp(status, body)
   end
 
-  @valid_cache_modes ["blocking", "async", "stale"]
-
   ## API Bits
   get "/v1/analyze/:uuid" do
     {status, body} = fetch_job(uuid)
@@ -267,108 +265,34 @@ defmodule LeiService.Endpoint do
 
     # Refused before admission, because admission charges: a request that
     # cannot be analysed must not be billed (decided 2026-09-15).
-    with :ok <- analyzable(conn.body_params),
-         split = cache_split(conn.body_params["urls"]),
-         {:ok, conn, billing} <- Lei.Payments.Gate.admit(conn, admission(split)) do
-      try do
-        {status, body} = analyze_urls(conn, billing, uuid, start_time)
+    with {:ok, request} <- Lei.Analyze.validate(conn.body_params),
+         {split, admission} = Lei.Analyze.price(request.urls),
+         {:ok, conn, billing} <- Lei.Payments.Gate.admit(conn, admission) do
+      context = %{
+        uuid: uuid,
+        start_time: start_time,
+        route: conn.request_path,
+        api_key: conn.assigns[:current_api_key]
+      }
 
-        conn
-        |> put_resp_content_type(@content_type)
-        |> send_resp(status, body)
-      rescue
-        error in LeiService.EnqueueError -> not_queued(conn, billing, split, error)
+      case Lei.Analyze.run(request, billing, split, context) do
+        {:ok, body} ->
+          conn
+          |> put_resp_content_type(@content_type)
+          |> send_resp(200, body)
+
+        {:incomplete, body} ->
+          send_json(conn, 202, body)
+
+        {:error, error} ->
+          send_json(conn, 422, %{error: error})
+
+        {:not_queued, body} ->
+          send_json(conn, 503, body)
       end
     else
       {:halt, conn} -> conn
       {:invalid, body} -> send_json(conn, 422, body)
-    end
-  end
-
-  defp analyzable(%{"urls" => urls} = params) when is_list(urls) do
-    cache_mode = Map.get(params, "cache_mode", "blocking")
-
-    cond do
-      cache_mode not in @valid_cache_modes ->
-        {:invalid,
-         %{
-           error:
-             "invalid cache_mode: '#{cache_mode}'. Must be one of: #{Enum.join(@valid_cache_modes, ", ")}"
-         }}
-
-      true ->
-        urls_analyzable(urls)
-    end
-  end
-
-  defp analyzable(_params), do: {:invalid, %{error: "POST body must contain a 'urls' list"}}
-
-  # The same body process_urls/4 answers with, so moving the check ahead of
-  # admission does not change the API's response.
-  # The cap is checked here rather than per route, because this is what both
-  # /v1/analyze and /v1/analyze/sbom already call. A limit applied at two of
-  # three entry points is not a limit (ADR-008).
-  defp urls_analyzable(urls) do
-    with :ok <- Lei.RequestScope.check(urls),
-         true <- :ok == Helpers.validate_urls(urls),
-         true <- :ok == LeiService.RemoteUrl.validate_all(urls) do
-      :ok
-    else
-      {:error, %{} = over_cap} -> {:invalid, over_cap}
-      _ -> {:invalid, %{error: "invalid URLs list"}}
-    end
-  end
-
-  defp analyze_urls(conn, billing, uuid, start_time) do
-    case conn.body_params do
-      %{"urls" => urls} ->
-        cache_mode = Map.get(conn.body_params, "cache_mode", "blocking")
-
-        cache_timeout =
-          Map.get(
-            conn.body_params,
-            "cache_timeout",
-            Application.get_env(:lei_service, :default_cache_timeout, 30_000)
-          )
-
-        if cache_mode in @valid_cache_modes do
-          # The org travels with the work so the worker can credit back an
-          # analysis that determines nothing: admission charged for it before
-          # the work ran, and the outcome is only known later (#258).
-          opts = %{
-            cache_mode: cache_mode,
-            cache_timeout: cache_timeout,
-            org_id: billing_org(billing)
-          }
-
-          case LeiService.Analysis.process_urls(urls, uuid, start_time, opts) do
-            {:ok, result} ->
-              log_analyze_request(conn, billing, urls, result)
-              {200, enrich_analyze_response(conn, result)}
-
-            # Accepted and still running. Charged at admission; the report is
-            # collected later from GET /v1/analyze/{uuid}, which bills nothing.
-            {:timeout, timed_out_uuid} ->
-              {202,
-               Poison.encode!(%{
-                 state: "incomplete",
-                 uuid: timed_out_uuid,
-                 error: "analysis did not complete within #{cache_timeout}ms timeout"
-               })}
-
-            {:error, error} ->
-              {422, Poison.encode!(%{:error => error})}
-          end
-        else
-          {422,
-           Poison.encode!(%{
-             error:
-               "invalid cache_mode: '#{cache_mode}'. Must be one of: #{Enum.join(@valid_cache_modes, ", ")}"
-           })}
-        end
-
-      _ ->
-        {422, process()}
     end
   end
 
@@ -385,9 +309,9 @@ defmodule LeiService.Endpoint do
     conn = Lei.Payments.Gate.settle(conn)
 
     with {:ok, urls, cache_mode, cache_timeout} <- sbom_request(conn.body_params),
-         :ok <- urls_analyzable(urls),
-         split = cache_split(urls),
-         {:ok, conn, billing} <- Lei.Payments.Gate.admit(conn, admission(split)) do
+         :ok <- Lei.Analyze.check_urls(urls),
+         {split, admission} = Lei.Analyze.price(urls),
+         {:ok, conn, billing} <- Lei.Payments.Gate.admit(conn, admission) do
       opts = %{cache_mode: cache_mode, cache_timeout: cache_timeout}
 
       # Charged at admission, so nothing is recorded here.
@@ -410,7 +334,8 @@ defmodule LeiService.Endpoint do
             send_json(conn, 422, %{error: error})
         end
       rescue
-        error in LeiService.EnqueueError -> not_queued(conn, billing, split, error)
+        error in LeiService.EnqueueError ->
+          send_json(conn, 503, Lei.Analyze.not_queued(conn.request_path, billing, split, error))
       end
     else
       {:error, message} -> send_json(conn, 422, %{error: message})
@@ -429,17 +354,12 @@ defmodule LeiService.Endpoint do
         Application.get_env(:lei_service, :sbom_timeout, 60_000)
       )
 
-    cond do
-      cache_mode not in @valid_cache_modes ->
-        {:error,
-         "invalid cache_mode: '#{cache_mode}'. Must be one of: #{Enum.join(@valid_cache_modes, ", ")}"}
-
-      true ->
-        case LeiService.SbomParser.parse(sbom) do
-          {:ok, [_ | _] = urls} -> {:ok, urls, cache_mode, cache_timeout}
-          {:ok, []} -> {:error, "no git URLs found in SBOM"}
-          {:error, reason} -> {:error, "SBOM parse error: #{reason}"}
-        end
+    with :ok <- Lei.Analyze.check_cache_mode(cache_mode) do
+      case LeiService.SbomParser.parse(sbom) do
+        {:ok, [_ | _] = urls} -> {:ok, urls, cache_mode, cache_timeout}
+        {:ok, []} -> {:error, "no git URLs found in SBOM"}
+        {:error, reason} -> {:error, "SBOM parse error: #{reason}"}
+      end
     end
   end
 
@@ -450,50 +370,6 @@ defmodule LeiService.Endpoint do
     conn
     |> put_resp_content_type(@content_type)
     |> send_resp(status, Poison.encode!(body))
-  end
-
-  # What a request will cost, decided before any work: a repository with a
-  # cached report is a hit, anything else a miss. Billing from the response
-  # instead recorded nothing for async, stale and timed-out requests, whose
-  # responses carry no cache counts (#152).
-  # Charged at admission and the work never reached the queue: give the credits
-  # back and say so, rather than letting the raise become a bare 500 with the
-  # money kept (#217). Only LeiService.EnqueueError is rescued -- a request
-  # whose work *was* queued and then failed some other way has been served.
-  defp not_queued(conn, {org_id, _api_key_id, _tier}, split, error) do
-    credits = credits_for(split)
-
-    Logger.error(
-      "#{conn.request_path}: #{Exception.message(error)}; returning #{credits} credits"
-    )
-
-    Lei.Credits.credit_unqueued(org_id, credits, %{
-      "route" => conn.request_path,
-      "uuid" => error.uuid
-    })
-
-    send_json(conn, 503, %{
-      error: "analysis_not_queued",
-      message: "the analysis could not be queued; you have not been charged",
-      credits_returned: credits
-    })
-  end
-
-  defp cache_split(urls) when is_list(urls) do
-    urls = Enum.filter(urls, &is_binary/1)
-    hits = Enum.count(urls, &LeiService.Datastore.in_cache?/1)
-    {hits, length(urls) - hits}
-  end
-
-  defp cache_split(_), do: {0, 0}
-
-  defp admission(split), do: [required_credits: credits_for(split), usage: split]
-
-  defp credits_for({hits, misses}) do
-    Lei.UsageTracker.calculate_cost(hits, misses)
-    |> Decimal.mult(10)
-    |> Decimal.round(0, :ceiling)
-    |> Decimal.to_integer()
   end
 
   ## Cache Management Endpoints (Phase 3: Distributable Cache)
@@ -790,68 +666,6 @@ defmodule LeiService.Endpoint do
     |> put_resp_content_type(@content_type)
     |> send_resp(404, Poison.encode!(%{:error => "UUID not provided or found."}))
   end
-
-  # Logged against the org the gate billed -- the key's, or the one a payment
-  # on this request identified. Keyed on the API key alone, a paying agent's
-  # first request was logged with no org, its URLs and all (#149).
-  # Gate.admit/2 answers {:ok, conn, {org_id, api_key_id, tier}}. Anything else
-  # is a path with no org -- an unauthenticated free analysis -- and crediting
-  # nobody is correct there rather than an error.
-  defp billing_org({org_id, _api_key_id, _tier}), do: org_id
-  defp billing_org(_), do: nil
-
-  defp log_analyze_request(conn, {org_id, key_id, _tier}, urls, result) when is_binary(result) do
-    org =
-      case conn.assigns[:current_api_key] do
-        %{org: %Lei.Org{id: ^org_id} = org} -> org
-        _ -> org_id && Lei.Repo.get(Lei.Org, org_id)
-      end
-
-    cache_status =
-      case Poison.decode(result) do
-        {:ok, decoded} ->
-          hits = get_in(decoded, ["metadata", "cache_status", "hits"]) || 0
-          misses = get_in(decoded, ["metadata", "cache_status", "misses"]) || 0
-          if hits > 0, do: :hit, else: if(misses > 0, do: :miss, else: nil)
-
-        _ ->
-          nil
-      end
-
-    LeiService.RequestLogger.log_request("/v1/analyze", org, key_id, urls, cache_status)
-  end
-
-  defp log_analyze_request(_conn, _billing, _urls, _result), do: :ok
-
-  defp enrich_analyze_response(conn, result) when is_binary(result) do
-    case conn.assigns[:current_api_key] do
-      nil ->
-        result
-
-      api_key ->
-        case Poison.decode(result) do
-          {:ok, decoded} ->
-            hits = get_in(decoded, ["metadata", "cache_status", "hits"]) || 0
-            misses = get_in(decoded, ["metadata", "cache_status", "misses"]) || 0
-            cost = Lei.UsageTracker.calculate_cost(hits, misses)
-
-            enriched =
-              Map.put(decoded, "billing", %{
-                "cache_hits" => hits,
-                "cache_misses" => misses,
-                "cost_cents" => Decimal.to_float(cost),
-                "tier" => api_key.org.tier
-              })
-
-            Poison.encode!(enriched)
-
-          {:error, _} ->
-            result
-        end
-    end
-  end
-
-  defp enrich_analyze_response(_conn, result), do: result
 
   @job_id ~r/\A[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}\z/
 
