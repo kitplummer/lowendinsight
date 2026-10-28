@@ -391,6 +391,17 @@ defmodule LeiService.Analysis do
     end
   end
 
+  # A job written before its start time was recorded, or with one that does
+  # not parse, is refreshed as starting now rather than not refreshed at all.
+  defp job_start_time(job) do
+    with stored when is_binary(stored) <- get_in(job, ["metadata", "times", "start_time"]),
+         {:ok, start_time, _offset} <- DateTime.from_iso8601(stored) do
+      start_time
+    else
+      _ -> DateTime.utc_now()
+    end
+  end
+
   def refresh_job(job) do
     uuid = job["uuid"]
     repos = job["report"]["repos"]
@@ -458,11 +469,14 @@ defmodule LeiService.Analysis do
       partial_report = Map.replace!(job, "report", %{:repos => repos})
       LeiService.Datastore.write_job(uuid, partial_report)
 
+      # The job is stored as JSON, so its start time comes back a string, and
+      # queueing formats it as a DateTime. Passed as stored, the first poll of
+      # every incomplete job in a refresh window raised and answered 500.
       {:ok, task} =
         LeiService.AnalysisSupervisor.perform_analysis(
           uuid,
           urls,
-          job["metadata"]["times"]["start_time"]
+          job_start_time(job)
         )
 
       Logger.info(task)

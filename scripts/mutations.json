@@ -4734,6 +4734,15 @@
       "replace": "  defp add_billing(api_key, {_hits, _misses}, result) when is_binary(result) do\n    case Poison.decode(result) do\n      {:ok, decoded} ->\n        hits = get_in(decoded, [\"metadata\", \"cache_status\", \"hits\"]) || 0\n        misses = get_in(decoded, [\"metadata\", \"cache_status\", \"misses\"]) || 0\n",
       "guarded_by": "test/lei/analyze_test.exs",
       "app": "apps/lei_service"
+    },
+    {
+      "id": "job-refresh-passes-stored-start-time",
+      "bug": "Refreshing an incomplete job queued its uncached URLs with the start time as stored -- a JSON string -- and queueing formats a DateTime, so with workers on, as in production, the first poll of every incomplete job in each refresh window answered 500.",
+      "file": "apps/lei_service/lib/lei_service/analysis.ex",
+      "find": "          job_start_time(job)\n",
+      "replace": "          job[\"metadata\"][\"times\"][\"start_time\"]\n",
+      "guarded_by": "test/lei_service/job_refresh_test.exs",
+      "app": "apps/lei_service"
     }
   ]
 }
