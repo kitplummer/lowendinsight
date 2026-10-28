@@ -110,12 +110,17 @@ defmodule LeiService.McpTest do
       assert conn.resp_body == ""
     end
 
-    test "tools/list offers check_packages, with a schema", %{key: key} do
-      [tool] = rpc(key, "tools/list")["result"]["tools"]
+    test "tools/list offers each tool, with a schema", %{key: key} do
+      tools = Map.new(rpc(key, "tools/list")["result"]["tools"], &{&1["name"], &1})
 
-      assert tool["name"] == "check_packages"
-      assert tool["inputSchema"]["required"] == ["dependencies"]
-      assert tool["description"] =~ "pending"
+      assert Map.keys(tools) |> Enum.sort() ==
+               ["analyze_repositories", "check_packages", "get_analysis"]
+
+      assert tools["check_packages"]["inputSchema"]["required"] == ["dependencies"]
+      assert tools["check_packages"]["description"] =~ "pending"
+      assert tools["analyze_repositories"]["inputSchema"]["required"] == ["urls"]
+      assert tools["analyze_repositories"]["description"] =~ "get_analysis"
+      assert tools["get_analysis"]["inputSchema"]["required"] == ["uuid"]
     end
 
     test "an unknown method is a JSON-RPC error, not a crash", %{key: key} do
@@ -306,6 +311,129 @@ defmodule LeiService.McpTest do
 
       assert adoption("mcp-remote") == before + 1
     end
+  end
+
+  describe "analyze_repositories" do
+    setup do
+      # Queued, never run: Oban is :manual in tests. A short wait, so an
+      # uncached repository times out into an incomplete job promptly.
+      saved = {
+        Application.get_env(:lei_service, :use_workers),
+        Application.get_env(:lei_service, :default_cache_timeout)
+      }
+
+      Application.put_env(:lei_service, :use_workers, true)
+      Application.put_env(:lei_service, :default_cache_timeout, 200)
+
+      on_exit(fn ->
+        {workers, timeout} = saved
+        restore(:use_workers, workers)
+        restore(:default_cache_timeout, timeout)
+      end)
+    end
+
+    test "a cached repository is reported, with what it cost", %{org: org, key: key} do
+      url = cached_url()
+      result = call_tool(key, "analyze_repositories", %{urls: [url]})
+
+      refute result["isError"]
+      structured = result["structuredContent"]
+      assert structured["state"] == "complete"
+      assert [%{"data" => %{"repo" => ^url}}] = structured["report"]["repos"]
+      assert %{"cache_hits" => 1, "cache_misses" => 0} = structured["billing"]
+
+      assert [%{"type" => "text", "text" => text}] = result["content"]
+      assert Poison.decode!(text) == structured
+
+      assert %{cache_hits: 1, cache_misses: 0} = UsageTracker.get_current_usage(org.id)
+    end
+
+    test "an uncached repository is charged once, and collected for free with get_analysis",
+         %{org: org, key: key} do
+      result = call_tool(key, "analyze_repositories", %{urls: [uncached_url()]})
+
+      refute result["isError"]
+      structured = result["structuredContent"]
+      assert structured["state"] == "incomplete"
+      assert is_binary(uuid = structured["uuid"])
+      assert structured["next"] =~ "get_analysis"
+      assert %{cache_misses: 1} = UsageTracker.get_current_usage(org.id)
+
+      job = call_tool(key, "get_analysis", %{uuid: uuid})
+
+      refute job["isError"]
+      assert job["structuredContent"]["uuid"] == uuid
+      assert job["structuredContent"]["state"] == "incomplete"
+      assert job["structuredContent"]["next"] =~ "get_analysis"
+      assert %{cache_hits: 0, cache_misses: 1} = UsageTracker.get_current_usage(org.id)
+    end
+
+    test "invalid URLs are a tool error, and nothing is charged", %{org: org, key: key} do
+      result = call_tool(key, "analyze_repositories", %{urls: ["not a url"]})
+
+      assert result["isError"]
+      assert hd(result["content"])["text"] =~ "invalid URLs"
+      assert %{cache_hits: 0, cache_misses: 0} = UsageTracker.get_current_usage(org.id)
+    end
+
+    test "arguments without a urls list are a tool error, not a crash", %{key: key} do
+      result = call_tool(key, "analyze_repositories", ["https://github.com/a/b"])
+
+      assert result["isError"]
+      assert hd(result["content"])["text"] =~ "urls"
+    end
+
+    test "an exhausted allowance is a tool error with where to upgrade, not a 402" do
+      {org, key} = org_with_key(["analyze"], free_tier_analyses_limit: 1)
+      {:ok, _} = UsageTracker.record_usage(org.id, nil, 0, 1)
+
+      result = call_tool(key, "analyze_repositories", %{urls: [uncached_url()]})
+
+      assert result["isError"]
+      assert hd(result["content"])["text"] =~ "/signup?tier=pro"
+      assert %{cache_misses: 1} = UsageTracker.get_current_usage(org.id)
+    end
+
+    test "a call is counted as remote MCP adoption", %{key: key} do
+      before = adoption("mcp-remote")
+      call_tool(key, "analyze_repositories", %{urls: [cached_url()]})
+
+      assert adoption("mcp-remote") == before + 1
+    end
+  end
+
+  describe "get_analysis" do
+    test "an id that names no job is a tool error", %{key: key} do
+      result = call_tool(key, "get_analysis", %{uuid: UUID.uuid4()})
+
+      assert result["isError"]
+      assert hd(result["content"])["text"] =~ "no job"
+    end
+
+    test "an id that is not a job id is refused before the datastore is asked", %{key: key} do
+      result = call_tool(key, "get_analysis", %{uuid: "lei_request_log"})
+
+      assert result["isError"]
+    end
+  end
+
+  defp restore(key, nil), do: Application.delete_env(:lei_service, key)
+  defp restore(key, value), do: Application.put_env(:lei_service, key, value)
+
+  # Unique per call: the cache is shared state and not sandboxed.
+  defp uncached_url,
+    do: "https://github.com/kitplummer/mcp-uncached-#{System.unique_integer([:positive])}"
+
+  defp cached_url do
+    url = "https://github.com/kitplummer/mcp-cached-#{System.unique_integer([:positive])}"
+    now = DateTime.utc_now() |> DateTime.to_iso8601()
+
+    LeiService.Datastore.write_to_cache(url, %{
+      data: %{repo: url},
+      header: %{end_time: now, start_time: now, uuid: "mcp-cached"}
+    })
+
+    url
   end
 
   defp adoption(bucket) do
