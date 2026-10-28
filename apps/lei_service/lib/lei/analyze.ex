@@ -113,7 +113,7 @@ defmodule Lei.Analyze do
            ) do
         {:ok, result} ->
           log_request(context.api_key, billing, request.urls, result)
-          {:ok, add_billing(context.api_key, result)}
+          {:ok, add_billing(context.api_key, split, result)}
 
         # Accepted and still running. Charged at admission; the report is
         # collected later from GET /v1/analyze/{uuid}, which bills nothing.
@@ -206,13 +206,14 @@ defmodule Lei.Analyze do
 
   defp log_request(_api_key, _billing, _urls, _result), do: :ok
 
-  defp add_billing(nil, result), do: result
+  defp add_billing(nil, _split, result), do: result
 
-  defp add_billing(api_key, result) when is_binary(result) do
+  # From the split admission charged, not the response's cache counts. An
+  # async or stale response carries no counts, so a block read from it told
+  # the caller a charged miss had cost nothing.
+  defp add_billing(api_key, {hits, misses}, result) when is_binary(result) do
     case Poison.decode(result) do
       {:ok, decoded} ->
-        hits = get_in(decoded, ["metadata", "cache_status", "hits"]) || 0
-        misses = get_in(decoded, ["metadata", "cache_status", "misses"]) || 0
         cost = Lei.UsageTracker.calculate_cost(hits, misses)
 
         enriched =
@@ -230,5 +231,5 @@ defmodule Lei.Analyze do
     end
   end
 
-  defp add_billing(_api_key, result), do: result
+  defp add_billing(_api_key, _split, result), do: result
 end
