@@ -2,9 +2,8 @@ defmodule LeiService.McpTest do
   @moduledoc """
   `/mcp`: the analysis as a remote MCP server.
 
-  Until now the only MCP server was `clients/mcp/lei_mcp.py`, run locally
-  over stdio, which an agent's user had to download, wire up and keep. Remote
-  clients connect to a URL. This is Streamable HTTP, stateless, answering JSON
+  It replaced `clients/mcp/lei_mcp.py`, a local stdio server an agent's user
+  had to download, wire up and keep. Remote clients connect to a URL. This is Streamable HTTP, stateless, answering JSON
   rather than opening event streams: every call is a request and a response,
   which is all a tool that looks something up needs.
 
@@ -121,6 +120,47 @@ defmodule LeiService.McpTest do
       assert tools["analyze_repositories"]["inputSchema"]["required"] == ["urls"]
       assert tools["analyze_repositories"]["description"] =~ "get_analysis"
       assert tools["get_analysis"]["inputSchema"]["required"] == ["uuid"]
+    end
+
+    # Carried over from clients/mcp/lei_mcp.py, which this server replaced.
+    # An agent scanning its tool list mid-task is matching "does this apply to
+    # what I am about to do", and it does not know it needs this data -- that
+    # is the failure. A description that opens "Facts about a repository..."
+    # reads as a catalogue entry and is skipped by an agent that does not
+    # think it is doing security work.
+    test "each analysis tool's description opens with when to call it", %{key: key} do
+      tools = Map.new(rpc(key, "tools/list")["result"]["tools"], &{&1["name"], &1})
+
+      for name <- ["check_packages", "analyze_repositories"] do
+        opening = tools[name]["description"] |> String.slice(0, 80) |> String.downcase()
+
+        assert opening =~ ~r/\b(call this|use this|you)\b/,
+               "#{name}'s description opens by describing itself: #{opening}"
+      end
+    end
+
+    # "Has a cutoff" is a fact about the model and reads as a disclaimer. What
+    # changes behaviour is the consequence, named.
+    test "each analysis tool names what goes wrong with dated knowledge", %{key: key} do
+      tools = Map.new(rpc(key, "tools/list")["result"]["tools"], &{&1["name"], &1})
+
+      for name <- ["check_packages", "analyze_repositories"] do
+        text = String.downcase(tools[name]["description"])
+
+        assert text =~ "cutoff", "#{name} does not say its knowledge is dated"
+
+        assert text =~ "maintainer" or text =~ "gone quiet",
+               "#{name} says knowledge is dated without saying what goes wrong"
+      end
+    end
+
+    # The Python client said 0.2.0 while the service went from 0.9 to 0.15.
+    # Whoever reads an agent's logs is told which beta it talked to.
+    test "serverInfo.version is the release", %{key: key} do
+      body = rpc(key, "initialize", %{protocolVersion: "2025-06-18", capabilities: %{}})
+
+      assert body["result"]["serverInfo"]["version"] ==
+               to_string(Application.spec(:lowendinsight, :vsn))
     end
 
     test "an unknown method is a JSON-RPC error, not a crash", %{key: key} do

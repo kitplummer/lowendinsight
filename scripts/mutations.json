@@ -3737,33 +3737,6 @@
       "app": "apps/lei_service"
     },
     {
-      "id": "mcp-drops-the-reason-a-repo-was-not-analysed",
-      "bug": "A repository the service could not analyse comes back with every field undetermined and the reason in data.error. Rendering only the rating tells the agent 'undetermined risk', which reads as a finding about the dependency rather than a failure to look at it -- and the agent repeats it to its user as though it meant something. Found by running the server, not by reading it.",
-      "file": "clients/mcp/lei_mcp.py",
-      "find": "    if data.get(\"error\"):",
-      "replace": "    if False:",
-      "guarded_by": "test/lei_service/mcp_server_test.exs",
-      "app": "apps/lei_service"
-    },
-    {
-      "id": "mcp-answers-notifications",
-      "bug": "A JSON-RPC notification has no id and must not be answered. Replying to one puts an extra message on the stream the client is not expecting, which corrupts the conversation and presents as an agent that has hung.",
-      "file": "clients/mcp/lei_mcp.py",
-      "find": "    if message_id is None:\n        return None",
-      "replace": "    if message_id is None:\n        message_id = 0",
-      "guarded_by": "test/lei_service/mcp_server_test.exs",
-      "app": "apps/lei_service"
-    },
-    {
-      "id": "mcp-swallows-unknown-methods",
-      "bug": "A method the server does not understand must be answered with an error. Ignoring it leaves the client waiting for a reply that never comes, which presents as a hung agent rather than a failure.",
-      "file": "clients/mcp/lei_mcp.py",
-      "find": "        \"error\": {\"code\": -32601, \"message\": \"Method not found: %s\" % method},",
-      "replace": "        \"error\": {\"code\": -32000, \"message\": \"Method not found: %s\" % method},",
-      "guarded_by": "test/lei_service/mcp_server_test.exs",
-      "app": "apps/lei_service"
-    },
-    {
       "id": "probe-folds-dead-redis-into-misses",
       "bug": "A cache membership probe that answers 'not cached' when Redis is unreachable turns an outage into a hit rate of 0%. The number that ADR-005's pricing rests on would be measured from a cache nobody could read, and it would look like a finding.",
       "file": "apps/lei_service/lib/lei_service/datastore.ex",
@@ -4079,24 +4052,6 @@
       "app": "apps/lei_service"
     },
     {
-      "id": "mcp-description-leads-with-itself",
-      "bug": "A tool description that opens by describing what it returns reads as a catalogue entry. An agent scanning its tool list is matching 'does this apply to what I am about to do', and it does not know it needs this data -- that is the failure. Leading with 'Facts about a source repository...' gets the tool skipped by an agent that does not think it is doing security work.",
-      "file": "clients/mcp/lei_mcp.py",
-      "find": "            \"Call this before you recommend, add, or vouch for a dependency, and \"\n            \"whenever you are about to say whether a library is maintained. Your \"",
-      "replace": "            \"Facts about a source repository as it stands today, and a risk rating \"\n            \"derived from them. Your \"",
-      "guarded_by": "test/lei_service/mcp_server_test.exs",
-      "app": "apps/lei_service"
-    },
-    {
-      "id": "mcp-description-states-the-cutoff-without-the-consequence",
-      "bug": "'Your training data has a cutoff' is a fact about the model and reads as a disclaimer. What changes behaviour is the consequence -- a lost maintainer, a project gone quiet, and the model being confident and wrong anyway. Without the failure named, there is no reason to act.",
-      "file": "clients/mcp/lei_mcp.py",
-      "find": "            \"training data has a cutoff: a package that looked healthy in it may \"\n            \"have lost its maintainer, gone quiet, or started being written by \"\n            \"machines since, and nothing in you will flag that -- you will simply \"\n            \"be confident and wrong. Returns the state today: the date of the last \"",
-      "replace": "            \"training data has a cutoff. Returns the state today: the date of the last \"",
-      "guarded_by": "test/lei_service/mcp_server_test.exs",
-      "app": "apps/lei_service"
-    },
-    {
       "id": "npm-resolve-pulls-the-whole-package-document",
       "bug": "npm's package document carries every version ever published. Resolving from it decodes megabytes to read one string -- typescript is 15.7 MB against 4.8 KB for /typescript/latest, and it took 19.8s in this path. A batch job resolving a 400-package manifest (ADR-004) was decoding gigabytes to extract four hundred strings.",
       "file": "apps/lowendinsight/lib/lei/package_repository.ex",
@@ -4347,15 +4302,6 @@
       "replace": "    Map.put(spec, \"info\", info)",
       "guarded_by": "test/lei_service/openapi_version_test.exs",
       "bug": "/openapi.json was a static file that reported version 0.9.2 through seven releases, so neither a generated client nor a reader of /doc could tell which API, or that it was a beta whose paths may change."
-    },
-    {
-      "id": "mcp-server-version-drifts",
-      "app": "apps/lei_service",
-      "file": "clients/mcp/lei_mcp.py",
-      "find": "\"serverInfo\": {\"name\": SERVER_NAME, \"version\": SERVER_VERSION},",
-      "replace": "\"serverInfo\": {\"name\": SERVER_NAME, \"version\": \"0.2.0\"},",
-      "guarded_by": "test/lei_service/mcp_server_test.exs",
-      "bug": "The MCP client reported serverInfo.version 0.2.0 while the service it calls went from 0.9 to 0.15, so nothing told an agent which beta it was talking to."
     },
     {
       "id": "web-ui-silent-about-beta-release",
@@ -4769,6 +4715,51 @@
       "find": "        \"next\",\n",
       "replace": "        \"note\",\n",
       "guarded_by": "test/lei_service/mcp_test.exs",
+      "app": "apps/lei_service"
+    },
+    {
+      "id": "mcp-remote-description-leads-with-itself",
+      "bug": "A tool description that opens by describing what it returns reads as a catalogue entry. An agent scanning its tool list is matching 'does this apply to what I am about to do', and it does not know it needs this data -- that is the failure. Carried over from clients/mcp/lei_mcp.py when /mcp replaced it.",
+      "file": "apps/lei_service/lib/lei/mcp.ex",
+      "find": "      \"Call this before you recommend, add, or vouch for a dependency, and \" <>\n        \"whenever you are about to say whether a package is maintained. Your \" <>",
+      "replace": "      \"Dependency risk for packages by ecosystem, name and version, and \" <>\n        \"whether each is maintained. Your \" <>",
+      "guarded_by": "test/lei_service/mcp_test.exs",
+      "app": "apps/lei_service"
+    },
+    {
+      "id": "mcp-remote-description-states-the-cutoff-without-the-consequence",
+      "bug": "'Your training data has a cutoff' is a fact about the model and reads as a disclaimer. What changes behaviour is the consequence -- a project gone quiet, and the model confident and wrong anyway. Carried over from clients/mcp/lei_mcp.py when /mcp replaced it.",
+      "file": "apps/lei_service/lib/lei/mcp.ex",
+      "find": "        \"it is maintained. Your training data has a cutoff, and a repository \" <>\n        \"that looked active in it may have gone quiet since. Pass every \" <>",
+      "replace": "        \"it is maintained. Your training data has a cutoff. Pass every \" <>",
+      "guarded_by": "test/lei_service/mcp_test.exs",
+      "app": "apps/lei_service"
+    },
+    {
+      "id": "mcp-remote-server-version-drifts",
+      "bug": "The MCP client reported serverInfo.version 0.2.0 while the service it called went from 0.9 to 0.15, so nothing told an agent which beta it was talking to. Carried over from clients/mcp/lei_mcp.py when /mcp replaced it.",
+      "file": "apps/lei_service/lib/lei/mcp.ex",
+      "find": "version: to_string(Application.spec(:lei_service, :vsn))",
+      "replace": "version: \"0.2.0\"",
+      "guarded_by": "test/lei_service/mcp_test.exs",
+      "app": "apps/lei_service"
+    },
+    {
+      "id": "llms-omits-mcp-tools",
+      "bug": "An agent uses what is in its tool list, and llms.txt is where an agent, or whoever sets one up, learns there is a server to add and what it offers. A guide that names the URL and not the tools, or names tools /mcp no longer serves, sends a client to configure something it cannot judge.",
+      "file": "apps/lei_service/priv/templates/llms.txt.eex",
+      "find": "<%= for tool <- Lei.Mcp.tools() do %>- `<%= tool.name %>`: <%= tool.description %>\n<% end %>",
+      "replace": "",
+      "guarded_by": "test/lei_service/agent_guide_test.exs",
+      "app": "apps/lei_service"
+    },
+    {
+      "id": "mcp-registry-listing-wrong-url",
+      "bug": "The MCP Registry checks who owns a listing's name, not what it says about the server. A listing whose URL this service does not serve is published as readily as a correct one, and every client configured from it fails at its first request, far from here.",
+      "file": "server.json",
+      "find": "\"url\": \"https://lowendinsight.dev/mcp\",",
+      "replace": "\"url\": \"https://lowendinsight.dev/v1/mcp\",",
+      "guarded_by": "test/lei_service/mcp_registry_test.exs",
       "app": "apps/lei_service"
     }
   ]

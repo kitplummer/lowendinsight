@@ -269,6 +269,40 @@ ORGS_BODY=$(curl -s --max-time 10 "$BASE_URL/v1/orgs/definitely-not-a-real-org/k
   -H "Authorization: Bearer $API_KEY")
 check_contains "GET /v1/orgs/:slug/keys reaches the router" "org not found" "$ORGS_BODY"
 
+# --- 9. MCP ---
+# /mcp is not under /v1, so none of the checks above reach it: it has its own
+# auth, its own JSON-RPC handling and its own answers. Only calls that cost
+# nothing -- initialize, tools/list, and get_analysis for a job that does not
+# exist -- because this runs on every deploy and every 15 minutes.
+bold "9. MCP"
+mcp() {
+  curl -s --max-time 15 -X POST "$BASE_URL/mcp" \
+    -H "Content-Type: application/json" \
+    -H "Accept: application/json, text/event-stream" \
+    -H "Authorization: Bearer $API_KEY" \
+    -d "$1"
+}
+
+MCP_NO_AUTH=$(curl -s -o /dev/null -w '%{http_code}' --max-time 10 -X POST "$BASE_URL/mcp" \
+  -H "Content-Type: application/json" \
+  -d '{"jsonrpc":"2.0","id":1,"method":"tools/list"}')
+check "POST /mcp without auth returns 401" "401" "$MCP_NO_AUTH"
+
+MCP_INIT=$(mcp '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-06-18","capabilities":{},"clientInfo":{"name":"lei-smoke","version":"1"}}}')
+check_contains "initialize negotiates 2025-06-18" '"protocolVersion":"2025-06-18"' "$MCP_INIT"
+
+MCP_TOOLS=$(mcp '{"jsonrpc":"2.0","id":2,"method":"tools/list"}')
+for tool in check_packages analyze_repositories get_analysis; do
+  check_contains "tools/list offers $tool" "\"name\":\"$tool\"" "$MCP_TOOLS"
+done
+
+# A tool call end to end, through Lei.Analyze.job and the datastore. A
+# well-formed id that names no job is a tool error, not a JSON-RPC error and
+# not a 500.
+MCP_CALL=$(mcp '{"jsonrpc":"2.0","id":3,"method":"tools/call","params":{"name":"get_analysis","arguments":{"uuid":"00000000-0000-4000-8000-000000000000"}}}')
+check_contains "get_analysis for no such job is a tool error" '"isError":true' "$MCP_CALL"
+check_contains "get_analysis says no job was found" "no job found" "$MCP_CALL"
+
 # --- Summary ---
 echo ""
 bold "=== Results: $PASS passed, $FAIL failed out of $TOTAL ==="

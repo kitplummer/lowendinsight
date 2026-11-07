@@ -24,6 +24,14 @@ Batch responses carry `ranking`, worst first, so you need not read every entry. 
 
 A request is priced before it runs, from which repositories already have cached reports. It is charged when accepted, whether it completes in the request or runs asynchronously. A balance smaller than the request is asked to top up by at least the difference.
 
+## As an MCP server
+
+The same analysis is a remote MCP server at `https://lowendinsight.dev/mcp` (Streamable HTTP, protocol 2025-06-18 or 2025-03-26), for a client that loads tools from a URL. It takes an API key, sent as `Authorization: Bearer <key>` -- one from signing up, or the `Lei-Api-Key` a payment returns. It does not take payments itself: an MCP client has nowhere to handle a 402. Calls are billed exactly as the routes they mirror, and a spent allowance or short balance comes back as a tool error saying what to do.
+
+<%= for tool <- Lei.Mcp.tools() do %>- `<%= tool.name %>`: <%= tool.description %>
+<% end %>
+Claude Code: `claude mcp add --transport http lowendinsight https://lowendinsight.dev/mcp --header "Authorization: Bearer <key>"`. Other clients: https://github.com/kitplummer/lowendinsight/blob/main/apps/lei_service/docs/MCP.md
+
 ## Reading a report
 
 Two currency figures, and they disagree on one package in twenty-three.
