@@ -35,8 +35,10 @@ defmodule LeiService.MixProject do
       # Called directly (Stripe, Tempo RPC, GitHub); declared rather than
       # inherited from the library.
       {:httpoison, "~> 3.0"},
-      {:cowboy, "~> 2.9", override: true},
-      {:plug_cowboy, "~> 2.7"},
+      # Bandit, not Cowboy: every Cowboy release carries an unfixed HTTP/1.1
+      # memory-exhaustion advisory (EEF-CVE-2026-115701 from 2.18.0,
+      # EEF-CVE-2026-65624 before it).
+      {:bandit, "~> 1.14"},
       {:credo, "~> 1.7", only: [:dev, :test], runtime: false},
       {:redix, ">= 0.0.0"},
       {:oban, "~> 2.24"},

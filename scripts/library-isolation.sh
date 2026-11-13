@@ -25,7 +25,7 @@ LIB="$ROOT/apps/lowendinsight"
 WORK="$(mktemp -d)"
 trap 'rm -rf "$WORK"' EXIT
 
-FORBIDDEN="ecto ecto_sql postgrex plug plug_cowboy cowboy joken exqlite oban redix"
+FORBIDDEN="ecto ecto_sql postgrex plug plug_cowboy cowboy bandit thousand_island joken exqlite oban redix"
 
 pass() { printf '  ok    %s\n' "$1"; }
 fail() { printf '  FAIL  %s\n' "$1"; [ -n "${2:-}" ] && printf '        %s\n' "$2"; exit 1; }
