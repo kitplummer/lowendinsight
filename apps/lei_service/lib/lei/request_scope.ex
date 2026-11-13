@@ -26,9 +26,9 @@ defmodule Lei.RequestScope do
 
       concurrency 5 × idle_timeout 180 s ÷ p90 analysis 1.62 s  ≈  555
 
-  `idle_timeout` is Cowboy's, already chosen for blocking analysis
-  (`endpoint.ex`), and p90 comes from measuring fifty-nine repositories drawn
-  from real manifests. The default is **500**, that derivation rounded down for
+  The 180 s was Cowboy's `idle_timeout`, chosen for blocking analysis; under
+  Bandit it is the connection `read_timeout` (`endpoint.ex`). p90 comes from
+  measuring fifty-nine repositories drawn from real manifests. The default is **500**, that derivation rounded down for
   headroom rather than up for generosity.
 
   **Re-derive it if the concurrency changes.** A higher concurrency earns a

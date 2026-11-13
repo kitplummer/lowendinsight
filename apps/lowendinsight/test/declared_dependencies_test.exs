@@ -6,7 +6,7 @@ defmodule Lowendinsight.DeclaredDependenciesTest do
   # outside; this catches it in the suite.
   use ExUnit.Case, async: true
 
-  @service_apps ~w(ecto ecto_sql postgrex plug plug_cowboy cowboy joken exqlite oban redix)a
+  @service_apps ~w(ecto ecto_sql postgrex plug plug_cowboy cowboy bandit thousand_island joken exqlite oban redix)a
 
   test "every module the library calls belongs to OTP, Elixir or a declared dependency" do
     {:ok, modules} = :application.get_key(:lowendinsight, :modules)

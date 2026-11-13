@@ -9,10 +9,7 @@ defmodule LeiService.Endpoint do
 
   use Plug.ErrorHandler
 
-  # alias Plug.{Adapters.Cowboy}
-
   require Logger
-  alias Plug.Cowboy
   # Paths forwarded to Lei.Web.Router. Anything not listed here falls through
   # to this endpoint's own routes and 404s, so a route added to Lei.Web.Router
   # is unreachable in production until its prefix appears here.
@@ -73,9 +70,16 @@ defmodule LeiService.Endpoint do
     with {:ok, config} <- config() do
       port = Keyword.get(config, :port, 4444)
       Logger.info("Starting server at http://localhost:#{port}/")
-      # Increase idle_timeout to support blocking analysis with longer cache_timeouts
-      # Default Cowboy idle_timeout is 60s, but blocking analysis may take 2+ minutes
-      Cowboy.http(__MODULE__, [], config ++ [protocol_options: [idle_timeout: 180_000]])
+      # A keep-alive connection may sit idle for as long as a blocking analysis
+      # takes (2+ minutes), as Cowboy's idle_timeout allowed. Bandit's default
+      # read_timeout is 60s.
+      Bandit.start_link(
+        Keyword.merge(config,
+          plug: __MODULE__,
+          scheme: :http,
+          thousand_island_options: [read_timeout: 180_000]
+        )
+      )
     end
   end
 

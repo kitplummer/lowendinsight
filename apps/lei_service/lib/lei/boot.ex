@@ -30,7 +30,7 @@ defmodule Lei.Boot do
 
     if Application.get_env(:lei_service, :start_http, false) do
       port = Application.get_env(:lei_service, :http_port, 4000)
-      base ++ [{Plug.Cowboy, scheme: :http, plug: Lei.Web.Router, options: [port: port]}]
+      base ++ [{Bandit, scheme: :http, plug: Lei.Web.Router, port: port}]
     else
       base
     end
