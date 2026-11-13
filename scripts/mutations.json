@@ -3667,27 +3667,36 @@
     {
       "id": "backup-trigger-reads-the-previous-run",
       "bug": "The producer's resting state is `stopped`, so a wait loop asking 'is it stopped?' is satisfied by the state the machine was already in, reads the previous run's exit code, and reports a fresh failure as a success because the last run happened to work. The condition has to be a new exit event.",
-      "file": ".github/workflows/backup-trigger.yml",
-      "find": "          while [ \"$AFTER\" = \"$BEFORE\" ] && [ \"$WAITED\" -lt 300 ]; do",
-      "replace": "          while [ \"$AFTER\" = \"\" ] && [ \"$WAITED\" -lt 300 ]; do",
+      "file": "scripts/ops/backup-trigger.sh",
+      "find": "  if AFTER=$(exits) && [ \"$AFTER\" -gt \"$BEFORE\" ] 2>/dev/null; then",
+      "replace": "  if AFTER=$(exits); then",
+      "guarded_by": "test/lei_service/backup_trigger_test.exs",
+      "app": "apps/lei_service"
+    },
+    {
+      "id": "backup-trigger-takes-a-different-exit-for-a-new-one",
+      "bug": "On 2026-11-06 and 2026-11-12, just after the start, the producer's events no longer showed its previous exit, so the newest exit read as 0. Waiting for an exit that merely differs from the baseline ended the wait after one poll and read the exit code before the dump had finished: a red run for a backup that landed minutes later. Only a later exit is the new one.",
+      "file": "scripts/ops/backup-trigger.sh",
+      "find": "  if AFTER=$(exits) && [ \"$AFTER\" -gt \"$BEFORE\" ] 2>/dev/null; then",
+      "replace": "  if AFTER=$(exits) && [ \"$AFTER\" != \"$BEFORE\" ] 2>/dev/null; then",
       "guarded_by": "test/lei_service/backup_trigger_test.exs",
       "app": "apps/lei_service"
     },
     {
       "id": "backup-trigger-ignores-the-exit-code",
       "bug": "backup.sh exits non-zero on every failure it can detect -- an empty dump, one it cannot read back, an artifact that will not decrypt, an upload that did not land. A trigger that starts the machine and reports success without reading the exit code is a green run for a backup that did not happen.",
-      "file": ".github/workflows/backup-trigger.yml",
-      "find": "          if [ \"$CODE\" != \"0\" ]; then",
-      "replace": "          if [ \"$CODE\" = \"no-such-value\" ]; then",
+      "file": "scripts/ops/backup-trigger.sh",
+      "find": "if [ \"$CODE\" != \"0\" ]; then",
+      "replace": "if [ \"$CODE\" = \"no-such-value\" ]; then",
       "guarded_by": "test/lei_service/backup_trigger_test.exs",
       "app": "apps/lei_service"
     },
     {
       "id": "backup-trigger-hardcodes-the-machine",
       "bug": "A machine takes its secrets at creation, so the producer is recreated whenever a secret changes -- four times in two days. A hardcoded id becomes a trigger that starts nothing, finds nothing to wait for, and says nothing.",
-      "file": ".github/workflows/backup-trigger.yml",
-      "find": "            | jq -r '(map(select(.config.schedule != null)) + .)[0].id // empty')",
-      "replace": "            | jq -r '.[0].id' 2>/dev/null || echo 83039db7e71718)",
+      "file": "scripts/ops/backup-trigger.sh",
+      "find": "  | jq -r '(map(select(.config.schedule != null)) + .)[0].id // empty')",
+      "replace": "  | jq -r '.[0].id' 2>/dev/null || echo 83039db7e71718)",
       "guarded_by": "test/lei_service/backup_trigger_test.exs",
       "app": "apps/lei_service"
     },
