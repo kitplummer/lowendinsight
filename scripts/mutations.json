@@ -1382,8 +1382,8 @@
       "id": "invalid-input-charged-at-admission",
       "bug": "A request the analyzer refuses was admitted, and so charged, before being refused (2026-09-15).",
       "file": "apps/lei_service/lib/lei/analyze.ex",
-      "find": "    with :ok <- check_cache_mode(cache_mode),\n         :ok <- check_urls(urls) do",
-      "replace": "    with :ok <- check_cache_mode(cache_mode) do",
+      "find": "           ),\n         :ok <- check_urls(urls) do",
+      "replace": "           ) do",
       "guarded_by": "test/lei_service/unbilled_paths_test.exs",
       "app": "apps/lei_service"
     },
@@ -4805,6 +4805,33 @@
       "find": "rm -f \"$OUT\"\n",
       "replace": ":\n",
       "guarded_by": "test/lei_service/monitor_metrics_fetch_test.exs",
+      "app": "apps/lei_service"
+    },
+    {
+      "id": "blocking-wait-unbounded",
+      "bug": "Cowboy's 180 s idle_timeout ended any blocking request whatever cache_timeout asked for. Bandit (#346) lets a request run to completion -- measured 2026-11-16 -- so an unbounded cache_timeout holds a process polling Redis for as long as the caller names, and the per-request repository cap (Lei.RequestScope) no longer rests on any bound.",
+      "file": "apps/lei_service/lib/lei/analyze.ex",
+      "find": "        {:ok, min(ms, max)}",
+      "replace": "        {:ok, ms}",
+      "guarded_by": "test/lei/analyze_test.exs",
+      "app": "apps/lei_service"
+    },
+    {
+      "id": "blocking-wait-any-term",
+      "bug": "cache_timeout was taken from the body as given, so a string or a float reached the deadline arithmetic in the blocking poll and raised there, after admission had charged for the request.",
+      "file": "apps/lei_service/lib/lei/analyze.ex",
+      "find": "      ms when is_integer(ms) and ms >= 0 ->",
+      "replace": "      ms ->",
+      "guarded_by": "test/lei/analyze_test.exs",
+      "app": "apps/lei_service"
+    },
+    {
+      "id": "sbom-wait-read-unchecked",
+      "bug": "The SBOM route reads cache_timeout itself. Reading it from the body directly, as it did before, skips the bound /v1/analyze applies, so the unbounded wait comes back on the one route whose documented example asked for 300 s.",
+      "file": "apps/lei_service/lib/lei_service/endpoint.ex",
+      "find": "         {:ok, cache_timeout} <-\n           Lei.Analyze.cache_timeout(\n             params,\n             Application.get_env(:lei_service, :sbom_timeout, 60_000)\n           ) do",
+      "replace": "         cache_timeout = Map.get(params, \"cache_timeout\", 60_000) do",
+      "guarded_by": "test/lei_service/endpoint_test.exs",
       "app": "apps/lei_service"
     }
   ]

@@ -27,14 +27,12 @@ defmodule Lei.Analyze do
   def validate(%{"urls" => urls} = params) when is_list(urls) do
     cache_mode = Map.get(params, "cache_mode", "blocking")
 
-    cache_timeout =
-      Map.get(
-        params,
-        "cache_timeout",
-        Application.get_env(:lei_service, :default_cache_timeout, 30_000)
-      )
-
     with :ok <- check_cache_mode(cache_mode),
+         {:ok, cache_timeout} <-
+           cache_timeout(
+             params,
+             Application.get_env(:lei_service, :default_cache_timeout, 30_000)
+           ),
          :ok <- check_urls(urls) do
       {:ok, %{urls: urls, cache_mode: cache_mode, cache_timeout: cache_timeout}}
     else
@@ -44,6 +42,30 @@ defmodule Lei.Analyze do
   end
 
   def validate(_params), do: {:invalid, %{error: "POST body must contain a 'urls' list"}}
+
+  @doc """
+  How long a blocking request waits, in milliseconds: `{:ok, ms}` or
+  `{:error, message}`.
+
+  At most `Lei.RequestScope.max_wait_ms/0`. Under Cowboy the connection's
+  idle_timeout ended any request at 180 s whatever this asked for; Bandit lets
+  a request run to completion (#346), so without this a caller could hold a
+  process polling Redis for as long as they named. A longer wait is cut to the
+  limit rather than refused, which is what Cowboy did to it, minus the dropped
+  connection: the caller gets the uuid to collect the report later.
+  """
+  def cache_timeout(params, default) do
+    max = Lei.RequestScope.max_wait_ms()
+
+    case Map.get(params, "cache_timeout", default) do
+      ms when is_integer(ms) and ms >= 0 ->
+        {:ok, min(ms, max)}
+
+      other ->
+        {:error,
+         "cache_timeout must be a whole number of milliseconds, at most #{max}; got #{inspect(other)}"}
+    end
+  end
 
   @doc "`:ok`, or `{:error, message}` naming the modes there are."
   def check_cache_mode(cache_mode) when cache_mode in @valid_cache_modes, do: :ok

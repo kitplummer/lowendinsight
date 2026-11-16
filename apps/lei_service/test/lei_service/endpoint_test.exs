@@ -485,6 +485,29 @@ defmodule LeiService.EndpointTest do
     assert json["sbom_analysis"] == true
   end
 
+  # The SBOM route reads cache_timeout itself; it is held to the same rule as
+  # /v1/analyze (Lei.Analyze.cache_timeout/2).
+  test "POST /v1/analyze/sbom with a cache_timeout that is not milliseconds returns 422" do
+    sbom = %{
+      "bomFormat" => "CycloneDX",
+      "specVersion" => "1.4",
+      "components" => [%{"name" => "goa", "purl" => "pkg:github/kitplummer/goa@v1.0.0"}]
+    }
+
+    conn =
+      conn(:post, "/v1/analyze/sbom", %{
+        "sbom" => sbom,
+        "cache_mode" => "blocking",
+        "cache_timeout" => "soon"
+      })
+
+    conn = Plug.Conn.merge_req_headers(conn, headers())
+    conn = LeiService.Endpoint.call(conn, @opts)
+
+    assert conn.status == 422
+    assert Poison.decode!(conn.resp_body)["error"] =~ "cache_timeout must be"
+  end
+
   test "POST /v1/analyze/sbom with no git URLs returns 422" do
     sbom = %{
       "bomFormat" => "CycloneDX",

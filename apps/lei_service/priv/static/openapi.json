@@ -784,7 +784,8 @@
           "cache_timeout": {
             "type": "integer",
             "default": 30000,
-            "description": "Timeout in milliseconds for blocking mode. Analysis that exceeds this returns 202 with a UUID to poll later."
+            "minimum": 0,
+            "description": "Timeout in milliseconds for blocking mode, at most 180000; a longer value waits 180000. Analysis that exceeds it returns 202 with a UUID to poll later."
           }
         }
       },
@@ -811,7 +812,8 @@
           "cache_timeout": {
             "type": "integer",
             "default": 60000,
-            "description": "Timeout in milliseconds for blocking mode"
+            "minimum": 0,
+            "description": "Timeout in milliseconds for blocking mode, at most 180000; a longer value waits 180000."
           }
         }
       },

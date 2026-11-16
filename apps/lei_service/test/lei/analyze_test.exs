@@ -88,6 +88,38 @@ defmodule Lei.AnalyzeTest do
 
       assert is_integer(timeout)
     end
+
+    # Under Cowboy a blocking request ended at the connection's 180 s
+    # idle_timeout whatever cache_timeout asked for. Bandit (#346) has no such
+    # bound: a request is allowed to run to completion, so the wait has to be
+    # bounded here or a caller can hold a process polling Redis for as long as
+    # they name.
+    test "a wait longer than a request may take is cut to the limit" do
+      assert {:ok, %{cache_timeout: 180_000}} =
+               Lei.Analyze.validate(%{
+                 "urls" => ["https://github.com/kitplummer/xmpp4rails"],
+                 "cache_timeout" => 86_400_000
+               })
+    end
+
+    test "a wait within the limit is kept" do
+      assert {:ok, %{cache_timeout: 45_000}} =
+               Lei.Analyze.validate(%{
+                 "urls" => ["https://github.com/kitplummer/xmpp4rails"],
+                 "cache_timeout" => 45_000
+               })
+    end
+
+    test "a wait that is not a whole number of milliseconds is refused" do
+      for bad <- ["soon", -1, 1.5, nil] do
+        assert {:invalid, %{error: "cache_timeout must be" <> _}} =
+                 Lei.Analyze.validate(%{
+                   "urls" => ["https://github.com/kitplummer/xmpp4rails"],
+                   "cache_timeout" => bad
+                 }),
+               "cache_timeout #{inspect(bad)} was accepted"
+      end
+    end
   end
 
   describe "price/1" do

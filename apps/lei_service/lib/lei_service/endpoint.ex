@@ -351,14 +351,12 @@ defmodule LeiService.Endpoint do
   defp sbom_request(%{"sbom" => sbom} = params) do
     cache_mode = Map.get(params, "cache_mode", "async")
 
-    cache_timeout =
-      Map.get(
-        params,
-        "cache_timeout",
-        Application.get_env(:lei_service, :sbom_timeout, 60_000)
-      )
-
-    with :ok <- Lei.Analyze.check_cache_mode(cache_mode) do
+    with :ok <- Lei.Analyze.check_cache_mode(cache_mode),
+         {:ok, cache_timeout} <-
+           Lei.Analyze.cache_timeout(
+             params,
+             Application.get_env(:lei_service, :sbom_timeout, 60_000)
+           ) do
       case LeiService.SbomParser.parse(sbom) do
         {:ok, [_ | _] = urls} -> {:ok, urls, cache_mode, cache_timeout}
         {:ok, []} -> {:error, "no git URLs found in SBOM"}
