@@ -65,13 +65,22 @@ jobs:
         id: readiness
         run: scripts/ops/confirm.sh readiness scripts/ops/check-readiness.sh https://lowendinsight.dev
 
+      # Every check from here to the deploy check reads this one response.
+      # They used to fetch it seven times over, unconfirmed, and one timeout
+      # on 2026-11-02 failed the run with a bare "exit code 28" -- see
+      # scripts/ops/fetch-metrics.sh. One fetch also means the checks agree
+      # about which moment they describe.
+      - name: Read /metrics
+        id: metrics
+        run: scripts/ops/confirm.sh metrics scripts/ops/fetch-metrics.sh https://lowendinsight.dev "$RUNNER_TEMP/metrics.txt"
+
       # Readiness already fails on a stuck or backed-up queue (it is an
       # optional check, so it reads as "degraded"). This prints the numbers
       # behind that verdict, and fails if the queue could not be read at all.
       - name: Report queue depth
         id: queue
         run: |
-          METRICS=$(curl -s --max-time 15 https://lowendinsight.dev/metrics | grep '^lei_queue' || true)
+          METRICS=$(grep '^lei_queue' "$RUNNER_TEMP/metrics.txt" || true)
           echo "${METRICS:-no lei_queue metrics}"
 
           if [ -z "$METRICS" ]; then
@@ -104,10 +113,7 @@ jobs:
           # chose -- ADR-008 has that as an open decision, and this makes a
           # change visible rather than inherited a second time.
           EXPECTED_POLICY: ${{ vars.LEI_REDIS_EXPECTED_POLICY || 'optimistic-volatile' }}
-        run: |
-          set -o pipefail
-          curl -s --max-time 15 https://lowendinsight.dev/metrics \
-            | scripts/check-cache-headroom.sh
+        run: scripts/check-cache-headroom.sh < "$RUNNER_TEMP/metrics.txt"
 
       - name: Check the billing mode is the one we expect
         id: billing_mode
@@ -121,7 +127,7 @@ jobs:
           # the moment this merged, before production was in beta at all.
           EXPECTED: ${{ vars.LEI_EXPECTED_BILLING_MODE || 'charge' }}
         run: |
-          METRICS=$(curl -s --max-time 15 https://lowendinsight.dev/metrics)
+          METRICS=$(cat "$RUNNER_TEMP/metrics.txt")
 
           if ! echo "$METRICS" | grep -q "^lei_billing_mode{"; then
             echo "::error::/metrics is not publishing lei_billing_mode, so whether this deployment charges for analysis cannot be read. The deployed release predates ADR-007, or the collector stopped."
@@ -155,7 +161,7 @@ jobs:
       - name: Check Stripe webhook verification
         id: webhooks
         run: |
-          METRICS=$(curl -s --max-time 15 https://lowendinsight.dev/metrics)
+          METRICS=$(cat "$RUNNER_TEMP/metrics.txt")
 
           if ! echo "$METRICS" | grep -q "lei_stripe_webhook_total"; then
             echo "::warning::No webhook metrics exposed. Deployed release predates them."
@@ -197,7 +203,7 @@ jobs:
       - name: Check credit ledger reconciliation
         id: ledger
         run: |
-          METRICS=$(curl -s --max-time 15 https://lowendinsight.dev/metrics)
+          METRICS=$(cat "$RUNNER_TEMP/metrics.txt")
 
           if ! echo "$METRICS" | grep -q "lei_credit_reconciliation"; then
             echo "::warning::No reconciliation metrics exposed. Deployed release predates them."
@@ -265,7 +271,7 @@ jobs:
       - name: Check payment rails and the Stripe ledger
         id: payments
         run: |
-          METRICS=$(curl -s --max-time 15 https://lowendinsight.dev/metrics)
+          METRICS=$(cat "$RUNNER_TEMP/metrics.txt")
 
           if [ -z "$METRICS" ]; then
             echo "::error::/metrics returned nothing. No payment signal could be read at all."
@@ -513,8 +519,7 @@ jobs:
               # GitHub's side. Within the grace a mismatch is a deploy still
               # rolling, so it is only an error past it.
               set +e
-              curl -s --max-time 15 https://lowendinsight.dev/metrics \
-                | scripts/check-deployed-sha.sh "$TIP"
+              scripts/check-deployed-sha.sh "$TIP" < "$RUNNER_TEMP/metrics.txt"
               LIVE=$?
               set -e
               if [ "$LIVE" -ne 0 ]; then

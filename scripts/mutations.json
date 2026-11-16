@@ -4779,6 +4779,33 @@
       "replace": "        \"note\",\n",
       "guarded_by": "test/lei_service/mcp_test.exs",
       "app": "apps/lei_service"
+    },
+    {
+      "id": "monitor-check-fetches-metrics-unconfirmed",
+      "bug": "On 2026-11-02 one /metrics request timed out and the monitor emailed: seven checks each fetched /metrics themselves with a bare curl, outside confirm.sh, and `METRICS=$(curl ...)` under bash -e exits 28 with no message. A check that fetches for itself brings that back.",
+      "file": ".github/workflows/monitor.yml",
+      "find": "METRICS=$(grep '^lei_queue' \"$RUNNER_TEMP/metrics.txt\" || true)",
+      "replace": "METRICS=$(curl -s --max-time 15 https://lowendinsight.dev/metrics | grep '^lei_queue' || true)",
+      "guarded_by": "test/lei_service/monitor_metrics_fetch_test.exs",
+      "app": "apps/lei_service"
+    },
+    {
+      "id": "metrics-fetch-accepts-a-foreign-body",
+      "bug": "A 200 that is not lei's metrics (an empty body, a proxy error page) is saved as the snapshot, and the checks downstream read every gauge as absent -- which several of them report as an older release, a warning, rather than as an unreadable production.",
+      "file": "scripts/ops/fetch-metrics.sh",
+      "find": "if ! grep -q '^lei_' \"$TMP\"; then",
+      "replace": "if false; then",
+      "guarded_by": "test/lei_service/monitor_metrics_fetch_test.exs",
+      "app": "apps/lei_service"
+    },
+    {
+      "id": "metrics-fetch-leaves-a-stale-snapshot",
+      "bug": "A failed fetch leaves the previous snapshot in place, so a check reading it reports on an older response as if it were current.",
+      "file": "scripts/ops/fetch-metrics.sh",
+      "find": "rm -f \"$OUT\"\n",
+      "replace": ":\n",
+      "guarded_by": "test/lei_service/monitor_metrics_fetch_test.exs",
+      "app": "apps/lei_service"
     }
   ]
 }
