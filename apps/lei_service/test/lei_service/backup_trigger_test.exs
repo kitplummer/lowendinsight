@@ -21,7 +21,12 @@ defmodule LeiService.BackupTriggerTest do
 
   @workflows Path.expand("../../../../.github/workflows", __DIR__)
 
-  defp trigger, do: File.read!(Path.join(@workflows, "backup-trigger.yml"))
+  @trigger_script Path.expand("../../../../scripts/ops/backup-trigger.sh", __DIR__)
+
+  # The workflow and the script it runs, read as one.
+  defp trigger,
+    do: File.read!(Path.join(@workflows, "backup-trigger.yml")) <> File.read!(@trigger_script)
+
   defp verify, do: File.read!(Path.join(@workflows, "backup.yml"))
 
   describe "it runs on its own" do
@@ -55,8 +60,8 @@ defmodule LeiService.BackupTriggerTest do
       assert src =~ "machine status",
              "nothing reads the outcome of the run it started"
 
-      assert src =~ ~r/while \[ "\$AFTER" = "\$BEFORE" \]/,
-             "the wait is not on a new exit event, so it can read a previous run's result"
+      assert src =~ ~s([ "$AFTER" -gt "$BEFORE" ]),
+             "the wait is not on a newer exit event, so it can read a previous run's result"
 
       assert src =~ "select(.type == \"exit\")",
              "exit events are not what is being watched"
@@ -121,6 +126,146 @@ defmodule LeiService.BackupTriggerTest do
       refute src =~ "PG_DUMP_URL", "the trigger holds the database credentials"
       refute src =~ "BACKUP_PASSPHRASE", "the trigger holds the encryption key"
       refute src =~ ~r/^\s*pg_dump/m, "the trigger takes the dump itself"
+    end
+  end
+
+  describe "running it, with flyctl stubbed" do
+    # Source assertions cannot catch a behavioural change, so the decisions are
+    # exercised with `flyctl` replaced on PATH, as deploy_reporting_test.exs
+    # does for `gh`.
+    #
+    # Each `machine list` call returns the next scripted answer, repeating the
+    # last; FAIL makes that call exit 1. The first call is the script finding
+    # the machine, the second its baseline. `machine status` reports an exit code
+    # only once the scripted machine has exited.
+
+    setup do
+      dir = Path.join(System.tmp_dir!(), "backuptrigger-#{System.unique_integer([:positive])}")
+      File.mkdir_p!(Path.join(dir, "bin"))
+      on_exit(fn -> File.rm_rf!(dir) end)
+      %{dir: dir}
+    end
+
+    defp machine(exits), do: machine(exits, [])
+
+    defp machine(exits, other) do
+      events =
+        Enum.map(exits, &%{"type" => "exit", "timestamp" => &1}) ++
+          Enum.map(other, &%{"type" => &1, "timestamp" => 1})
+
+      Jason.encode!([%{"id" => "m1", "config" => %{"schedule" => nil}, "events" => events}])
+    end
+
+    # lists: one answer per `machine list` call. exited_after: the call count
+    # from which `machine status` carries exit_code=CODE.
+    defp stub_flyctl(dir, lists, code, exited_after) do
+      lists
+      |> Enum.with_index(1)
+      |> Enum.each(fn {body, i} -> File.write!(Path.join(dir, "list.#{i}"), body) end)
+
+      File.write!(Path.join(dir, "bin/flyctl"), """
+      #!/usr/bin/env bash
+      d="#{dir}"
+      case "$1 $2" in
+        "machine list")
+          n=$(( $(cat "$d/calls" 2>/dev/null || echo 0) + 1 ))
+          echo "$n" > "$d/calls"
+          f="$d/list.$n"
+          [ -f "$f" ] || f=$(ls "$d"/list.* | sort -t. -k2 -n | tail -1)
+          [ "$(cat "$f")" = "FAIL" ] && exit 1
+          cat "$f" ;;
+        "machine start") echo "m1 has been started" ;;
+        "machine status")
+          n=$(cat "$d/calls" 2>/dev/null || echo 0)
+          if [ "$n" -ge #{exited_after} ]; then
+            echo "  exit  exit_code=#{code},oom_killed=false"
+          else
+            echo "  start  started"
+          fi ;;
+        *) exit 1 ;;
+      esac
+      """)
+
+      File.chmod!(Path.join(dir, "bin/flyctl"), 0o755)
+    end
+
+    defp run_trigger(dir) do
+      System.cmd("bash", [@trigger_script],
+        env: [
+          {"PATH", Path.join(dir, "bin") <> ":" <> System.get_env("PATH")},
+          {"APP", "lowendinsight-backup"},
+          {"FLY_API_TOKEN", "test-token"},
+          {"BACKUP_POLL_SECONDS", "0"},
+          {"BACKUP_WAIT_POLLS", "6"}
+        ],
+        stderr_to_stdout: true
+      )
+    end
+
+    test "a successful run passes", %{dir: dir} do
+      stub_flyctl(
+        dir,
+        [machine([1000]), machine([1000]), machine([1000]), machine([1000, 2000])],
+        0,
+        4
+      )
+
+      {out, code} = run_trigger(dir)
+      assert code == 0, out
+      assert out =~ "exited 0"
+    end
+
+    test "a list that has lost the old exit event is not the new one", %{dir: dir} do
+      # 2026-11-06 and 2026-11-12: just after the start, the machine's events
+      # no longer included an exit, so the newest exit read as 0. 0 differs
+      # from the baseline, the wait ended after one poll, and the status was
+      # read before the dump finished: "Could not read an exit code", while the
+      # backup itself landed minutes later.
+      stub_flyctl(
+        dir,
+        [
+          machine([1000]),
+          machine([1000]),
+          machine([], ["launch", "start"]),
+          machine([], ["start"]),
+          machine([2000])
+        ],
+        0,
+        5
+      )
+
+      {out, code} = run_trigger(dir)
+      assert code == 0, out
+      refute out =~ "Could not read an exit code"
+    end
+
+    test "a failed read while waiting is retried, not taken as the result", %{dir: dir} do
+      stub_flyctl(dir, [machine([1000]), machine([1000]), "FAIL", machine([1000, 2000])], 0, 4)
+      {out, code} = run_trigger(dir)
+      assert code == 0, out
+    end
+
+    test "no new exit event is a failure", %{dir: dir} do
+      stub_flyctl(dir, [machine([1000])], 0, 99)
+      {out, code} = run_trigger(dir)
+      assert code == 1
+      assert out =~ "no new exit event"
+    end
+
+    test "a non-zero exit code is a failure", %{dir: dir} do
+      stub_flyctl(dir, [machine([1000]), machine([1000]), machine([1000, 2000])], 1, 3)
+      {out, code} = run_trigger(dir)
+      assert code == 1
+      assert out =~ "exited 1"
+    end
+
+    test "a baseline it cannot read is a failure, not a zero", %{dir: dir} do
+      # With no baseline every exit event looks new, including the last run's.
+      # Call 1 finds the machine; every read after it fails.
+      stub_flyctl(dir, [machine([1000]), "FAIL"], 0, 3)
+      {out, code} = run_trigger(dir)
+      assert code == 1
+      refute out =~ "exited 0"
     end
   end
 end
