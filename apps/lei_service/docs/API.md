@@ -75,7 +75,7 @@ Analyze one or more git repository URLs.
 |-----------|------|---------|-------------|
 | `urls` | array | required | List of git repository URLs to analyze |
 | `cache_mode` | string | `"blocking"` | How to handle cache misses (see below) |
-| `cache_timeout` | integer | `30000` | Timeout in ms for blocking mode |
+| `cache_timeout` | integer | `30000` | Timeout in ms for blocking mode; at most 180000 (longer waits 180000), anything but a non-negative integer is a 422 |
 
 **Cache Modes:**
 - `blocking` - Wait for analysis to complete (up to timeout)
@@ -183,7 +183,7 @@ Supports:
 |-----------|------|---------|-------------|
 | `sbom` | object | required | CycloneDX or SPDX JSON object |
 | `cache_mode` | string | `"async"` | How to handle cache misses |
-| `cache_timeout` | integer | `60000` | Timeout in ms for blocking mode |
+| `cache_timeout` | integer | `60000` | Timeout in ms for blocking mode; at most 180000 (longer waits 180000), anything but a non-negative integer is a 422 |
 
 **URL Extraction:**
 The SBOM parser extracts git URLs from:

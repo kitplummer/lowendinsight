@@ -24,12 +24,16 @@ defmodule Lei.RequestScope do
   So the cap is the point where one request can no longer hold the queue longer
   than the service already permits a single request to take:
 
-      concurrency 5 × idle_timeout 180 s ÷ p90 analysis 1.62 s  ≈  555
+      concurrency 5 × longest wait 180 s ÷ p90 analysis 1.62 s  ≈  555
 
-  The 180 s was Cowboy's `idle_timeout`, chosen for blocking analysis; under
-  Bandit it is the connection `read_timeout` (`endpoint.ex`). p90 comes from
-  measuring fifty-nine repositories drawn from real manifests. The default is **500**, that derivation rounded down for
-  headroom rather than up for generosity.
+  The 180 s was Cowboy's `idle_timeout`, chosen for blocking analysis, which
+  ended any request that ran past it. Bandit does not: its `read_timeout`
+  bounds waiting for the client, not a request that is running (measured
+  2026-11-16, a 5 s handler under a 2 s timeout: Cowboy dropped it at 2 s,
+  Bandit answered at 5 s). The bound is now `max_wait_ms/0`, enforced on
+  `cache_timeout` by `Lei.Analyze.cache_timeout/2`. p90 comes from measuring
+  fifty-nine repositories drawn from real manifests. The default is **500**,
+  that derivation rounded down for headroom rather than up for generosity.
 
   **Re-derive it if the concurrency changes.** A higher concurrency earns a
   higher cap; raising the cap alone just lets one caller wait longer while
@@ -39,6 +43,13 @@ defmodule Lei.RequestScope do
   willing to let one request do to the queue is an operating choice, not a
   property of the code.
   """
+
+  @doc """
+  The longest a blocking request waits for its analysis, in milliseconds. The
+  cap above is derived from it; change one and re-derive the other.
+  """
+  @spec max_wait_ms() :: pos_integer()
+  def max_wait_ms, do: 180_000
 
   @doc """
   The cap. Zero or a negative value means unlimited, for a deployment with its

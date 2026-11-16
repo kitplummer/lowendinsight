@@ -205,7 +205,7 @@ For SBOM-driven environments:
 curl -X POST https://lei.example.com/v1/analyze/sbom \
   -H "Authorization: Bearer $TOKEN" \
   -H "Content-Type: application/json" \
-  -d "{\"sbom\": $(cat sbom.json), \"cache_mode\": \"blocking\", \"cache_timeout\": 300000}"
+  -d "{\"sbom\": $(cat sbom.json), \"cache_mode\": \"blocking\", \"cache_timeout\": 180000}"
 ```
 
 ## Monitoring
