@@ -48,9 +48,12 @@ defmodule Lei.Mcp do
   @check_packages %{
     name: "check_packages",
     title: "Check packages",
-    # Written for the agent choosing a tool, trigger first (see the reasoning
-    # in clients/mcp/lei_mcp.py): an agent does not know its knowledge of a
-    # package is dated, so the description has to say so.
+    # Written for the agent choosing a tool, trigger first: an agent scanning
+    # its tool list is matching "does this apply to what I am about to do",
+    # and does not know its knowledge of a package is dated. So the
+    # description opens with when to call it, and names what goes wrong --
+    # a lost maintainer, a project gone quiet -- not only that there is a
+    # cutoff, which reads as a disclaimer.
     description:
       "Call this before you recommend, add, or vouch for a dependency, and " <>
         "whenever you are about to say whether a package is maintained. Your " <>
@@ -138,6 +141,9 @@ defmodule Lei.Mcp do
 
   @doc "The protocol versions served, newest first."
   def protocol_versions, do: @protocol_versions
+
+  @doc "The tools served, as `tools/list` lists them. `/llms.txt` names them from here."
+  def tools, do: @tools
 
   @impl Plug
   def init(opts), do: opts
@@ -318,7 +324,7 @@ defmodule Lei.Mcp do
 
   defp request(_conn, "ping", _params), do: {:result, %{}}
 
-  defp request(_conn, "tools/list", _params), do: {:result, %{tools: @tools}}
+  defp request(_conn, "tools/list", _params), do: {:result, %{tools: tools()}}
 
   defp request(conn, "tools/call", %{"name" => "check_packages"} = params) do
     Lei.Adoption.record_bucket("mcp-remote")

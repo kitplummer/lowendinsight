@@ -14,6 +14,19 @@ same tree (ADR-003).
   left out is printed, and a directory that does not exist is refused rather
   than excluding nothing. This repository's own scan took up to two hours
   analysing the dev-only build tools in the editor extension's lockfile.
+- **A remote MCP server at `https://lowendinsight.dev/mcp`.** Streamable
+  HTTP with a `lei_` API key, offering `check_packages`,
+  `analyze_repositories` and `get_analysis`, billed as the routes they mirror.
+  Set-up for Claude Code, Cursor and VS Code is in
+  `apps/lei_service/docs/MCP.md`, `/llms.txt` names it, and `server.json` is
+  its MCP Registry listing.
+
+### Removed
+
+- **Breaking: the local MCP client, `clients/mcp/lei_mcp.py`.** Replace its
+  configuration entry with the URL above and the same key. Its two tools,
+  `analyze_repository` and `analyze_dependencies`, are both
+  `analyze_repositories`.
 
 ### Fixed
 

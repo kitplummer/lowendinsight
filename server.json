@@ -1,0 +1,27 @@
+{
+  "$schema": "https://static.modelcontextprotocol.io/schemas/2025-12-11/server.schema.json",
+  "name": "io.github.kitplummer/lowendinsight",
+  "title": "LowEndInsight",
+  "description": "Is a dependency still maintained now? Contributors, recency of real work, risk.",
+  "version": "0.16.0-beta.2",
+  "websiteUrl": "https://lowendinsight.dev",
+  "repository": {
+    "url": "https://github.com/kitplummer/lowendinsight",
+    "source": "github",
+    "subfolder": "apps/lei_service"
+  },
+  "remotes": [
+    {
+      "type": "streamable-http",
+      "url": "https://lowendinsight.dev/mcp",
+      "headers": [
+        {
+          "name": "Authorization",
+          "description": "Bearer followed by a lei_ API key. Free during the beta: https://lowendinsight.dev/signup",
+          "isRequired": true,
+          "isSecret": true
+        }
+      ]
+    }
+  ]
+}
