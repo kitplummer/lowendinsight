@@ -25,6 +25,13 @@
 
 set -uo pipefail
 
+# Every request names itself, so Lei.Adoption counts these probes as
+# `internal` rather than as adoption. With curl's own user agent they were
+# `script`, and at about four analysis calls a run, 96 runs a day, they were
+# nearly all of it (2026-11-17). probe_user_agent_test.exs holds every call to
+# this.
+curl() { command curl -A "lowendinsight-monitor/1" "$@"; }
+
 BASE_URL="${1:-https://lowendinsight.dev}"
 CANARY_REPO="${CANARY_REPO:-https://github.com/kitplummer/lita-cron}"
 
