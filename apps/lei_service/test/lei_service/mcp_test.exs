@@ -440,6 +440,29 @@ defmodule LeiService.McpTest do
 
       assert adoption("mcp-remote") == before + 1
     end
+
+    # The canary analyses through /mcp every 15 minutes. Counted as
+    # mcp-remote, it would be the whole of the number that says whether anyone
+    # uses the MCP server.
+    test "a call from our own probe is internal, not adoption", %{key: key} do
+      remote = adoption("mcp-remote")
+      internal = adoption("internal")
+
+      conn =
+        mcp(
+          %{
+            jsonrpc: "2.0",
+            id: 1,
+            method: "tools/call",
+            params: %{name: "analyze_repositories", arguments: %{urls: [cached_url()]}}
+          },
+          [{"authorization", "Bearer " <> key}, {"user-agent", "lowendinsight-monitor/1"}]
+        )
+
+      assert conn.status == 200
+      assert adoption("mcp-remote") == remote
+      assert adoption("internal") == internal + 1
+    end
   end
 
   describe "get_analysis" do

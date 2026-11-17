@@ -327,12 +327,12 @@ defmodule Lei.Mcp do
   defp request(_conn, "tools/list", _params), do: {:result, %{tools: tools()}}
 
   defp request(conn, "tools/call", %{"name" => "check_packages"} = params) do
-    Lei.Adoption.record_bucket("mcp-remote")
+    Lei.Adoption.record_bucket(adoption_bucket(conn))
     {:result, check_packages(conn, object(params["arguments"]))}
   end
 
   defp request(conn, "tools/call", %{"name" => "analyze_repositories"} = params) do
-    Lei.Adoption.record_bucket("mcp-remote")
+    Lei.Adoption.record_bucket(adoption_bucket(conn))
     {:result, analyze_repositories(conn, object(params["arguments"]))}
   end
 
@@ -371,6 +371,15 @@ defmodule Lei.Mcp do
 
   # POST /v1/analyze, through the same Lei.Analyze path, with the route's
   # defaults: blocking, up to the default timeout.
+  # Whoever connects here is an MCP client, so the bucket is mcp-remote whatever
+  # the user agent says -- except our own probes, which name themselves. The
+  # canary analyses through /mcp every 15 minutes; counted as mcp-remote it
+  # would be the whole of the number that says whether anyone uses this.
+  defp adoption_bucket(conn) do
+    ua = conn |> Plug.Conn.get_req_header("user-agent") |> List.first()
+    if Lei.Adoption.bucket(ua) == "internal", do: "internal", else: "mcp-remote"
+  end
+
   defp analyze_repositories(conn, arguments) do
     case Lei.Analyze.validate(%{"urls" => arguments["urls"]}) do
       {:ok, request} ->
