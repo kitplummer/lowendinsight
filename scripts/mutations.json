@@ -4824,6 +4824,24 @@
       "replace": "\"url\": \"https://lowendinsight.dev/v1/mcp\",",
       "guarded_by": "test/lei_service/mcp_registry_test.exs",
       "app": "apps/lei_service"
+    },
+    {
+      "id": "adoption-report-unreadable-reads-as-zero",
+      "bug": "An adoption counter that could not be read rendered as a table of zeros -- 'nobody used it' when the truth was 'we could not tell', the opposite finding.",
+      "file": "scripts/ops/adoption-report.sh",
+      "find": "if ! grep -qx 'lei_adoption_readable 1' \"$METRICS\"; then",
+      "replace": "if false; then",
+      "guarded_by": "test/lei_service/adoption_report_test.exs",
+      "app": "apps/lei_service"
+    },
+    {
+      "id": "adoption-report-missing-bucket-reads-as-zero",
+      "bug": "A bucket absent from /metrics -- renamed, or dropped from the collector -- rendered as zero in the weekly report, so a client that stopped being counted looked like a client that stopped calling.",
+      "file": "scripts/ops/adoption-report.sh",
+      "find": "  if [ -z \"$t\" ] || [ -z \"$m\" ]; then",
+      "replace": "  t=${t:-0}; m=${m:-0}\n  if false; then",
+      "guarded_by": "test/lei_service/adoption_report_test.exs",
+      "app": "apps/lei_service"
     }
   ]
 }

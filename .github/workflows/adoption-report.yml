@@ -1,0 +1,72 @@
+name: adoption-report
+
+# Who calls the analysis, every week, in one running issue.
+#
+# Lei.Adoption has counted analysis calls by client since the MCP work began,
+# and /metrics has published the counts, but nothing read them -- the shape
+# this repository keeps meeting: the signal existed and reported correctly, and
+# no one was on the other end. This reads them and keeps the answer in the open
+# issue labelled `adoption-report`, where a person or an agent can act on it.
+#
+# A failed run emails, like every workflow here: an unreadable counter is a
+# fault to fix, not a week with no report.
+
+on:
+  schedule:
+    - cron: '0 7 * * 1'   # Mondays, 07:00 UTC
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  issues: write
+
+concurrency:
+  group: adoption-report
+  cancel-in-progress: false
+
+jobs:
+  report:
+    name: Report adoption
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Read /metrics
+        run: scripts/ops/confirm.sh metrics scripts/ops/fetch-metrics.sh https://lowendinsight.dev "$RUNNER_TEMP/metrics.txt"
+
+      # REST rather than `gh issue edit`: the gh subcommands that edit go
+      # through GraphQL, which has failed here on the projects-classic
+      # deprecation.
+      - name: Update the running issue
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+
+          NUM=$(gh api "repos/$REPO/issues?labels=adoption-report&state=open&per_page=1" --jq '.[0].number // empty')
+          if [ -n "$NUM" ]; then
+            gh api "repos/$REPO/issues/$NUM" --jq .body > "$RUNNER_TEMP/previous.md"
+          else
+            : > "$RUNNER_TEMP/previous.md"
+          fi
+
+          scripts/ops/adoption-report.sh "$RUNNER_TEMP/metrics.txt" "$RUNNER_TEMP/previous.md" > "$RUNNER_TEMP/report.md"
+          scripts/ops/adoption-report.sh "$RUNNER_TEMP/metrics.txt" "$RUNNER_TEMP/previous.md" --intro > "$RUNNER_TEMP/body.md"
+
+          if [ -z "$NUM" ]; then
+            gh api -X POST "repos/$REPO/labels" -f name=adoption-report -f color=0E8A16 \
+              -f description="The running weekly adoption report" >/dev/null 2>&1 || true
+            NUM=$(gh api -X POST "repos/$REPO/issues" -f title="Adoption report" \
+              -f "labels[]=adoption-report" -F body=@"$RUNNER_TEMP/body.md" --jq .number)
+          else
+            gh api -X PATCH "repos/$REPO/issues/$NUM" -F body=@"$RUNNER_TEMP/body.md" >/dev/null
+          fi
+
+          gh api -X POST "repos/$REPO/issues/$NUM/comments" -F body=@"$RUNNER_TEMP/report.md" >/dev/null
+
+          {
+            echo "Updated https://github.com/$REPO/issues/$NUM"
+            echo
+            cat "$RUNNER_TEMP/report.md"
+          } >> "$GITHUB_STEP_SUMMARY"
