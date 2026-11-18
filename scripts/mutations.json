@@ -4658,7 +4658,7 @@
       "id": "mcp-adoption-uncounted",
       "app": "apps/lei_service",
       "file": "apps/lei_service/lib/lei/mcp.ex",
-      "find": "  defp request(conn, \"tools/call\", %{\"name\" => \"check_packages\"} = params) do\n    Lei.Adoption.record_bucket(\"mcp-remote\")\n",
+      "find": "  defp request(conn, \"tools/call\", %{\"name\" => \"check_packages\"} = params) do\n    Lei.Adoption.record_bucket(adoption_bucket(conn))\n",
       "replace": "  defp request(conn, \"tools/call\", %{\"name\" => \"check_packages\"} = params) do\n",
       "guarded_by": "test/lei_service/mcp_test.exs",
       "bug": "Remote MCP use was not counted, so whether the MCP server is used could only be answered with an opinion."
@@ -4703,7 +4703,7 @@
       "id": "mcp-analyze-adoption-uncounted",
       "bug": "An analyze_repositories call is not counted as remote MCP adoption, so the tool's use is invisible in the adoption counts.",
       "file": "apps/lei_service/lib/lei/mcp.ex",
-      "find": "  defp request(conn, \"tools/call\", %{\"name\" => \"analyze_repositories\"} = params) do\n    Lei.Adoption.record_bucket(\"mcp-remote\")\n",
+      "find": "  defp request(conn, \"tools/call\", %{\"name\" => \"analyze_repositories\"} = params) do\n    Lei.Adoption.record_bucket(adoption_bucket(conn))\n",
       "replace": "  defp request(conn, \"tools/call\", %{\"name\" => \"analyze_repositories\"} = params) do\n",
       "guarded_by": "test/lei_service/mcp_test.exs",
       "app": "apps/lei_service"
@@ -4841,6 +4841,69 @@
       "find": "  if [ -z \"$t\" ] || [ -z \"$m\" ]; then",
       "replace": "  t=${t:-0}; m=${m:-0}\n  if false; then",
       "guarded_by": "test/lei_service/adoption_report_test.exs",
+      "app": "apps/lei_service"
+    },
+    {
+      "id": "smoke-probe-counted-as-adoption",
+      "bug": "The monitor's probes called the analysis with curl's own user agent, so Lei.Adoption counted them as `script` adoption: about four calls a run, 96 runs a day, and nearly all of the 12,182 `script` calls over 30 days on 2026-11-17. The count meant to say whether anyone uses the service said mostly that the monitor does.",
+      "file": "scripts/smoke-test.sh",
+      "find": "curl() { command curl -A \"lowendinsight-monitor/1\" \"$@\"; }",
+      "replace": "curl() { command curl \"$@\"; }",
+      "guarded_by": "test/lei_service/probe_user_agent_test.exs",
+      "app": "apps/lei_service"
+    },
+    {
+      "id": "canary-probe-counted-as-adoption",
+      "bug": "The monitor's probes called the analysis with curl's own user agent, so Lei.Adoption counted them as `script` adoption: about four calls a run, 96 runs a day, and nearly all of the 12,182 `script` calls over 30 days on 2026-11-17. The count meant to say whether anyone uses the service said mostly that the monitor does.",
+      "file": "scripts/canary.sh",
+      "find": "curl() { command curl -A \"lowendinsight-monitor/1\" \"$@\"; }",
+      "replace": "curl() { command curl \"$@\"; }",
+      "guarded_by": "test/lei_service/probe_user_agent_test.exs",
+      "app": "apps/lei_service"
+    },
+    {
+      "id": "mcp-probe-counted-as-mcp-remote",
+      "bug": "The canary analyses through /mcp every 15 minutes. /mcp counts every tool call as mcp-remote whatever the user agent says, so without the exception for our own probes the canary would be the whole of the number that says whether anyone uses the MCP server.",
+      "file": "apps/lei_service/lib/lei/mcp.ex",
+      "find": "    if Lei.Adoption.bucket(ua) == \"internal\", do: \"internal\", else: \"mcp-remote\"",
+      "replace": "    _ = ua\n    \"mcp-remote\"",
+      "guarded_by": "test/lei_service/mcp_test.exs",
+      "app": "apps/lei_service"
+    },
+    {
+      "id": "canary-mcp-ignores-tool-error",
+      "bug": "An analyze_repositories call that came back as a tool error -- refused, unbilled, not queued -- read as an answer, and the canary went on to check the error body as though it were a report.",
+      "file": "scripts/canary.sh",
+      "find": "  if [ \"$(jq -r '.result.isError // false' <<<\"$MCP_RESP\" 2>/dev/null)\" = \"true\" ]; then",
+      "replace": "  if false; then",
+      "guarded_by": "test/lei_service/canary_mcp_test.exs",
+      "app": "apps/lei_service"
+    },
+    {
+      "id": "canary-mcp-ignores-contributors",
+      "bug": "A report through /mcp with contributor_count 0 means the git analysis did nothing; the web canary has failed on exactly this, and the MCP path has to as well, or an analysis that clones nothing stays green through the other door.",
+      "file": "scripts/canary.sh",
+      "find": "    if grep -q '\"contributor_count\":0' <<<\"$MCP_JOB\"; then",
+      "replace": "    if false; then",
+      "guarded_by": "test/lei_service/canary_mcp_test.exs",
+      "app": "apps/lei_service"
+    },
+    {
+      "id": "canary-mcp-skips-without-key",
+      "bug": "The deploy gate runs the canary strict. A missing smoke key silently skipping the MCP analysis is a check that passes when it cannot do its job.",
+      "file": "scripts/canary.sh",
+      "find": "    bad \"analyze through MCP\" \"LEI_SMOKE_API_KEY is not set and CANARY_STRICT=1\"",
+      "replace": "    :",
+      "guarded_by": "test/lei_service/canary_mcp_test.exs",
+      "app": "apps/lei_service"
+    },
+    {
+      "id": "canary-mcp-accepts-a-cache-hit",
+      "bug": "On 2026-11-17 the MCP canary's analysis came back in 0s right after invalidating, and the timing check could not say whether that was an analysis: canary-sized repositories analyse in under a second. A report the cache served satisfies every content check, so without reading its cache status the canary passes on Redis rather than on the analysis.",
+      "file": "scripts/canary.sh",
+      "find": "  elif [ \"$(jq -r '.metadata.cache_status.misses' <<<\"$MCP_JOB\")\" -lt 1 ]; then",
+      "replace": "  elif [ \"$(jq -r '.metadata.cache_status.misses' <<<\"$MCP_JOB\")\" -lt 0 ]; then",
+      "guarded_by": "test/lei_service/canary_mcp_test.exs",
       "app": "apps/lei_service"
     }
   ]
