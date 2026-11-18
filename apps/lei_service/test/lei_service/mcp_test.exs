@@ -355,15 +355,21 @@ defmodule LeiService.McpTest do
     # One organisation calling twice is one caller; another organisation is a
     # second. Without the caller, the report can count calls but not people.
     test "a call is counted against its organisation as the caller", %{key: key} do
-      call_tool(key, "check_packages", %{dependencies: [@dep]})
-      once = callers("mcp-remote")
+      # Today's remote-MCP callers cleared, so the set is this test's alone
+      # and its count exact: estimates over a shared, larger set can miss one
+      # new caller. Tests in this module run one at a time.
+      today = Date.to_iso8601(Date.utc_today())
+      Redix.command(:redix, ["DEL", "adoption-callers:mcp-remote:#{today}"])
 
       call_tool(key, "check_packages", %{dependencies: [@dep]})
-      assert callers("mcp-remote") == once, "one organisation was counted as two callers"
+      assert callers("mcp-remote") == 1
+
+      call_tool(key, "check_packages", %{dependencies: [@dep]})
+      assert callers("mcp-remote") == 1, "one organisation was counted as two callers"
 
       {_org, other} = org_with_key(["analyze"])
       call_tool(other, "check_packages", %{dependencies: [@dep]})
-      assert callers("mcp-remote") > once, "a second organisation was not counted"
+      assert callers("mcp-remote") == 2, "a second organisation was not counted"
     end
   end
 
