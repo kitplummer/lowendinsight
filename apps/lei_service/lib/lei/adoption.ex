@@ -23,6 +23,21 @@ defmodule Lei.Adoption do
   wrong answer rather than a smaller one — and small enough not to matter
   against the cache's budget: a handful of integers per client per day.
 
+  ## Callers, not only calls
+
+  One agent stuck in a retry loop and fifty people trying the service once are
+  the same call count and opposite findings. So each call also adds its caller
+  to a per-day HyperLogLog (`PFADD`), and a window's distinct callers are a
+  `PFCOUNT` over its days. A HyperLogLog is at most 12 KB however many callers
+  arrive, which a set is not, and its count is exact in practice at the sizes
+  this will see for a long while (within about 1% at any size).
+
+  A caller is an organisation when the call came with an API key -- one
+  customer with three keys is one caller -- the operator for an operator token,
+  and otherwise the caller's address, keyed with a server secret. Redis keeps
+  the commands in its append-only file, so the address itself is never sent:
+  "same caller or a different one" is the whole question.
+
   Recording never fails a request. The counter is worth less than the analysis
   it is counting, so a Redis that cannot be written is logged and ignored. The
   reading side is where that has to be visible: `window/1` returns `{:error, _}`
@@ -69,10 +84,12 @@ defmodule Lei.Adoption do
     do: ["mcp", "mcp-remote", "cli", "internal", "agent", "script", "browser", "other", "none"]
 
   @doc """
-  Count one call from `user_agent`. Returns `:ok` whatever happens.
+  Count one call from `user_agent`, made by `caller` (`caller/1`). Returns
+  `:ok` whatever happens.
   """
-  @spec record(String.t() | nil, Date.t()) :: :ok
-  def record(user_agent, on \\ Date.utc_today()), do: record_bucket(bucket(user_agent), on)
+  @spec record(String.t() | nil, String.t(), Date.t()) :: :ok
+  def record(user_agent, caller, on \\ Date.utc_today()),
+    do: record_bucket(bucket(user_agent), caller, on)
 
   @doc """
   Count one call in a bucket chosen by the server rather than by a user agent.
@@ -82,12 +99,21 @@ defmodule Lei.Adoption do
   would scatter the one question this counter is for -- is the MCP server used
   -- across `agent`, `script` and `other`.
   """
-  @spec record_bucket(String.t(), Date.t()) :: :ok
-  def record_bucket(bucket, on \\ Date.utc_today()) do
+  @spec record_bucket(String.t(), String.t(), Date.t()) :: :ok
+  def record_bucket(bucket, caller, on \\ Date.utc_today()) when is_binary(caller) do
     true = bucket in buckets()
     key = key(bucket, on)
+    callers = callers_key(bucket, on)
+    ttl = @retention_days * 86_400
 
-    case Redix.pipeline(conn(), [["INCR", key], ["EXPIRE", key, @retention_days * 86_400]]) do
+    commands = [
+      ["INCR", key],
+      ["EXPIRE", key, ttl],
+      ["PFADD", callers, caller],
+      ["EXPIRE", callers, ttl]
+    ]
+
+    case Redix.pipeline(conn(), commands) do
       {:ok, _} ->
         :ok
 
@@ -131,6 +157,61 @@ defmodule Lei.Adoption do
     end
   end
 
+  @doc """
+  Who made a call, as a stable identifier that is not the caller's address.
+
+  An organisation for an API key, the operator for an operator token, and
+  otherwise the address keyed with a server secret: an unkeyed hash of an IPv4
+  address is reversed by hashing all four billion of them.
+  """
+  @spec caller(Plug.Conn.t()) :: String.t()
+  def caller(%Plug.Conn{assigns: %{current_api_key: %{org_id: org_id}}}) when not is_nil(org_id),
+    do: "org:#{org_id}"
+
+  def caller(%Plug.Conn{assigns: %{auth_method: :jwt}}), do: "operator"
+
+  def caller(%Plug.Conn{} = conn) do
+    secret = Application.fetch_env!(:lei_service, :session_secret_key_base)
+    ip = Lei.Payments.RateLimit.client_ip(conn)
+    mac = :crypto.mac(:hmac, :sha256, secret, "adoption-caller:" <> ip)
+    "ip:" <> Base.url_encode64(binary_part(mac, 0, 16), padding: false)
+  end
+
+  @doc """
+  Distinct callers over the last `days`, inclusive of today.
+
+  `{:ok, %{clients: %{bucket => callers}, external: callers}}` or
+  `{:error, reason}`. `external` is one count across every bucket but
+  `internal`: an organisation calling through two clients is one caller there,
+  though it appears under both clients.
+  """
+  @spec callers(pos_integer()) ::
+          {:ok, %{clients: %{String.t() => non_neg_integer()}, external: non_neg_integer()}}
+          | {:error, term()}
+  def callers(days) when is_integer(days) and days > 0 do
+    today = Date.utc_today()
+    dates = for offset <- 0..(days - 1), do: Date.add(today, -offset)
+    keys = fn bucket -> Enum.map(dates, &callers_key(bucket, &1)) end
+    external = for b <- buckets(), b != "internal", key <- keys.(b), do: key
+    commands = for(b <- buckets(), do: ["PFCOUNT" | keys.(b)]) ++ [["PFCOUNT" | external]]
+
+    case Redix.pipeline(conn(), commands) do
+      {:ok, values} when length(values) == length(commands) ->
+        if Enum.all?(values, &is_integer/1) do
+          {per_bucket, [all]} = Enum.split(values, length(buckets()))
+          {:ok, %{clients: Map.new(Enum.zip(buckets(), per_bucket)), external: all}}
+        else
+          {:error, {:unexpected_reply, values}}
+        end
+
+      {:ok, _} ->
+        {:error, :unexpected_reply_count}
+
+      {:error, reason} ->
+        {:error, reason}
+    end
+  end
+
   defp to_count(nil), do: 0
 
   defp to_count(value) when is_binary(value) do
@@ -143,6 +224,8 @@ defmodule Lei.Adoption do
   defp to_count(_), do: 0
 
   defp key(bucket, date), do: "adoption:#{bucket}:#{Date.to_iso8601(date)}"
+
+  defp callers_key(bucket, date), do: "adoption-callers:#{bucket}:#{Date.to_iso8601(date)}"
 
   defp conn, do: Application.get_env(:lei_service, :redix_name, :redix)
 end

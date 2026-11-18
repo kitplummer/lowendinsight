@@ -327,12 +327,12 @@ defmodule Lei.Mcp do
   defp request(_conn, "tools/list", _params), do: {:result, %{tools: tools()}}
 
   defp request(conn, "tools/call", %{"name" => "check_packages"} = params) do
-    Lei.Adoption.record_bucket(adoption_bucket(conn))
+    Lei.Adoption.record_bucket(adoption_bucket(conn), Lei.Adoption.caller(conn))
     {:result, check_packages(conn, object(params["arguments"]))}
   end
 
   defp request(conn, "tools/call", %{"name" => "analyze_repositories"} = params) do
-    Lei.Adoption.record_bucket(adoption_bucket(conn))
+    Lei.Adoption.record_bucket(adoption_bucket(conn), Lei.Adoption.caller(conn))
     {:result, analyze_repositories(conn, object(params["arguments"]))}
   end
 
