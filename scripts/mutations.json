@@ -5022,6 +5022,15 @@
       "replace": "        mix compile",
       "guarded_by": "test/lei_service/action_compile_test.exs",
       "app": "apps/lei_service"
+    },
+    {
+      "id": "adoption-callers-ignores-the-day",
+      "bug": "callers/2 counted the window ending today whatever day it was given, so the tests that count only their own cleared keys were back on today's shared ones -- where a HyperLogLog union can miss a new caller -- and failed on some seeds and not others.",
+      "file": "apps/lei_service/lib/lei/adoption.ex",
+      "find": "  def callers(days, today \\\\ Date.utc_today()) when is_integer(days) and days > 0 do\n",
+      "replace": "  def callers(days, _today \\\\ Date.utc_today()) when is_integer(days) and days > 0 do\n    today = Date.utc_today()\n",
+      "guarded_by": "test/lei_service/adoption_test.exs",
+      "app": "apps/lei_service"
     }
   ]
 }
