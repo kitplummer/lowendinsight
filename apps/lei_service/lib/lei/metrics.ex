@@ -488,8 +488,9 @@ defmodule Lei.Metrics do
       "# HELP lei_adoption_readable Whether the adoption counters could be read",
       "# TYPE lei_adoption_readable gauge"
     ] ++
-      case {Lei.Adoption.window(1), Lei.Adoption.window(30)} do
-        {{:ok, today}, {:ok, month}} ->
+      case {Lei.Adoption.window(1), Lei.Adoption.window(30), Lei.Adoption.callers(7),
+            Lei.Adoption.callers(30)} do
+        {{:ok, today}, {:ok, month}, {:ok, week_callers}, {:ok, month_callers}} ->
           ["lei_adoption_readable 1", ""] ++
             [
               "# HELP lei_adoption_calls Analysis calls by client, today",
@@ -501,7 +502,29 @@ defmodule Lei.Metrics do
               "# HELP lei_adoption_calls_30d Analysis calls by client over 30 days",
               "# TYPE lei_adoption_calls_30d gauge"
             ] ++
-            bucket_lines("lei_adoption_calls_30d", month)
+            bucket_lines("lei_adoption_calls_30d", month) ++
+            [
+              "",
+              "# HELP lei_adoption_callers_7d Distinct callers by client over 7 days",
+              "# TYPE lei_adoption_callers_7d gauge"
+            ] ++
+            bucket_lines("lei_adoption_callers_7d", week_callers.clients) ++
+            [
+              "",
+              "# HELP lei_adoption_callers_30d Distinct callers by client over 30 days",
+              "# TYPE lei_adoption_callers_30d gauge"
+            ] ++
+            bucket_lines("lei_adoption_callers_30d", month_callers.clients) ++
+            [
+              "",
+              "# HELP lei_adoption_external_callers_7d Distinct callers over 7 days, every client but internal",
+              "# TYPE lei_adoption_external_callers_7d gauge",
+              "lei_adoption_external_callers_7d #{week_callers.external}",
+              "",
+              "# HELP lei_adoption_external_callers_30d Distinct callers over 30 days, every client but internal",
+              "# TYPE lei_adoption_external_callers_30d gauge",
+              "lei_adoption_external_callers_30d #{month_callers.external}"
+            ]
 
         _ ->
           ["lei_adoption_readable 0"]

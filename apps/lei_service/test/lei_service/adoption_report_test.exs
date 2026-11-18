@@ -34,7 +34,7 @@ defmodule LeiService.AdoptionReportTest do
   end
 
   test "reads every bucket from the metrics the service emits", %{dir: dir} do
-    Lei.Adoption.record_bucket("mcp-remote")
+    Lei.Adoption.record_bucket("mcp-remote", "test:report")
     {:ok, month} = Lei.Adoption.window(30)
 
     {out, 0} = report(dir, Lei.Metrics.collect())
@@ -44,6 +44,46 @@ defmodule LeiService.AdoptionReportTest do
     end
 
     assert data(out)["calls_30d"] == month
+  end
+
+  test "reports distinct callers alongside calls", %{dir: dir} do
+    Lei.Adoption.record_bucket("mcp-remote", "test:#{System.unique_integer([:positive])}")
+    {:ok, %{clients: week, external: external}} = Lei.Adoption.callers(7)
+    {:ok, %{clients: month}} = Lei.Adoption.callers(30)
+
+    {out, 0} = report(dir, Lei.Metrics.collect())
+
+    assert out =~ "callers, 7 days"
+    assert data(out)["callers_7d"] == week
+    assert data(out)["callers_30d"] == month
+    assert data(out)["external_callers_7d"] == external
+    assert out =~ "**External callers, last 7 days:** #{external};"
+  end
+
+  test "a caller count missing from /metrics is a failure, not a zero", %{dir: dir} do
+    metrics =
+      Lei.Metrics.collect()
+      |> String.split("\n")
+      |> Enum.reject(&(&1 =~ ~r/^lei_adoption_callers_7d\{client="agent"\}/))
+      |> Enum.join("\n")
+
+    {out, code} = report(dir, metrics)
+
+    assert code != 0
+    assert out =~ ~s(client "agent")
+  end
+
+  test "a missing external caller count is a failure, not a zero", %{dir: dir} do
+    metrics =
+      Lei.Metrics.collect()
+      |> String.split("\n")
+      |> Enum.reject(&(&1 =~ ~r/^lei_adoption_external_callers_7d /))
+      |> Enum.join("\n")
+
+    {out, code} = report(dir, metrics)
+
+    assert code != 0
+    assert out =~ "external callers"
   end
 
   test "knows exactly the buckets Lei.Adoption counts" do
@@ -78,8 +118,8 @@ defmodule LeiService.AdoptionReportTest do
     {first, 0} = report(dir, metrics, [], [{"ADOPTION_REPORT_DATE", "2026-11-17"}])
     File.write!(Path.join(dir, "previous.md"), first)
 
-    Lei.Adoption.record_bucket("other")
-    Lei.Adoption.record_bucket("other")
+    Lei.Adoption.record_bucket("other", "test:report")
+    Lei.Adoption.record_bucket("other", "test:report")
 
     {second, 0} =
       report(dir, Lei.Metrics.collect(), [Path.join(dir, "previous.md")], [
@@ -87,7 +127,7 @@ defmodule LeiService.AdoptionReportTest do
       ])
 
     assert second =~ "change since 2026-11-17"
-    assert second =~ ~r/\| `other` \| \d+ \| \d+ \| \+2 \|/
+    assert second =~ ~r/\| `other` \| \d+ \| \d+ \| \d+ \| \d+ \| \+2 \|/
   end
 
   test "the issue body explains itself and still carries the data", %{dir: dir} do

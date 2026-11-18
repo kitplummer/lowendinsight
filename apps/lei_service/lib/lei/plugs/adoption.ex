@@ -29,7 +29,7 @@ defmodule Lei.Plugs.Adoption do
       conn
       |> Plug.Conn.get_req_header("user-agent")
       |> List.first()
-      |> Lei.Adoption.record()
+      |> Lei.Adoption.record(Lei.Adoption.caller(conn))
     end
 
     conn

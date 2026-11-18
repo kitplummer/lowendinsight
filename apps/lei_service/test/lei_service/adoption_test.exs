@@ -35,11 +35,15 @@ defmodule LeiService.AdoptionTest do
     # Yesterday, so these counts cannot collide with another test's today.
     day = Date.add(Date.utc_today(), -1)
 
-    on_exit(fn ->
-      for bucket <- Adoption.buckets() do
-        Redix.command(:redix, ["DEL", "adoption:#{bucket}:#{Date.to_iso8601(day)}"])
+    clear = fn ->
+      for bucket <- Adoption.buckets(),
+          prefix <- ["adoption", "adoption-callers"] do
+        Redix.command(:redix, ["DEL", "#{prefix}:#{bucket}:#{Date.to_iso8601(day)}"])
       end
-    end)
+    end
+
+    clear.()
+    on_exit(clear)
 
     %{day: day}
   end
@@ -99,9 +103,9 @@ defmodule LeiService.AdoptionTest do
 
   describe "counting" do
     test "a call is counted against its bucket", %{day: day} do
-      Adoption.record("lowendinsight-mcp/0.1.0", day)
-      Adoption.record("lowendinsight-mcp/0.1.0", day)
-      Adoption.record("curl/8", day)
+      Adoption.record("lowendinsight-mcp/0.1.0", "org:1", day)
+      Adoption.record("lowendinsight-mcp/0.1.0", "org:1", day)
+      Adoption.record("curl/8", "org:1", day)
 
       {:ok, counts} = Adoption.window(2)
 
@@ -162,6 +166,104 @@ defmodule LeiService.AdoptionTest do
     end
   end
 
+  # Calls say how much; callers say how many. One agent stuck in a retry loop
+  # and fifty people trying the service once each are the same call count, and
+  # opposite findings.
+  describe "distinct callers" do
+    test "one caller calling twice is one caller; a second caller is two", %{day: day} do
+      [a, b] = unique_callers(2)
+      Adoption.record_bucket("mcp-remote", a, day)
+      Adoption.record_bucket("mcp-remote", a, day)
+      Adoption.record_bucket("mcp-remote", b, day)
+
+      {:ok, %{clients: clients}} = Adoption.callers(2)
+
+      # Yesterday's key is cleared in setup and no other test writes it, so
+      # this is today's count plus exactly ours.
+      {:ok, %{clients: today}} = Adoption.callers(1)
+      assert clients["mcp-remote"] - today["mcp-remote"] == 2
+    end
+
+    test "every bucket appears, including the empty ones" do
+      {:ok, %{clients: clients}} = Adoption.callers(7)
+
+      for bucket <- Adoption.buckets() do
+        assert Map.has_key?(clients, bucket), "#{bucket} is missing from the callers"
+      end
+    end
+
+    test "external callers are one count across clients, without our own probes", %{day: day} do
+      {:ok, %{external: before}} = Adoption.callers(2)
+
+      [org, probe] = unique_callers(2)
+      # One organisation through two doors is one caller, not two.
+      Adoption.record_bucket("mcp-remote", org, day)
+      Adoption.record_bucket("script", org, day)
+      # Our own probe is not an external caller.
+      Adoption.record_bucket("internal", probe, day)
+
+      {:ok, %{external: now}} = Adoption.callers(2)
+      assert now - before == 1
+    end
+
+    test "an API key's caller is its organisation, whichever key it used" do
+      a = conn(:get, "/") |> assign(:current_api_key, %{org_id: 42, id: 1})
+      b = conn(:get, "/") |> assign(:current_api_key, %{org_id: 42, id: 2})
+
+      assert Adoption.caller(a) == "org:42"
+      assert Adoption.caller(a) == Adoption.caller(b)
+    end
+
+    test "an unauthenticated caller is its address, and the address is not kept" do
+      ip = "203.0.113.77"
+      a = conn(:get, "/") |> put_req_header("fly-client-ip", ip)
+      again = conn(:get, "/") |> put_req_header("fly-client-ip", ip)
+      other = conn(:get, "/") |> put_req_header("fly-client-ip", "203.0.113.78")
+
+      assert Adoption.caller(a) == Adoption.caller(again)
+      refute Adoption.caller(a) == Adoption.caller(other)
+
+      # Redis writes its commands to the append-only file. An address there is
+      # personal data kept for 90 days to answer a question that needs only
+      # "same or different".
+      refute Adoption.caller(a) =~ ip
+      refute Adoption.caller(a) =~ "203"
+    end
+
+    test "an analysis request records its caller" do
+      ip = "198.51.100.#{:rand.uniform(250)}"
+      {:ok, %{clients: before}} = Adoption.callers(1)
+
+      for _ <- 1..2 do
+        conn(:post, "/v1/analyze", Poison.encode!(%{urls: ["https://github.com/o/r"]}))
+        |> put_req_header("content-type", "application/json")
+        |> put_req_header("user-agent", "lowendinsight-cli/test")
+        |> put_req_header("fly-client-ip", ip)
+        |> LeiService.Endpoint.call(@opts)
+      end
+
+      {:ok, %{clients: now}} = Adoption.callers(1)
+
+      # Zero or one: an earlier run may have counted the address today. Never
+      # two: it is one caller.
+      assert (now["cli"] - before["cli"]) in [0, 1]
+
+      conn(:post, "/v1/analyze", Poison.encode!(%{urls: ["https://github.com/o/r"]}))
+      |> put_req_header("content-type", "application/json")
+      |> put_req_header("user-agent", "lowendinsight-cli/test")
+      |> put_req_header("fly-client-ip", "2001:db8::#{System.unique_integer([:positive])}")
+      |> LeiService.Endpoint.call(@opts)
+
+      {:ok, %{clients: after_new}} = Adoption.callers(1)
+      assert after_new["cli"] > now["cli"], "a new caller to the analysis was not counted"
+    end
+
+    # Today's keys are shared with every other test, so a caller this test
+    # counts must be one nobody else could have.
+    defp unique_callers(n),
+      do: for(_ <- 1..n, do: "test:#{System.unique_integer([:positive])}")
+  end
+
   describe "when Redis does not answer" do
     @dead :dead_redix_for_adoption
 
@@ -190,11 +292,15 @@ defmodule LeiService.AdoptionTest do
 
     test "recording does not fail the request" do
       # The counter is worth less than the analysis it counts.
-      assert Adoption.record("lowendinsight-mcp/1") == :ok
+      assert Adoption.record("lowendinsight-mcp/1", "org:1") == :ok
     end
 
     test "the window is an error, not a row of zeros" do
       assert {:error, _} = Adoption.window(30)
+    end
+
+    test "the callers are an error, not a row of zeros" do
+      assert {:error, _} = Adoption.callers(7)
     end
 
     test "the metric says it could not be read, rather than publishing zeros" do
@@ -204,6 +310,9 @@ defmodule LeiService.AdoptionTest do
 
       refute metrics =~ "lei_adoption_calls{",
              "an unreadable counter published a call count, which reads as 'nobody uses it'"
+
+      refute metrics =~ "lei_adoption_callers",
+             "an unreadable counter published a caller count, which reads as 'nobody uses it'"
     end
   end
 end

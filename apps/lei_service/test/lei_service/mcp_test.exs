@@ -351,6 +351,20 @@ defmodule LeiService.McpTest do
 
       assert adoption("mcp-remote") == before + 1
     end
+
+    # One organisation calling twice is one caller; another organisation is a
+    # second. Without the caller, the report can count calls but not people.
+    test "a call is counted against its organisation as the caller", %{key: key} do
+      call_tool(key, "check_packages", %{dependencies: [@dep]})
+      once = callers("mcp-remote")
+
+      call_tool(key, "check_packages", %{dependencies: [@dep]})
+      assert callers("mcp-remote") == once, "one organisation was counted as two callers"
+
+      {_org, other} = org_with_key(["analyze"])
+      call_tool(other, "check_packages", %{dependencies: [@dep]})
+      assert callers("mcp-remote") > once, "a second organisation was not counted"
+    end
   end
 
   describe "analyze_repositories" do
@@ -497,6 +511,11 @@ defmodule LeiService.McpTest do
     })
 
     url
+  end
+
+  defp callers(bucket) do
+    {:ok, %{clients: clients}} = Lei.Adoption.callers(1)
+    Map.fetch!(clients, bucket)
   end
 
   defp adoption(bucket) do

@@ -4658,7 +4658,7 @@
       "id": "mcp-adoption-uncounted",
       "app": "apps/lei_service",
       "file": "apps/lei_service/lib/lei/mcp.ex",
-      "find": "  defp request(conn, \"tools/call\", %{\"name\" => \"check_packages\"} = params) do\n    Lei.Adoption.record_bucket(adoption_bucket(conn))\n",
+      "find": "  defp request(conn, \"tools/call\", %{\"name\" => \"check_packages\"} = params) do\n    Lei.Adoption.record_bucket(adoption_bucket(conn), Lei.Adoption.caller(conn))\n",
       "replace": "  defp request(conn, \"tools/call\", %{\"name\" => \"check_packages\"} = params) do\n",
       "guarded_by": "test/lei_service/mcp_test.exs",
       "bug": "Remote MCP use was not counted, so whether the MCP server is used could only be answered with an opinion."
@@ -4703,7 +4703,7 @@
       "id": "mcp-analyze-adoption-uncounted",
       "bug": "An analyze_repositories call is not counted as remote MCP adoption, so the tool's use is invisible in the adoption counts.",
       "file": "apps/lei_service/lib/lei/mcp.ex",
-      "find": "  defp request(conn, \"tools/call\", %{\"name\" => \"analyze_repositories\"} = params) do\n    Lei.Adoption.record_bucket(adoption_bucket(conn))\n",
+      "find": "  defp request(conn, \"tools/call\", %{\"name\" => \"analyze_repositories\"} = params) do\n    Lei.Adoption.record_bucket(adoption_bucket(conn), Lei.Adoption.caller(conn))\n",
       "replace": "  defp request(conn, \"tools/call\", %{\"name\" => \"analyze_repositories\"} = params) do\n",
       "guarded_by": "test/lei_service/mcp_test.exs",
       "app": "apps/lei_service"
@@ -4903,6 +4903,69 @@
       "file": "scripts/ops/adoption-report.sh",
       "find": "  if [ -z \"$t\" ] || [ -z \"$m\" ]; then",
       "replace": "  t=${t:-0}; m=${m:-0}\n  if false; then",
+      "guarded_by": "test/lei_service/adoption_report_test.exs",
+      "app": "apps/lei_service"
+    },
+    {
+      "id": "analysis-caller-uncounted",
+      "bug": "The analysis routes counted calls but passed the same caller for everyone, so the adoption report said one caller however many arrived -- 'nobody new' when the truth was 'we did not look'.",
+      "file": "apps/lei_service/lib/lei/plugs/adoption.ex",
+      "find": "      |> Lei.Adoption.record(Lei.Adoption.caller(conn))",
+      "replace": "      |> Lei.Adoption.record(\"anyone\")",
+      "guarded_by": "test/lei_service/adoption_test.exs",
+      "app": "apps/lei_service"
+    },
+    {
+      "id": "mcp-caller-uncounted",
+      "bug": "A remote MCP call counted the call but not who made it, so fifty organisations and one agent in a retry loop read the same.",
+      "file": "apps/lei_service/lib/lei/mcp.ex",
+      "find": "  defp request(conn, \"tools/call\", %{\"name\" => \"check_packages\"} = params) do\n    Lei.Adoption.record_bucket(adoption_bucket(conn), Lei.Adoption.caller(conn))\n",
+      "replace": "  defp request(conn, \"tools/call\", %{\"name\" => \"check_packages\"} = params) do\n    Lei.Adoption.record_bucket(adoption_bucket(conn), \"mcp\")\n",
+      "guarded_by": "test/lei_service/mcp_test.exs",
+      "app": "apps/lei_service"
+    },
+    {
+      "id": "adoption-caller-is-each-call",
+      "bug": "A caller identifier that differed per call made every call a new caller, so the distinct-caller count was the call count under another name.",
+      "file": "apps/lei_service/lib/lei/adoption.ex",
+      "find": "    do: \"org:#{org_id}\"",
+      "replace": "    do: \"org:#{org_id}:#{System.unique_integer()}\"",
+      "guarded_by": "test/lei_service/mcp_test.exs",
+      "app": "apps/lei_service"
+    },
+    {
+      "id": "adoption-caller-keeps-the-address",
+      "bug": "An unauthenticated caller was identified by its raw address, which Redis writes to its append-only file and keeps for 90 days -- personal data held to answer a question that needs only 'same or different'.",
+      "file": "apps/lei_service/lib/lei/adoption.ex",
+      "find": "    \"ip:\" <> Base.url_encode64(binary_part(mac, 0, 16), padding: false)",
+      "replace": "    _ = mac\n    \"ip:\" <> ip",
+      "guarded_by": "test/lei_service/adoption_test.exs",
+      "app": "apps/lei_service"
+    },
+    {
+      "id": "adoption-external-callers-include-probes",
+      "bug": "The external caller count included our own probes, so the one number that says whether anyone new is arriving was never below the monitor's.",
+      "file": "apps/lei_service/lib/lei/adoption.ex",
+      "find": "for b <- buckets(), b != \"internal\", key <- keys.(b), do: key",
+      "replace": "for b <- buckets(), key <- keys.(b), do: key",
+      "guarded_by": "test/lei_service/adoption_test.exs",
+      "app": "apps/lei_service"
+    },
+    {
+      "id": "adoption-report-missing-callers-read-as-zero",
+      "bug": "A caller count missing from /metrics rendered as zero callers -- 'nobody' when the truth was 'we could not tell'.",
+      "file": "scripts/ops/adoption-report.sh",
+      "find": "  if [ -z \"$t\" ] || [ -z \"$m\" ] || [ -z \"$c7\" ] || [ -z \"$c30\" ]; then",
+      "replace": "  c7=${c7:-0}; c30=${c30:-0}\n  if [ -z \"$t\" ] || [ -z \"$m\" ]; then",
+      "guarded_by": "test/lei_service/adoption_report_test.exs",
+      "app": "apps/lei_service"
+    },
+    {
+      "id": "adoption-report-missing-external-callers-read-as-zero",
+      "bug": "A missing external caller count rendered as zero external callers, the opposite finding to 'we could not tell'.",
+      "file": "scripts/ops/adoption-report.sh",
+      "find": "if [ -z \"$EXT7\" ] || [ -z \"$EXT30\" ]; then",
+      "replace": "EXT7=${EXT7:-0}; EXT30=${EXT30:-0}\nif false; then",
       "guarded_by": "test/lei_service/adoption_report_test.exs",
       "app": "apps/lei_service"
     }
