@@ -4824,6 +4824,24 @@
       "replace": "\"url\": \"https://lowendinsight.dev/v1/mcp\",",
       "guarded_by": "test/lei_service/mcp_registry_test.exs",
       "app": "apps/lei_service"
+    },
+    {
+      "id": "smoke-probe-counted-as-adoption",
+      "bug": "The monitor's probes called the analysis with curl's own user agent, so Lei.Adoption counted them as `script` adoption: about four calls a run, 96 runs a day, and nearly all of the 12,182 `script` calls over 30 days on 2026-11-17. The count meant to say whether anyone uses the service said mostly that the monitor does.",
+      "file": "scripts/smoke-test.sh",
+      "find": "curl() { command curl -A \"lowendinsight-monitor/1\" \"$@\"; }",
+      "replace": "curl() { command curl \"$@\"; }",
+      "guarded_by": "test/lei_service/probe_user_agent_test.exs",
+      "app": "apps/lei_service"
+    },
+    {
+      "id": "canary-probe-counted-as-adoption",
+      "bug": "The monitor's probes called the analysis with curl's own user agent, so Lei.Adoption counted them as `script` adoption: about four calls a run, 96 runs a day, and nearly all of the 12,182 `script` calls over 30 days on 2026-11-17. The count meant to say whether anyone uses the service said mostly that the monitor does.",
+      "file": "scripts/canary.sh",
+      "find": "curl() { command curl -A \"lowendinsight-monitor/1\" \"$@\"; }",
+      "replace": "curl() { command curl \"$@\"; }",
+      "guarded_by": "test/lei_service/probe_user_agent_test.exs",
+      "app": "apps/lei_service"
     }
   ]
 }
