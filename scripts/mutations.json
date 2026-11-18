@@ -4901,8 +4901,8 @@
       "id": "adoption-report-missing-bucket-reads-as-zero",
       "bug": "A bucket absent from /metrics -- renamed, or dropped from the collector -- rendered as zero in the weekly report, so a client that stopped being counted looked like a client that stopped calling.",
       "file": "scripts/ops/adoption-report.sh",
-      "find": "  if [ -z \"$t\" ] || [ -z \"$m\" ]; then",
-      "replace": "  t=${t:-0}; m=${m:-0}\n  if false; then",
+      "find": "  if [ -z \"$t\" ] || [ -z \"$m\" ] || [ -z \"$c7\" ] || [ -z \"$c30\" ]; then",
+      "replace": "  t=${t:-0}; m=${m:-0}; c7=${c7:-0}; c30=${c30:-0}\n  if false; then",
       "guarded_by": "test/lei_service/adoption_report_test.exs",
       "app": "apps/lei_service"
     },
@@ -4967,6 +4967,15 @@
       "find": "if [ -z \"$EXT7\" ] || [ -z \"$EXT30\" ]; then",
       "replace": "EXT7=${EXT7:-0}; EXT30=${EXT30:-0}\nif false; then",
       "guarded_by": "test/lei_service/adoption_report_test.exs",
+      "app": "apps/lei_service"
+    },
+    {
+      "id": "cache-export-ships-adoption-counters",
+      "bug": "KEYS *:*:* matched Lei.Adoption's adoption:<client>:<date> keys, so a cache export shipped our usage counters as cache entries into a customer's air-gapped cache, and once caller HyperLogLogs existed beside them the export could not parse one and failed outright.",
+      "file": "apps/lei_service/lib/lei_service/datastore.ex",
+      "find": "        String.contains?(key, \":\") and not String.starts_with?(key, \"event\") and\n          not String.starts_with?(key, \"adoption\")",
+      "replace": "        String.contains?(key, \":\") and not String.starts_with?(key, \"event\")",
+      "guarded_by": "test/lei_service/cache_export_test.exs",
       "app": "apps/lei_service"
     }
   ]

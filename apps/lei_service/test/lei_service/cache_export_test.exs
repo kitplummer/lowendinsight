@@ -30,6 +30,19 @@ defmodule LeiService.CacheExportTest do
       assert stats["exported_at"] != nil
     end
 
+    # KEYS *:*:* also matches adoption:<client>:<date>, so the export shipped
+    # our usage counters as cache entries -- into a customer's air-gapped
+    # cache on import -- and, once a caller HyperLogLog sat beside them, could
+    # not parse one and failed outright.
+    test "our own adoption counters are not cache entries" do
+      Lei.Adoption.record_bucket("other", "test:export")
+
+      {:ok, entries, _stats} = Datastore.export_cache()
+
+      assert entries |> Enum.map(& &1["key"]) |> Enum.filter(&String.starts_with?(&1, "adoption")) ==
+               []
+    end
+
     test "exports cached entries with data" do
       # Add test entries
       report1 = %{

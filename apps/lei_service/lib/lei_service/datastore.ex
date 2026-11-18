@@ -429,10 +429,14 @@ defmodule LeiService.Datastore do
     # Get all cache keys matching our pattern (ecosystem:package:version)
     {:ok, keys} = Redix.command(conn(), ["KEYS", "*:*:*"])
 
-    # Filter to only include analysis cache keys (exclude jobs, events, etc.)
+    # Filter to only include analysis cache keys (exclude jobs, events, etc.).
+    # Lei.Adoption's adoption:<client>:<date> counters and caller
+    # HyperLogLogs match the pattern too; they are our usage, not a customer's
+    # cache, and a HyperLogLog is not JSON.
     cache_keys =
       Enum.filter(keys, fn key ->
-        String.contains?(key, ":") and not String.starts_with?(key, "event")
+        String.contains?(key, ":") and not String.starts_with?(key, "event") and
+          not String.starts_with?(key, "adoption")
       end)
 
     entries =
