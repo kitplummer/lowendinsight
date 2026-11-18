@@ -176,12 +176,10 @@ defmodule LeiService.AdoptionTest do
       Adoption.record_bucket("mcp-remote", a, day)
       Adoption.record_bucket("mcp-remote", b, day)
 
-      {:ok, %{clients: clients}} = Adoption.callers(2)
-
-      # Yesterday's key is cleared in setup and no other test writes it, so
-      # this is today's count plus exactly ours.
-      {:ok, %{clients: today}} = Adoption.callers(1)
-      assert clients["mcp-remote"] - today["mcp-remote"] == 2
+      # Only yesterday's keys, which setup cleared and no other test writes:
+      # a small, private set, so the count is exact.
+      {:ok, %{clients: clients}} = Adoption.callers(1, day)
+      assert clients["mcp-remote"] == 2
     end
 
     test "every bucket appears, including the empty ones" do
@@ -193,8 +191,6 @@ defmodule LeiService.AdoptionTest do
     end
 
     test "external callers are one count across clients, without our own probes", %{day: day} do
-      {:ok, %{external: before}} = Adoption.callers(2)
-
       [org, probe] = unique_callers(2)
       # One organisation through two doors is one caller, not two.
       Adoption.record_bucket("mcp-remote", org, day)
@@ -202,8 +198,8 @@ defmodule LeiService.AdoptionTest do
       # Our own probe is not an external caller.
       Adoption.record_bucket("internal", probe, day)
 
-      {:ok, %{external: now}} = Adoption.callers(2)
-      assert now - before == 1
+      {:ok, %{external: external}} = Adoption.callers(1, day)
+      assert external == 1
     end
 
     test "an API key's caller is its organisation, whichever key it used" do
@@ -231,8 +227,12 @@ defmodule LeiService.AdoptionTest do
     end
 
     test "an analysis request records its caller" do
+      # The endpoint records today. Today's cli callers are cleared so the set
+      # is this test's alone and the count exact; nothing else counts cli
+      # callers, and this module is not async.
+      today = Date.to_iso8601(Date.utc_today())
+      Redix.command(:redix, ["DEL", "adoption-callers:cli:#{today}"])
       ip = "198.51.100.#{:rand.uniform(250)}"
-      {:ok, %{clients: before}} = Adoption.callers(1)
 
       for _ <- 1..2 do
         conn(:post, "/v1/analyze", Poison.encode!(%{urls: ["https://github.com/o/r"]}))
@@ -243,10 +243,7 @@ defmodule LeiService.AdoptionTest do
       end
 
       {:ok, %{clients: now}} = Adoption.callers(1)
-
-      # Zero or one: an earlier run may have counted the address today. Never
-      # two: it is one caller.
-      assert (now["cli"] - before["cli"]) in [0, 1]
+      assert now["cli"] == 1, "one address calling twice was not one caller"
 
       conn(:post, "/v1/analyze", Poison.encode!(%{urls: ["https://github.com/o/r"]}))
       |> put_req_header("content-type", "application/json")
@@ -255,11 +252,10 @@ defmodule LeiService.AdoptionTest do
       |> LeiService.Endpoint.call(@opts)
 
       {:ok, %{clients: after_new}} = Adoption.callers(1)
-      assert after_new["cli"] > now["cli"], "a new caller to the analysis was not counted"
+      assert after_new["cli"] == 2, "a new caller to the analysis was not counted"
     end
 
-    # Today's keys are shared with every other test, so a caller this test
-    # counts must be one nobody else could have.
+    # Unique, so no other test's caller can be the same one.
     defp unique_callers(n),
       do: for(_ <- 1..n, do: "test:#{System.unique_integer([:positive])}")
   end

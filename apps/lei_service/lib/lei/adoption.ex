@@ -178,18 +178,22 @@ defmodule Lei.Adoption do
   end
 
   @doc """
-  Distinct callers over the last `days`, inclusive of today.
+  Distinct callers over the `days` ending on `today`, inclusive.
 
   `{:ok, %{clients: %{bucket => callers}, external: callers}}` or
   `{:error, reason}`. `external` is one count across every bucket but
   `internal`: an organisation calling through two clients is one caller there,
   though it appears under both clients.
+
+  The counts are HyperLogLog estimates: exact in practice for a few dozen
+  callers per key, and within about 1% beyond that. A union can miss one new
+  caller among hundreds, so a caller count is never compared before and after
+  over keys others also write.
   """
-  @spec callers(pos_integer()) ::
+  @spec callers(pos_integer(), Date.t()) ::
           {:ok, %{clients: %{String.t() => non_neg_integer()}, external: non_neg_integer()}}
           | {:error, term()}
-  def callers(days) when is_integer(days) and days > 0 do
-    today = Date.utc_today()
+  def callers(days, today \\ Date.utc_today()) when is_integer(days) and days > 0 do
     dates = for offset <- 0..(days - 1), do: Date.add(today, -offset)
     keys = fn bucket -> Enum.map(dates, &callers_key(bucket, &1)) end
     external = for b <- buckets(), b != "internal", key <- keys.(b), do: key
