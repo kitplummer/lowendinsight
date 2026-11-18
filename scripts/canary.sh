@@ -208,6 +208,93 @@ else
 fi
 echo
 
+# --- the same analysis, through MCP ----------------------------------------
+
+bold "analyze through MCP"
+
+# The smoke test reaches /mcp only with calls that cost nothing, so an MCP
+# analysis that cloned nothing, hung or answered with an empty shell would leave
+# every check green. This is the analysis above through the other door:
+# analyze_repositories, cache invalidated again first, collected with
+# get_analysis if it outlasts the tool's own wait.
+#
+# Needs a key, because /mcp has no anonymous path. While billing is in beta the
+# call is free; after beta it charges the smoke org one analysis a run.
+mcp() {
+  curl -s --max-time "$ANALYZE_TIMEOUT" -X POST "$BASE_URL/mcp" \
+    -H "Content-Type: application/json" \
+    -H "Accept: application/json, text/event-stream" \
+    -H "Authorization: Bearer ${LEI_SMOKE_API_KEY}" \
+    -d "$1"
+}
+
+if [ -z "${LEI_SMOKE_API_KEY:-}" ]; then
+  if [ "${CANARY_STRICT:-0}" = "1" ]; then
+    bad "analyze through MCP" "LEI_SMOKE_API_KEY is not set and CANARY_STRICT=1"
+  else
+    echo "  ---- LEI_SMOKE_API_KEY unset: not analysing through MCP."
+  fi
+else
+  if [ -n "${LEI_ADMIN_API_KEY:-}" ]; then
+    MCP_INVALIDATE_STATUS=$(curl -s -o /dev/null -w '%{http_code}' --max-time 15 -X POST \
+      "$BASE_URL/v1/cache/invalidate" \
+      -H "Authorization: Bearer ${LEI_ADMIN_API_KEY}" \
+      -H 'Content-Type: application/json' \
+      -d "{\"url\":\"${CANARY_REPO}\"}")
+    if [ "$MCP_INVALIDATE_STATUS" = "200" ]; then
+      ok "cache invalidated again for the MCP analysis"
+    else
+      bad "cache invalidated again for the MCP analysis" "status ${MCP_INVALIDATE_STATUS}"
+    fi
+  fi
+
+  START=$(date +%s)
+  MCP_RESP=$(mcp "{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"tools/call\",\"params\":{\"name\":\"analyze_repositories\",\"arguments\":{\"urls\":[\"${CANARY_REPO}\"]}}}")
+  MCP_JOB=$(jq -c '.result.structuredContent // empty' <<<"$MCP_RESP" 2>/dev/null)
+
+  # Outlasting the tool's own wait is an answer, not a failure: it returns the
+  # uuid to collect. Collect it, within the same budget as the page.
+  MCP_UUID=$(jq -r 'select(.state != "complete") | .uuid // empty' <<<"$MCP_JOB" 2>/dev/null)
+  while [ -n "$MCP_UUID" ] && [ $(( $(date +%s) - START )) -lt "$ANALYZE_TIMEOUT" ]; do
+    sleep 3
+    MCP_RESP=$(mcp "{\"jsonrpc\":\"2.0\",\"id\":2,\"method\":\"tools/call\",\"params\":{\"name\":\"get_analysis\",\"arguments\":{\"uuid\":\"${MCP_UUID}\"}}}")
+    MCP_JOB=$(jq -c '.result.structuredContent // empty' <<<"$MCP_RESP" 2>/dev/null)
+    MCP_UUID=$(jq -r 'select(.state != "complete") | .uuid // empty' <<<"$MCP_JOB" 2>/dev/null)
+  done
+  ELAPSED=$(( $(date +%s) - START ))
+
+  if [ "$(jq -r '.result.isError // false' <<<"$MCP_RESP" 2>/dev/null)" = "true" ]; then
+    bad "analyze_repositories answers" "tool error: $(jq -r '.result.content[0].text' <<<"$MCP_RESP" | head -c 300)"
+  elif [ "$(jq -r '.state // empty' <<<"$MCP_JOB" 2>/dev/null)" != "complete" ]; then
+    bad "analyze_repositories completes within ${ANALYZE_TIMEOUT}s" \
+        "after ${ELAPSED}s: $(head -c 300 <<<"${MCP_RESP:-no response}")"
+  # The report says whether it was analysed or served from the cache, which is
+  # better evidence than timing: canary-sized repositories analyse in under a
+  # second, so "fast" cannot tell a real analysis from Redis answering.
+  elif [ "$(jq -r '.metadata.cache_status.misses // "unknown"' <<<"$MCP_JOB")" = "unknown" ]; then
+    bad "analyze_repositories exercises the analysis" "the report does not say whether it came from the cache"
+  elif [ "$(jq -r '.metadata.cache_status.misses' <<<"$MCP_JOB")" -lt 1 ]; then
+    bad "analyze_repositories exercises the analysis" \
+        "served from the cache ($(jq -c '.metadata.cache_status' <<<"$MCP_JOB")) — that is a cache hit, not an analysis"
+  else
+    ok "analyze_repositories completes (${ELAPSED}s)"
+    contains "MCP report names the repo" "$CANARY_REPO" "$MCP_JOB"
+
+    if grep -qE '"risk":"(critical|high|medium|low)"' <<<"$MCP_JOB"; then
+      ok "MCP risk is a real level"
+    else
+      bad "MCP risk is a real level" "found no critical/high/medium/low"
+    fi
+
+    if grep -q '"contributor_count":0' <<<"$MCP_JOB"; then
+      bad "MCP report has contributors" "contributor_count is 0 — the git analysis did nothing"
+    else
+      ok "MCP report has contributors"
+    fi
+  fi
+fi
+echo
+
 # --- the other buttons on the page ----------------------------------------
 
 bold "the other main-page destinations"
