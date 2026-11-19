@@ -290,10 +290,13 @@ mcp() {
     -d "$1"
 }
 
-MCP_NO_AUTH=$(curl -s -o /dev/null -w '%{http_code}' --max-time 10 -X POST "$BASE_URL/mcp" \
+# Without a key, calling a tool is refused. (Listing the tools without one is
+# public from the release after 0.16.0-beta.2; the monitor runs main's copy of
+# this script against whatever is deployed, so that check lands once it is.)
+MCP_NO_AUTH_CALL=$(curl -s -o /dev/null -w '%{http_code}' --max-time 10 -X POST "$BASE_URL/mcp" \
   -H "Content-Type: application/json" \
-  -d '{"jsonrpc":"2.0","id":1,"method":"tools/list"}')
-check "POST /mcp without auth returns 401" "401" "$MCP_NO_AUTH"
+  -d '{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"get_analysis","arguments":{"uuid":"x"}}}')
+check "a tool call without auth returns 401" "401" "$MCP_NO_AUTH_CALL"
 
 MCP_INIT=$(mcp '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-06-18","capabilities":{},"clientInfo":{"name":"lei-smoke","version":"1"}}}')
 check_contains "initialize negotiates 2025-06-18" '"protocolVersion":"2025-06-18"' "$MCP_INIT"

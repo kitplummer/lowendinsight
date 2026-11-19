@@ -168,7 +168,7 @@ jobs:
         id: canary
         env:
           LEI_ADMIN_API_KEY: ${{ secrets.LEI_ADMIN_API_KEY }}
-          # For the analysis through /mcp, which has no anonymous path.
+          # For the analysis through /mcp: a tool call has no anonymous path.
           LEI_SMOKE_API_KEY: ${{ secrets.LEI_SMOKE_API_KEY }}
           # Flipped to "live" at cutover (#141). Until then, a live key is wrong.
           STRIPE_EXPECTED_MODE: ${{ vars.STRIPE_EXPECTED_MODE || 'test' }}

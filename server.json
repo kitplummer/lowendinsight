@@ -5,6 +5,15 @@
   "description": "Is a dependency still maintained now? Contributors, recency of real work, risk.",
   "version": "0.16.0-beta.2",
   "websiteUrl": "https://lowendinsight.dev",
+  "icons": [
+    {
+      "src": "https://lowendinsight.dev/images/apple-touch-icon.png",
+      "mimeType": "image/png",
+      "sizes": [
+        "180x180"
+      ]
+    }
+  ],
   "repository": {
     "url": "https://github.com/kitplummer/lowendinsight",
     "source": "github",
@@ -17,8 +26,8 @@
       "headers": [
         {
           "name": "Authorization",
-          "description": "Bearer followed by a lei_ API key. Free during the beta: https://lowendinsight.dev/signup",
-          "isRequired": true,
+          "description": "Needed to call the tools; connecting and listing them need none. Bearer followed by a lei_ API key. Free during the beta: https://lowendinsight.dev/signup",
+          "isRequired": false,
           "isSecret": true
         }
       ]
