@@ -290,9 +290,12 @@ mcp() {
     -d "$1"
 }
 
-# Without a key, calling a tool is refused. (Listing the tools without one is
-# public from the release after 0.16.0-beta.2; the monitor runs main's copy of
-# this script against whatever is deployed, so that check lands once it is.)
+# Without a key: what the server offers is public, calling it is not.
+MCP_NO_AUTH_LIST=$(curl -s --max-time 10 -X POST "$BASE_URL/mcp" \
+  -H "Content-Type: application/json" \
+  -d '{"jsonrpc":"2.0","id":1,"method":"tools/list"}')
+check_contains "tools/list without auth lists the tools" '"name":"check_packages"' "$MCP_NO_AUTH_LIST"
+
 MCP_NO_AUTH_CALL=$(curl -s -o /dev/null -w '%{http_code}' --max-time 10 -X POST "$BASE_URL/mcp" \
   -H "Content-Type: application/json" \
   -d '{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"get_analysis","arguments":{"uuid":"x"}}}')
