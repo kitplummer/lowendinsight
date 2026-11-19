@@ -5076,6 +5076,51 @@
       "replace": "\"isRequired\": true",
       "guarded_by": "test/lei_service/mcp_registry_test.exs",
       "app": "apps/lei_service"
+    },
+    {
+      "id": "run-deployed-runs-this-checkout",
+      "bug": "The monitor ran main's smoke test against production, so between a merge and its deploy a change to what the smoke test expects failed the monitor against a production that was fine.",
+      "file": "scripts/ops/run-deployed.sh",
+      "find": "git archive \"$SHA\" | tar",
+      "replace": "git archive HEAD | tar",
+      "guarded_by": "test/lei_service/run_deployed_test.exs",
+      "app": "apps/lei_service"
+    },
+    {
+      "id": "run-deployed-swallows-failure",
+      "bug": "The deployed smoke test's failure was not the monitor's: production broken, monitor green.",
+      "file": "scripts/ops/run-deployed.sh",
+      "find": "cd \"$WORK/tree\" && bash \"./$SCRIPT\" \"$@\"\n",
+      "replace": "cd \"$WORK/tree\" && bash \"./$SCRIPT\" \"$@\"; exit 0\n",
+      "guarded_by": "test/lei_service/run_deployed_test.exs",
+      "app": "apps/lei_service"
+    },
+    {
+      "id": "run-deployed-unknown-build-runs-this-checkout",
+      "bug": "A build that could not name its commit had this checkout's smoke test run against it instead -- the version skew back, and a guess reported as a verdict.",
+      "file": "scripts/ops/run-deployed.sh",
+      "find": "if [ -z \"$SHA\" ] || [ \"$SHA\" = \"unknown\" ]; then\n",
+      "replace": "if [ -z \"$SHA\" ] || [ \"$SHA\" = \"unknown\" ]; then SHA=HEAD; elif false; then\n",
+      "guarded_by": "test/lei_service/run_deployed_test.exs",
+      "app": "apps/lei_service"
+    },
+    {
+      "id": "run-deployed-never-fetches",
+      "bug": "actions/checkout fetches only the tip of main, so during every deploy the running commit was missing and the smoke test could not run.",
+      "file": "scripts/ops/run-deployed.sh",
+      "find": "  if ! git fetch -q --depth=1 origin \"$SHA\"; then\n",
+      "replace": "  if true; then\n",
+      "guarded_by": "test/lei_service/run_deployed_test.exs",
+      "app": "apps/lei_service"
+    },
+    {
+      "id": "monitor-smoke-runs-main",
+      "bug": "The monitor ran main's smoke test rather than the deployed commit's, failing for the length of every deploy that changed what the smoke test expects.",
+      "file": ".github/workflows/monitor.yml",
+      "find": "scripts/ops/confirm.sh smoke scripts/ops/run-deployed.sh https://lowendinsight.dev scripts/smoke-test.sh https://lowendinsight.dev",
+      "replace": "scripts/ops/confirm.sh smoke ./scripts/smoke-test.sh https://lowendinsight.dev",
+      "guarded_by": "test/lei_service/run_deployed_test.exs",
+      "app": "apps/lei_service"
     }
   ]
 }

@@ -597,7 +597,9 @@ jobs:
             echo "::error::LEI_SMOKE_API_KEY is not set, so the smoke suite did not run. Create a dedicated smoke-test org and add its key as a repository secret; signing up on a schedule would otherwise create a real org every 15 minutes."
             exit 1
           fi
-          scripts/ops/confirm.sh smoke ./scripts/smoke-test.sh https://lowendinsight.dev
+          # The deployed commit's smoke test, not main's: between a merge and
+          # its deploy, main's describes a release that is not running yet.
+          scripts/ops/confirm.sh smoke scripts/ops/run-deployed.sh https://lowendinsight.dev scripts/smoke-test.sh https://lowendinsight.dev
 
       # Paging, once per incident.
       #
