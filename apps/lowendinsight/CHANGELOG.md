@@ -4,7 +4,7 @@ Notable changes to the `lowendinsight` library and the hosted service in this
 repository. The library is published to Hex; the service is deployed from the
 same tree (ADR-003).
 
-## 0.16.0-beta.3 — 2026-11-19
+## 0.16.0-beta.3 — Unreleased
 
 This release also contains the work prepared as 0.16.0-beta.2 on 2026-10-26,
 which was never tagged or published. It appears below as part of this
