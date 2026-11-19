@@ -4979,6 +4979,51 @@
       "app": "apps/lei_service"
     },
     {
+      "id": "action-compile-unbounded",
+      "bug": "The action's mix compile had no limit, so a build that deadlocked on Mix's build lock waited for the job's timeout -- six hours by default in a user's workflow -- and left nothing behind to explain it (#354).",
+      "file": "scripts/action-compile.sh",
+      "find": "  if [ \"$elapsed\" -ge \"$LIMIT\" ]; then",
+      "replace": "  if false; then",
+      "guarded_by": "test/lei_service/action_compile_test.exs",
+      "app": "apps/lei_service"
+    },
+    {
+      "id": "action-compile-swallows-failure",
+      "bug": "A compile that failed exited 0 from the wrapper, so the action went on to scan with no build and the step read as passing.",
+      "file": "scripts/action-compile.sh",
+      "find": "done\n\nwait \"$PID\"\n",
+      "replace": "done\n\nwait \"$PID\"\nexit 0\n",
+      "guarded_by": "test/lei_service/action_compile_test.exs",
+      "app": "apps/lei_service"
+    },
+    {
+      "id": "action-compile-leaves-the-hang-running",
+      "bug": "A hung compile was reported but not killed, so the deadlocked BEAM kept running beside whatever the job did next.",
+      "file": "scripts/action-compile.sh",
+      "find": "      kill -KILL -- \"-$PID\" 2>/dev/null\n",
+      "replace": "      :\n",
+      "guarded_by": "test/lei_service/action_compile_test.exs",
+      "app": "apps/lei_service"
+    },
+    {
+      "id": "action-compile-prints-the-machine",
+      "bug": "On a hang the wrapper printed every process on the runner with its arguments, into a workflow log that may be public, where another process's arguments can carry a token.",
+      "file": "scripts/action-compile.sh",
+      "find": "    ps -o pid,ppid,pgid,stat,etime,args --forest -g \"$PID\" 2>/dev/null || echo \"(gone)\"",
+      "replace": "    ps -eo pid,ppid,pgid,stat,etime,args --forest",
+      "guarded_by": "test/lei_service/action_compile_test.exs",
+      "app": "apps/lei_service"
+    },
+    {
+      "id": "action-compiles-unbounded",
+      "bug": "The action called mix compile directly rather than through scripts/action-compile.sh, so the bound existed and nothing used it.",
+      "file": "action.yml",
+      "find": "        \"$GITHUB_ACTION_PATH/scripts/action-compile.sh\"",
+      "replace": "        mix compile",
+      "guarded_by": "test/lei_service/action_compile_test.exs",
+      "app": "apps/lei_service"
+    },
+    {
       "id": "adoption-callers-ignores-the-day",
       "bug": "callers/2 counted the window ending today whatever day it was given, so the tests that count only their own cleared keys were back on today's shared ones -- where a HyperLogLog union can miss a new caller -- and failed on some seeds and not others.",
       "file": "apps/lei_service/lib/lei/adoption.ex",

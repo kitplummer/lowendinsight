@@ -98,7 +98,9 @@ runs:
         mix local.hex --force >/dev/null
         scripts/mix-deps-get.sh
         cd apps/lowendinsight
-        mix compile
+        # Bounded: a cold build once waited on Mix's build lock until the job
+        # timed out (#354). See the script.
+        "$GITHUB_ACTION_PATH/scripts/action-compile.sh"
 
     - name: Scan
       id: scan
