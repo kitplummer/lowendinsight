@@ -85,7 +85,8 @@ defmodule LeiService.ConfirmProbeTest do
 
     for {name, probe} <- [
           {"canary", "scripts/canary.sh https://lowendinsight.dev"},
-          {"smoke", "./scripts/smoke-test.sh https://lowendinsight.dev"},
+          {"smoke",
+           "scripts/ops/run-deployed.sh https://lowendinsight.dev scripts/smoke-test.sh https://lowendinsight.dev"},
           {"readiness", "scripts/ops/check-readiness.sh https://lowendinsight.dev"}
         ] do
       assert monitor =~ "scripts/ops/confirm.sh #{name} #{probe}",

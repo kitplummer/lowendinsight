@@ -31,7 +31,9 @@ defmodule LeiService.RunDeployedTest do
     git(repo, ["config", "user.email", "t@example.test"])
     git(repo, ["config", "user.name", "t"])
 
-    deployed = commit(repo, ~s(echo "probe from the deployed release: $*"\nexit "${PROBE_EXIT:-0}"))
+    deployed =
+      commit(repo, ~s(echo "probe from the deployed release: $*"\nexit "${PROBE_EXIT:-0}"))
+
     main = commit(repo, ~s(echo "probe from main"\nexit 0))
 
     %{dir: dir, repo: repo, bin: bin, deployed: deployed, main: main}
@@ -131,7 +133,13 @@ defmodule LeiService.RunDeployedTest do
     shallow = Path.join(ctx.dir, "shallow")
 
     git(ctx.dir, ["clone", "-q", "--depth=1", "file://#{ctx.repo}", shallow])
-    assert {_, code} = System.cmd("git", ["cat-file", "-e", ctx.deployed <> "^{commit}"], cd: shallow, stderr_to_stdout: true)
+
+    assert {_, code} =
+             System.cmd("git", ["cat-file", "-e", ctx.deployed <> "^{commit}"],
+               cd: shallow,
+               stderr_to_stdout: true
+             )
+
     assert code != 0, "the shallow clone already has the deployed commit; this tests nothing"
 
     serve_metrics(ctx.bin, build_info(ctx.deployed))
