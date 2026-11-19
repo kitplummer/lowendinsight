@@ -4,9 +4,63 @@ Notable changes to the `lowendinsight` library and the hosted service in this
 repository. The library is published to Hex; the service is deployed from the
 same tree (ADR-003).
 
-## 0.16.0-beta.2 — Unreleased
+## 0.16.0-beta.3 — Unreleased
+
+This release also contains the work prepared as 0.16.0-beta.2 on 2026-10-26,
+which was never tagged or published. It appears below as part of this
+release, not as a version of its own.
 
 ### Added
+
+- **The remote MCP server can be inspected without a key.** `initialize`,
+  `ping` and `tools/list` on `https://lowendinsight.dev/mcp` answer without
+  one, limited per address, so a client or a directory can see what it
+  offers before signing up. Every tool call still needs a `lei_` key and is
+  a 401 without one. The registry listing marks the key as needed for the
+  tools rather than to connect, and has an icon.
+- **The VS Code extension analyses a project's dependencies by name.** It
+  sends them to `/v1/analyze/batch`, which resolves each to its repository,
+  rather than only those with an explicit git URL. CI builds and tests it.
+
+### Changed
+
+- **The service runs on Bandit instead of Cowboy.** Every Cowboy release
+  carries an unfixed HTTP/1.1 memory-exhaustion advisory. A blocking
+  `/v1/analyze` or `/v1/analyze/sbom` request is capped at 180 s, and a
+  `cache_timeout` that is not a non-negative integer is a 422.
+- **One rate limit per API key, the tier's, on every analysis route.**
+  `/v1/analyze` had a fixed limit of 10 a minute whatever the tier, and
+  `/v1/analyze/sbom` had none.
+- **The GitHub Action's build is bounded.** A cold `mix compile` that runs
+  past ten minutes (`LEI_COMPILE_TIMEOUT`) prints the build-lock holder and
+  its processes, and fails, rather than waiting out the job's timeout.
+
+### Fixed
+
+- **Polling an incomplete job answered 500.** The first poll of an
+  incomplete job in each refresh window failed in `GET /v1/analyze/{uuid}`
+  and `/v1/job/{id}`.
+- **`/v1/analyze`'s billing block reports what was charged.** An async or
+  stale response said a request charged for a miss had cost nothing.
+- **A batch credits back only what it charged.** A dependency already
+  recorded as unresolvable is never charged, and was being credited back.
+
+### Security
+
+Dependency updates for advisories in locked dependencies:
+
+- hackney 4.12.1 and idna 8.0.0, for EEF-CVE-2026-117678: a long punycode
+  label cost super-linear CPU to decode.
+- plug 1.20.4, for EEF-CVE-2026-120287.
+- ssl_verify_fun 1.1.9, for EEF-CVE-2026-117666: a partial-label wildcard
+  certificate could match across a label boundary.
+- jose 1.11.13, for EEF-CVE-2026-65625 to 65632.
+- cowboy, cowlib and ranch are gone with the move to Bandit, and their
+  advisories with them.
+
+### Prepared as 0.16.0-beta.2
+
+#### Added
 
 - **Leave a directory out of a scan.** `mix lei.sarif --exclude DIR`
   (repeatable, relative to the scanned path), `ScannerModule.scan(path,
@@ -21,14 +75,14 @@ same tree (ADR-003).
   `apps/lei_service/docs/MCP.md`, `/llms.txt` names it, and `server.json` is
   its MCP Registry listing.
 
-### Removed
+#### Removed
 
 - **Breaking: the local MCP client, `clients/mcp/lei_mcp.py`.** Replace its
   configuration entry with the URL above and the same key. Its two tools,
   `analyze_repository` and `analyze_dependencies`, are both
   `analyze_repositories`.
 
-### Fixed
+#### Fixed
 
 - **Batch analysis reported a queued dependency as analysed.** Asking
   `POST /v1/analyze/batch` again about a dependency whose job was still

@@ -2,7 +2,7 @@
   "name": "vscode-lowendinsight",
   "displayName": "LowEndInsight",
   "description": "(Beta) Bus-factor and maintenance risk for your dependencies, from LowEndInsight",
-  "version": "0.16.2",
+  "version": "0.16.3",
   "preview": true,
   "publisher": "revolve",
   "license": "BSD-3-Clause",

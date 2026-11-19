@@ -8,7 +8,7 @@ defmodule LeiService.MixProject do
   def project do
     [
       app: :lei_service,
-      version: "0.16.0-beta.2",
+      version: "0.16.0-beta.3",
       elixir: "~> 1.17",
       start_permanent: Mix.env() == :prod,
       build_path: "../../_build",
