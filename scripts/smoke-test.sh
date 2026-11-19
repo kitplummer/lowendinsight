@@ -290,10 +290,16 @@ mcp() {
     -d "$1"
 }
 
-MCP_NO_AUTH=$(curl -s -o /dev/null -w '%{http_code}' --max-time 10 -X POST "$BASE_URL/mcp" \
+# Without a key: what the server offers is public, calling it is not.
+MCP_NO_AUTH_LIST=$(curl -s --max-time 10 -X POST "$BASE_URL/mcp" \
   -H "Content-Type: application/json" \
   -d '{"jsonrpc":"2.0","id":1,"method":"tools/list"}')
-check "POST /mcp without auth returns 401" "401" "$MCP_NO_AUTH"
+check_contains "tools/list without auth lists the tools" '"name":"check_packages"' "$MCP_NO_AUTH_LIST"
+
+MCP_NO_AUTH_CALL=$(curl -s -o /dev/null -w '%{http_code}' --max-time 10 -X POST "$BASE_URL/mcp" \
+  -H "Content-Type: application/json" \
+  -d '{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"get_analysis","arguments":{"uuid":"x"}}}')
+check "a tool call without auth returns 401" "401" "$MCP_NO_AUTH_CALL"
 
 MCP_INIT=$(mcp '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-06-18","capabilities":{},"clientInfo":{"name":"lei-smoke","version":"1"}}}')
 check_contains "initialize negotiates 2025-06-18" '"protocolVersion":"2025-06-18"' "$MCP_INIT"

@@ -18,8 +18,9 @@ lean on a rating whose derivation it cannot inspect.
 
 ## Connect
 
-It needs a `lei_` API key with the `analyze` scope, sent as
-`Authorization: Bearer lei_...`. Keys are free during the beta:
+Connecting and listing the tools need no key, so a client can show what the
+server does before you sign up. Calling a tool needs a `lei_` API key with the
+`analyze` scope, sent as `Authorization: Bearer lei_...`. Keys are free during the beta:
 https://lowendinsight.dev/signup. An agent that bought credits over MPP uses
 the `Lei-Api-Key` its payment returned.
 
@@ -104,8 +105,9 @@ than as HTTP statuses, because an MCP client has nowhere to handle a 402:
 - **Invalid arguments, or work that could not be queued** -- says what was
   wrong. Work that could not be queued is credited back.
 
-Every request, `tools/list` included, counts against the key's one allowance:
-the same 60 a minute the API's routes share. Over it is an HTTP 429 with
+Every request with a key, `tools/list` included, counts against the key's one
+allowance: the same 60 a minute the API's routes share. Requests without a key
+are limited to 30 a minute per address. Over either is an HTTP 429 with
 `Retry-After`.
 
 ## Protocol
@@ -118,7 +120,7 @@ refused, against DNS rebinding.
 
 | status | when |
 |---|---|
-| 401 | no key, or an invalid one, with a `WWW-Authenticate: Bearer` challenge |
+| 401 | a tool call (or any method but `initialize`, `ping` and `tools/list`) without a key, or any request with an invalid one, with a `WWW-Authenticate: Bearer` challenge |
 | 403 | a key without the `analyze` scope, an inactive organization, or a foreign `Origin` |
 | 429 | over the rate limit |
 

@@ -218,7 +218,7 @@ bold "analyze through MCP"
 # analyze_repositories, cache invalidated again first, collected with
 # get_analysis if it outlasts the tool's own wait.
 #
-# Needs a key, because /mcp has no anonymous path. While billing is in beta the
+# Needs a key, because a tool call on /mcp has no anonymous path. While billing is in beta the
 # call is free; after beta it charges the smoke org one analysis a run.
 mcp() {
   curl -s --max-time "$ANALYZE_TIMEOUT" -X POST "$BASE_URL/mcp" \

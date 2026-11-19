@@ -4604,10 +4604,10 @@
       "id": "mcp-unauthenticated",
       "app": "apps/lei_service",
       "file": "apps/lei_service/lib/lei/mcp.ex",
-      "find": "      _ -> {:halt, unauthorized(conn, nil)}",
-      "replace": "      _ -> {:ok, conn}",
+      "find": "          else: {:halt, unauthorized(conn, nil)}",
+      "replace": "          else: {:ok, conn}",
       "guarded_by": "test/lei_service/mcp_test.exs",
-      "bug": "/mcp served a caller with no credentials: anyone could run analyses billed to nobody."
+      "bug": "/mcp served a tool call with no credentials: anyone could run analyses billed to nobody."
     },
     {
       "id": "mcp-scope-ignored",
@@ -5030,6 +5030,51 @@
       "find": "  def callers(days, today \\\\ Date.utc_today()) when is_integer(days) and days > 0 do\n",
       "replace": "  def callers(days, _today \\\\ Date.utc_today()) when is_integer(days) and days > 0 do\n    today = Date.utc_today()\n",
       "guarded_by": "test/lei_service/adoption_test.exs",
+      "app": "apps/lei_service"
+    },
+    {
+      "id": "mcp-tool-call-without-key",
+      "bug": "Opening /mcp's discovery to callers without a key let a tool call through as well: an analysis run and its report returned with no organisation to charge or to answer to.",
+      "file": "apps/lei_service/lib/lei/mcp.ex",
+      "find": "@public_methods [\"initialize\", \"ping\", \"tools/list\"]",
+      "replace": "@public_methods [\"initialize\", \"ping\", \"tools/list\", \"tools/call\"]",
+      "guarded_by": "test/lei_service/mcp_test.exs",
+      "app": "apps/lei_service"
+    },
+    {
+      "id": "mcp-discovery-needs-key",
+      "bug": "initialize and tools/list answered only with a key, so an agent choosing a server, or a person deciding whether to sign up, saw a 401 and nothing of what the server does.",
+      "file": "apps/lei_service/lib/lei/mcp.ex",
+      "find": "do: {:ok, assign(conn, :auth_method, :anonymous)},",
+      "replace": "do: {:halt, unauthorized(conn, nil)},",
+      "guarded_by": "test/lei_service/mcp_test.exs",
+      "app": "apps/lei_service"
+    },
+    {
+      "id": "mcp-anonymous-unlimited",
+      "bug": "Requests to /mcp without a key were not rate limited, so a public endpoint could be driven as hard as anyone liked.",
+      "file": "apps/lei_service/lib/lei/mcp.ex",
+      "find": "Lei.RateLimiter.check(\"mcp_anonymous:#{ip}\", \"mcp_anonymous\")",
+      "replace": "Lei.RateLimiter.check(\"mcp_anonymous:#{ip}#{System.unique_integer()}\", \"mcp_anonymous\")",
+      "guarded_by": "test/lei_service/mcp_test.exs",
+      "app": "apps/lei_service"
+    },
+    {
+      "id": "mcp-sent-key-unchecked-on-public-method",
+      "bug": "A key sent on a public method was not checked, so a client with a revoked key connected and listed tools as if nothing were wrong, and learned otherwise only at its first tool call.",
+      "file": "apps/lei_service/lib/lei/mcp.ex",
+      "find": "      [\"Bearer lei_\" <> _ = header] ->\n        authenticate_key(conn, header)\n",
+      "replace": "      [\"Bearer lei_\" <> _ = header] ->\n        if public?(conn.body_params), do: {:ok, assign(conn, :auth_method, :anonymous)}, else: authenticate_key(conn, header)\n",
+      "guarded_by": "test/lei_service/mcp_test.exs",
+      "app": "apps/lei_service"
+    },
+    {
+      "id": "mcp-listing-requires-key",
+      "bug": "server.json marked the Authorization header required, so a registry client demanded a key before connecting, though connecting and listing the tools need none.",
+      "file": "server.json",
+      "find": "\"isRequired\": false",
+      "replace": "\"isRequired\": true",
+      "guarded_by": "test/lei_service/mcp_registry_test.exs",
       "app": "apps/lei_service"
     },
     {

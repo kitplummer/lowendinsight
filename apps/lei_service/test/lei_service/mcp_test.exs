@@ -213,15 +213,106 @@ defmodule LeiService.McpTest do
     end
   end
 
-  describe "who may call it" do
-    test "no credentials is a 401 that says how to authenticate" do
-      conn = mcp(%{jsonrpc: "2.0", id: 1, method: "initialize"}, [])
+  # What the server is and what its tools do is public: an agent choosing a
+  # server, or a person deciding whether to sign up, can see it first. Calling
+  # a tool is the analysis, which is what the key is for.
+  describe "without a key" do
+    test "initialize answers, so a client can connect before signing up" do
+      conn = mcp(%{jsonrpc: "2.0", id: 1, method: "initialize", params: %{}}, [])
 
-      assert conn.status == 401
-      assert [challenge] = get_resp_header(conn, "www-authenticate")
-      assert challenge =~ ~r/^Bearer /
+      assert conn.status == 200, conn.resp_body
+      assert Poison.decode!(conn.resp_body)["result"]["serverInfo"]["name"] == "lowendinsight"
     end
 
+    test "tools/list answers with every tool" do
+      conn = mcp(%{jsonrpc: "2.0", id: 1, method: "tools/list"}, [])
+
+      assert conn.status == 200, conn.resp_body
+
+      names = for tool <- Poison.decode!(conn.resp_body)["result"]["tools"], do: tool["name"]
+      assert names == Enum.map(Lei.Mcp.tools(), & &1.name)
+    end
+
+    test "ping and the initialized notification are accepted" do
+      assert mcp(%{jsonrpc: "2.0", id: 1, method: "ping"}, []).status == 200
+      assert mcp(%{jsonrpc: "2.0", method: "notifications/initialized"}, []).status == 202
+    end
+
+    test "calling any tool is a 401 that says how to authenticate" do
+      # get_analysis included: it is free, but a uuid is not a credential, and
+      # its answer is another organisation's report.
+      for name <- ["check_packages", "analyze_repositories", "get_analysis", "no_such_tool"] do
+        conn =
+          mcp(
+            %{jsonrpc: "2.0", id: 1, method: "tools/call", params: %{name: name, arguments: %{}}},
+            []
+          )
+
+        assert conn.status == 401, "#{name} without a key: #{conn.status} #{conn.resp_body}"
+        assert [challenge] = get_resp_header(conn, "www-authenticate")
+        assert challenge =~ ~r/^Bearer /
+        assert conn.resp_body =~ "/signup"
+      end
+    end
+
+    test "a method this server does not serve is a 401, not a way to probe it" do
+      conn = mcp(%{jsonrpc: "2.0", id: 1, method: "resources/list"}, [])
+      assert conn.status == 401
+    end
+
+    test "a tool call without a key is not counted as adoption" do
+      before = calls_now()
+
+      mcp(
+        %{
+          jsonrpc: "2.0",
+          id: 1,
+          method: "tools/call",
+          params: %{name: "check_packages", arguments: %{dependencies: [@dep]}}
+        },
+        []
+      )
+
+      assert calls_now() == before
+    end
+
+    test "a key that is sent is checked, even for a public method" do
+      # Open discovery is for a client with no key, not a way past a bad one:
+      # a client sending a revoked key should hear so on connect.
+      conn =
+        mcp(%{jsonrpc: "2.0", id: 1, method: "initialize"}, [
+          {"authorization", "Bearer lei_notakey"}
+        ])
+
+      assert conn.status == 401
+    end
+
+    test "is limited per address" do
+      saved = Application.get_env(:lei_service, :rate_limits)
+      Application.put_env(:lei_service, :rate_limits, Map.merge(saved, %{mcp_anonymous: 2}))
+      on_exit(fn -> Application.put_env(:lei_service, :rate_limits, saved) end)
+
+      list = %{jsonrpc: "2.0", id: 1, method: "tools/list"}
+      here = [{"fly-client-ip", "203.0.113.9"}]
+
+      assert mcp(list, here).status == 200
+      assert mcp(list, here).status == 200
+
+      limited = mcp(list, here)
+      assert limited.status == 429
+      assert [_] = get_resp_header(limited, "retry-after")
+
+      # Another address has its own allowance.
+      assert mcp(list, [{"fly-client-ip", "203.0.113.10"}]).status == 200
+    end
+
+    defp calls_now do
+      {:ok, counts} = Lei.Adoption.window(1)
+      counts
+    end
+  end
+
+  describe "who may call it" do
     test "an invalid key is a 401 naming the token as the problem" do
       conn =
         mcp(%{jsonrpc: "2.0", id: 1, method: "initialize"}, [

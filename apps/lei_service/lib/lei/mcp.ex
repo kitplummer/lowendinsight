@@ -10,16 +10,24 @@ defmodule Lei.Mcp do
 
   ## Who may call it
 
-  A `lei_` API key with the `analyze` scope (or `admin`), or an operator token
-  -- the same credentials as the API, checked here because `/mcp` is not under
-  `/v1`, where the API's auth plugs run. Anything else is a 401 with a
-  `WWW-Authenticate` challenge. A payment credential is not accepted: there are
+  Anyone may connect and list the tools: `initialize`, `ping`, `tools/list`
+  and notifications answer without a key, limited per address. An agent
+  choosing a server, or a person deciding whether to sign up, can see what
+  this one does before doing so. Nothing they answer is about an
+  organisation or costs an analysis.
+
+  Calling a tool needs a `lei_` API key with the `analyze` scope (or `admin`),
+  or an operator token -- the same credentials as the API, checked here because
+  `/mcp` is not under `/v1`, where the API's auth plugs run. Without one it is
+  a 401 with a `WWW-Authenticate` challenge, as is any method not listed above.
+  A key that is sent is always checked, on a public method too: a client with
+  a revoked key hears so when it connects. A payment credential is not accepted: there are
   no payment challenges on `/mcp`, because an MCP client is not an HTTP client
   at the tool level and has nowhere to handle a 402. An org that cannot pay is
   told so in a tool result.
 
-  Every request counts against the key's one allowance, the `api:` bucket the
-  API's routes share. A browser page on another origin is refused, which is
+  Every request with a key counts against the key's one allowance, the `api:`
+  bucket the API's routes share; one without counts against its address's. A browser page on another origin is refused, which is
   what the protocol asks of a server against DNS rebinding.
 
   ## Billing
@@ -139,6 +147,10 @@ defmodule Lei.Mcp do
 
   @tools [@check_packages, @analyze_repositories, @get_analysis]
 
+  # Answered without a key: what the server is and what it offers. Every
+  # tool call, and any method not named here, needs one.
+  @public_methods ["initialize", "ping", "tools/list"]
+
   @doc "The protocol versions served, newest first."
   def protocol_versions, do: @protocol_versions
 
@@ -211,11 +223,29 @@ defmodule Lei.Mcp do
 
   defp authenticate(conn) do
     case get_req_header(conn, "authorization") do
-      ["Bearer lei_" <> _ = header] -> authenticate_key(conn, header)
-      ["Bearer " <> jwt] when jwt != "" -> authenticate_operator(conn, jwt)
-      _ -> {:halt, unauthorized(conn, nil)}
+      ["Bearer lei_" <> _ = header] ->
+        authenticate_key(conn, header)
+
+      ["Bearer " <> jwt] when jwt != "" ->
+        authenticate_operator(conn, jwt)
+
+      [] ->
+        if public?(conn.body_params),
+          do: {:ok, assign(conn, :auth_method, :anonymous)},
+          else: {:halt, unauthorized(conn, nil)}
+
+      _ ->
+        {:halt, unauthorized(conn, nil)}
     end
   end
+
+  # A notification has no id and is answered with nothing, so it is public
+  # whatever it names.
+  defp public?(%{"jsonrpc" => "2.0", "method" => "notifications/" <> _} = message),
+    do: not is_map_key(message, "id")
+
+  defp public?(%{"jsonrpc" => "2.0", "method" => method}), do: method in @public_methods
+  defp public?(_), do: false
 
   defp authenticate_key(conn, "Bearer " <> raw_key) do
     case Lei.ApiKeys.authenticate_key(raw_key) do
@@ -263,6 +293,25 @@ defmodule Lei.Mcp do
     case Lei.RateLimiter.check("api:#{api_key.key_prefix}", api_key.org.tier) do
       {:ok, remaining} ->
         {:ok, put_resp_header(conn, "x-ratelimit-remaining", to_string(remaining))}
+
+      {:error, :rate_limited, retry_after} ->
+        retry_secs = Lei.RateLimiter.retry_after_seconds(retry_after)
+
+        {:halt,
+         conn
+         |> put_resp_header("retry-after", to_string(retry_secs))
+         |> http_error(429, "rate limit exceeded", %{retry_after: retry_secs})}
+    end
+  end
+
+  # Without a key, per address: the answers are small and fixed, but an
+  # unlimited public endpoint is one anybody can spend the service on.
+  defp check_rate_limit(%Plug.Conn{assigns: %{auth_method: :anonymous}} = conn) do
+    ip = Lei.Payments.RateLimit.client_ip(conn)
+
+    case Lei.RateLimiter.check("mcp_anonymous:#{ip}", "mcp_anonymous") do
+      {:ok, _remaining} ->
+        {:ok, conn}
 
       {:error, :rate_limited, retry_after} ->
         retry_secs = Lei.RateLimiter.retry_after_seconds(retry_after)

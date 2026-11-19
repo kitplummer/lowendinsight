@@ -217,7 +217,10 @@ config :lei_service,
     recover: 5,
     # Fresh analyses through the homepage's Try It form, per IP, per hour
     # (window below). Cached reports are not counted (#152).
-    try_it: 10
+    try_it: 10,
+    # /mcp without a key, per IP, per minute: initialize and tools/list only.
+    # A client connects with a handful of requests.
+    mcp_anonymous: 30
   },
   rate_limit_windows: %{
     try_it: 3_600_000,

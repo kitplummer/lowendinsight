@@ -24,13 +24,28 @@ defmodule LeiService.McpRegistryTest do
     assert remote["url"] == "https://lowendinsight.dev/mcp"
   end
 
-  test "it says a key is required, and that it is a secret" do
+  test "it says the key is a secret, needed for the tools but not to connect" do
+    # Connecting and listing the tools need no key; calling one does. A
+    # listing that required it would have a client demand a key before
+    # anyone could see what the server does.
     [remote] = listing()["remotes"]
 
     assert [header] = remote["headers"]
     assert header["name"] == "Authorization"
-    assert header["isRequired"] == true
+    assert header["isRequired"] == false
     assert header["isSecret"] == true
+    assert header["description"] =~ "tool"
+  end
+
+  test "it has an icon, served by this service over HTTPS" do
+    assert [icon] = listing()["icons"]
+    assert icon["src"] == "https://lowendinsight.dev/images/apple-touch-icon.png"
+    assert icon["mimeType"] == "image/png"
+    assert icon["sizes"] == ["180x180"]
+
+    # The file it names is the one this service serves at that path.
+    path = Path.expand("../../priv/static/images/apple-touch-icon.png", __DIR__)
+    assert <<_::binary-size(16), 180::32, 180::32, _::binary>> = File.read!(path)
   end
 
   test "it names the schema it was written against" do
