@@ -139,22 +139,33 @@ defmodule LeiService.StripeAccountHoldTest do
       assert status == 1
     end
 
-    test "test mode: a sandbox account's flags are reported, not enforced" do
-      # An account not yet activated for live payments reports both flags false
-      # while sandbox payments work, and production runs a sandbox key until
-      # cutover. Failing on that would page every 15 minutes for a state we
-      # chose -- which is how an alarm stops being read.
+    test "test mode is enforced too" do
+      # Production's sandbox account reports both flags true (observed after
+      # #365 deployed), so enforcing before cutover costs no false pages -- and
+      # a hold on the account would otherwise go unseen until the live key went
+      # in.
       {out, status} =
         run(
           metrics("test", [
             ~s(lei_stripe_account{measure="check",result="ok"} 1),
             ~s(lei_stripe_account{measure="charges_enabled"} 0),
-            ~s(lei_stripe_account{measure="payouts_enabled"} 0)
+            ~s(lei_stripe_account{measure="payouts_enabled"} 1)
           ])
         )
 
-      assert status == 0
-      assert out =~ "charges_enabled=0"
+      assert status == 1, "a hold in test mode passed"
+      assert out =~ "::error::The Stripe account cannot take charges"
+    end
+
+    test "test mode, an unread account fails too" do
+      {_, status} =
+        run(metrics("test", [~s(lei_stripe_account{measure="check",result="unauthorized"} 1)]))
+
+      assert status == 1
+    end
+
+    test "test mode, a healthy account passes" do
+      assert {_, 0} = run(metrics("test", healthy()))
     end
 
     test "the family absent fails in any mode: an absent check reads exactly like a clean one" do
@@ -163,11 +174,6 @@ defmodule LeiService.StripeAccountHoldTest do
         assert status == 1, "#{mode}: passed with no account metrics at all"
         assert out =~ "lei_stripe_account"
       end
-    end
-
-    test "the mode absent fails, because which rules apply is unknown" do
-      {_, status} = run(Enum.join(healthy(), "\n") <> "\n")
-      assert status == 1
     end
 
     test "empty input fails" do

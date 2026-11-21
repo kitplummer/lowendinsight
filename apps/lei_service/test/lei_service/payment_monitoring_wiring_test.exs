@@ -48,6 +48,35 @@ defmodule LeiService.PaymentMonitoringWiringTest do
     source |> String.split(marker) |> List.last()
   end
 
+  describe "the monitor reads the Stripe account" do
+    # #365 made a hold visible on /metrics and wrote the check that reads it;
+    # a check nothing runs is the failure this file exists for.
+    test "a step runs the account check against the deployed commit's copy" do
+      body = step("monitor.yml", "Check the Stripe account can take charges and pay out")
+
+      assert body =~ "id: stripe_account"
+
+      # run-deployed, because the monitor checks out main: a change to what the
+      # script expects would otherwise fail every run between merge and deploy.
+      assert body =~
+               ~s(scripts/ops/run-deployed.sh https://lowendinsight.dev scripts/check-stripe-account.sh < "$RUNNER_TEMP/metrics.txt"),
+             "the step does not run scripts/check-stripe-account.sh on the metrics"
+    end
+
+    test "a hold pages, at the priority money gets" do
+      page = step("monitor.yml", "Page on a failed check")
+
+      assert page =~ "STRIPE_ACCOUNT: ${{ steps.stripe_account.outcome }}",
+             "the page cannot see the account check's outcome"
+
+      assert page =~ ~s("stripe_account:$STRIPE_ACCOUNT"),
+             "the page does not name the account check when it fails"
+
+      assert page =~ ~r/\*stripe_account\*[^)]*\) PRIORITY=5/,
+             "a Stripe hold is money, and pages at priority 5"
+    end
+  end
+
   describe "the monitor reads the money" do
     test "it fails when the ledger and Stripe disagree" do
       assert monitor() =~ ~s(lei_stripe_reconciliation{measure="discrepancies"})

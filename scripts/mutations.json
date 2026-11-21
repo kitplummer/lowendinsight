@@ -5195,11 +5195,11 @@
       "app": "apps/lei_service"
     },
     {
-      "id": "hold-enforced-in-sandbox",
-      "bug": "Enforcing the hold flags in test mode: an account not activated for live payments reports both false while sandbox payments work, so the monitor would page every 15 minutes for a state we chose.",
+      "id": "hold-check-skips-sandbox",
+      "bug": "The hold check enforced in live mode only. Production's sandbox account reports both flags true, so skipping test mode only hid a hold until the live key went in.",
       "file": "scripts/check-stripe-account.sh",
-      "find": "if [ \"$MODE\" != \"live\" ]; then",
-      "replace": "if [ \"$MODE\" = \"never\" ]; then",
+      "find": "MODE=$(gauge 's/^lei_stripe_mode{mode=\"\\([a-z_]*\\)\"} 1$/\\1/p')",
+      "replace": "MODE=$(gauge 's/^lei_stripe_mode{mode=\"\\([a-z_]*\\)\"} 1$/\\1/p')\n[ \"$MODE\" = \"live\" ] || exit 0",
       "guarded_by": "test/lei_service/stripe_account_hold_test.exs",
       "app": "apps/lei_service"
     },
@@ -5237,6 +5237,33 @@
       "find": "if [ \"$CHARGES\" != \"1\" ]; then",
       "replace": "if false; then",
       "guarded_by": "test/lei_service/stripe_account_hold_test.exs",
+      "app": "apps/lei_service"
+    },
+    {
+      "id": "monitor-skips-stripe-account",
+      "bug": "The account-hold check (#365) built and never run by the monitor: a hold stays visible only to someone reading /metrics by hand.",
+      "file": ".github/workflows/monitor.yml",
+      "find": "run: scripts/ops/run-deployed.sh https://lowendinsight.dev scripts/check-stripe-account.sh < \"$RUNNER_TEMP/metrics.txt\"",
+      "replace": "run: echo \"stripe account not checked\"",
+      "guarded_by": "test/lei_service/payment_monitoring_wiring_test.exs",
+      "app": "apps/lei_service"
+    },
+    {
+      "id": "page-blind-to-stripe-account",
+      "bug": "A failed account-hold check that the page cannot name: the alert says 'unidentified' for a hold on the money.",
+      "file": ".github/workflows/monitor.yml",
+      "find": "          STRIPE_ACCOUNT: ${{ steps.stripe_account.outcome }}\n",
+      "replace": "",
+      "guarded_by": "test/lei_service/payment_monitoring_wiring_test.exs",
+      "app": "apps/lei_service"
+    },
+    {
+      "id": "stripe-hold-pages-quietly",
+      "bug": "A Stripe hold paged at priority 4, like a broken canary, instead of 5 with the other money checks.",
+      "file": ".github/workflows/monitor.yml",
+      "find": "*readiness*|*payments*|*ledger*|*webhooks*|*stripe_account*) PRIORITY=5 ;;",
+      "replace": "*readiness*|*payments*|*ledger*|*webhooks*) PRIORITY=5 ;;",
+      "guarded_by": "test/lei_service/payment_monitoring_wiring_test.exs",
       "app": "apps/lei_service"
     }
   ]

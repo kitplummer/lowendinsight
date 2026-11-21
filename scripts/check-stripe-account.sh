@@ -12,14 +12,12 @@
 #
 #   ./scripts/check-stripe-account.sh < metrics.txt
 #
-# Enforced in live mode only. Until cutover production runs a sandbox key, and
-# an account not yet activated for live payments reports both flags false while
-# sandbox payments work; failing on that would page every 15 minutes for a
-# state we chose. In every mode, metrics that are absent fail: an absent check
-# reads exactly like a clean one.
+# Enforced in every Stripe mode. Production ran a sandbox key before cutover,
+# and its account reported both flags true (observed after #365 deployed), so
+# a hold is worth knowing about before the live key goes in, not only after.
+# Metrics that are absent fail: an absent check reads exactly like a clean one.
 #
-# Exit 0 when the account can charge and pay out (or the mode is not live),
-# 1 otherwise.
+# Exit 0 when the account can charge and pay out, 1 otherwise.
 
 set -uo pipefail
 
@@ -28,11 +26,8 @@ RUNBOOK='apps/lei_service/docs/OPERATIONS.md, "Stripe places the account on hold
 
 gauge() { echo "$METRICS" | sed -n "$1" | head -1; }
 
+# Reported for context only; the rules are the same in every mode.
 MODE=$(gauge 's/^lei_stripe_mode{mode="\([a-z_]*\)"} 1$/\1/p')
-if [ -z "$MODE" ]; then
-  echo "::error::/metrics does not publish lei_stripe_mode, so whether a hold would matter cannot be decided."
-  exit 1
-fi
 
 CHECK=$(gauge 's/^lei_stripe_account{measure="check",result="\([a-z_]*\)"} 1$/\1/p')
 if [ -z "$CHECK" ]; then
@@ -44,12 +39,7 @@ CHARGES=$(gauge 's/^lei_stripe_account{measure="charges_enabled"} \([01]\)$/\1/p
 PAYOUTS=$(gauge 's/^lei_stripe_account{measure="payouts_enabled"} \([01]\)$/\1/p')
 REASON=$(gauge 's/^lei_stripe_account{measure="disabled",reason="\([a-z0-9_.]*\)"} 1$/\1/p')
 
-echo "stripe mode: ${MODE}  account read: ${CHECK}  charges_enabled=${CHARGES:-unread}  payouts_enabled=${PAYOUTS:-unread}  disabled_reason=${REASON:-none}"
-
-if [ "$MODE" != "live" ]; then
-  echo "Not live, so the account's flags are reported and not enforced."
-  exit 0
-fi
+echo "stripe mode: ${MODE:-unknown}  account read: ${CHECK}  charges_enabled=${CHARGES:-unread}  payouts_enabled=${PAYOUTS:-unread}  disabled_reason=${REASON:-none}"
 
 if [ "$CHECK" != "ok" ]; then
   echo "::error::The Stripe account could not be read (${CHECK}), so a hold would be invisible. 'unauthorized' means the key may not read the account; give it that permission."
