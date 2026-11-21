@@ -54,11 +54,11 @@
 
   <h2>Refunds</h2>
   <p>
-    If you ask within 30 days of paying, we refund the payment in full to
-    the wallet or card that paid, and the credits it bought are removed from the
-    account. To ask, <a href="https://github.com/kitplummer/lowendinsight/issues">open
-    an issue</a> giving the transaction hash or payment reference. Both are
-    already public or meaningless to anyone else; never post an API key.
+    <strong>Payments are not refundable</strong>, except where the law requires
+    a refund. What a payment buys is an account and the credits on it, and you
+    keep both whether or not you use them. Unused credits are not paid back, and
+    a lost API key is not grounds for a refund. The service is provided with no
+    warranty and at your own risk, as the next section says.
   </p>
 
   <h2>No warranty, and use is at your own risk</h2>

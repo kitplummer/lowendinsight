@@ -5150,11 +5150,11 @@
       "app": "apps/lei_service"
     },
     {
-      "id": "terms-without-refunds",
-      "bug": "Terms that sell prepaid credits with no refund policy (lei_ops#8 requires one published before cutover).",
+      "id": "terms-promise-refunds",
+      "bug": "The owner's decision is no refunds, especially in beta (no warranty, use at your own risk). Terms that drop that statement leave a buyer to assume one; a page that promised a refund would be a commitment nobody made.",
       "file": "apps/lei_service/priv/templates/terms.html.eex",
-      "find": "  <h2>Refunds</h2>",
-      "replace": "  <h2>Questions about payments</h2>",
+      "find": "    <strong>Payments are not refundable</strong>, except where the law requires",
+      "replace": "    <strong>Payments are refundable within 30 days</strong>, except where the law requires",
       "guarded_by": "test/lei_service/terms_charges_test.exs",
       "app": "apps/lei_service"
     }

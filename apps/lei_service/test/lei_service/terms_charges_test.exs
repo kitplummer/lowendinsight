@@ -82,16 +82,20 @@ defmodule LeiService.TermsChargesTest do
   end
 
   describe "refunds" do
-    test "the page says how to get money back, in either billing mode" do
+    test "the page says payments are not refunded, in either billing mode" do
+      # The owner's decision: no refunds, especially in beta, where the service
+      # is provided with no warranty and at your own risk. A page that promised
+      # a refund would be a commitment nobody made.
       for mode <- [:beta, :charge] do
         Application.put_env(:lei_service, :billing_mode, mode)
         body = terms()
 
         assert body =~ "Refunds", "#{mode}: no refund section"
-        assert body =~ "within 30 days", "#{mode}: no refund window"
 
-        assert body =~ "the wallet or card that paid",
-               "#{mode}: no statement of where a refund goes"
+        assert body =~ "Payments are not refundable",
+               "#{mode}: the terms do not say payments are final"
+
+        refute body =~ "within 30 days", "#{mode}: the terms promise a refund window"
       end
     end
   end
