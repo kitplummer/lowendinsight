@@ -23,7 +23,19 @@ defmodule Lei.Stripe.ObjectCheckTest do
       {:error, {404, %{"error" => %{"code" => "resource_missing"}}}}
     end)
 
+    # And the account read beside it, answered as a healthy account.
+    stub(Lei.StripeMock, :retrieve_account, fn -> {:ok, account()} end)
+
     :ok
+  end
+
+  defp account(charges \\ true, payouts \\ true, reason \\ nil) do
+    %{
+      "id" => "acct_x",
+      "charges_enabled" => charges,
+      "payouts_enabled" => payouts,
+      "requirements" => %{"disabled_reason" => reason}
+    }
   end
 
   defp price(active \\ true), do: %{"id" => "price_x", "active" => active}
@@ -188,6 +200,82 @@ defmodule Lei.Stripe.ObjectCheckTest do
     end
   end
 
+  describe "check_account/3 -- an account hold" do
+    # A held account answers the price and session reads perfectly well, so
+    # check/4 stays "ok" through a hold. Paused payouts show nowhere at all:
+    # money keeps arriving, the ledger reconciles, and none of it reaches the
+    # bank (OPERATIONS.md, "Stripe places the account on hold").
+    test "an account that can charge and pay out reports both" do
+      assert ObjectCheck.check_account(@live, "production", Lei.StripeMock) == %{
+               result: "ok",
+               charges_enabled: true,
+               payouts_enabled: true,
+               disabled_reason: nil
+             }
+    end
+
+    test "charges disabled is reported, with Stripe's reason" do
+      expect(Lei.StripeMock, :retrieve_account, fn ->
+        {:ok, account(false, false, "requirements.past_due")}
+      end)
+
+      assert %{
+               result: "ok",
+               charges_enabled: false,
+               payouts_enabled: false,
+               disabled_reason: "requirements.past_due"
+             } = ObjectCheck.check_account(@live, "production", Lei.StripeMock)
+    end
+
+    test "payouts paused alone is reported -- the hold nothing else can see" do
+      expect(Lei.StripeMock, :retrieve_account, fn -> {:ok, account(true, false)} end)
+
+      assert %{charges_enabled: true, payouts_enabled: false} =
+               ObjectCheck.check_account(@live, "production", Lei.StripeMock)
+    end
+
+    test "a key that may not read the account is unauthorized, and says nothing about a hold" do
+      expect(Lei.StripeMock, :retrieve_account, fn ->
+        {:error, {403, %{"error" => %{"type" => "invalid_request_error"}}}}
+      end)
+
+      assert ObjectCheck.check_account(@live, "production", Lei.StripeMock) == %{
+               result: "unauthorized",
+               charges_enabled: nil,
+               payouts_enabled: nil,
+               disabled_reason: nil
+             }
+    end
+
+    test "Stripe not answering is unreachable, not an account in good standing" do
+      expect(Lei.StripeMock, :retrieve_account, fn ->
+        {:error, %HTTPoison.Error{reason: :timeout}}
+      end)
+
+      assert %{result: "unreachable", charges_enabled: nil, payouts_enabled: nil} =
+               ObjectCheck.check_account(@live, "production", Lei.StripeMock)
+    end
+
+    test "an answer without the two flags is not read as both enabled" do
+      expect(Lei.StripeMock, :retrieve_account, fn -> {:ok, %{"id" => "acct_x"}} end)
+
+      assert %{result: "unreachable", charges_enabled: nil, payouts_enabled: nil} =
+               ObjectCheck.check_account(@live, "production", Lei.StripeMock)
+    end
+
+    test "no key outside production asks nothing" do
+      expect(Lei.StripeMock, :retrieve_account, 0, fn -> {:ok, account()} end)
+
+      assert %{result: "ok", charges_enabled: nil, payouts_enabled: nil} =
+               ObjectCheck.check_account(nil, nil, Lei.StripeMock)
+    end
+
+    test "no key in production is unconfigured" do
+      assert %{result: "unconfigured"} =
+               ObjectCheck.check_account(nil, "production", Lei.StripeMock)
+    end
+  end
+
   describe "the checker process" do
     defp start(config, opts \\ []) do
       name = :"object_check_#{System.unique_integer([:positive])}"
@@ -198,6 +286,17 @@ defmodule Lei.Stripe.ObjectCheckTest do
       )
 
       name
+    end
+
+    defp eventually_account(name, tries \\ 50) do
+      case ObjectCheck.account(name) do
+        %{result: "pending"} when tries > 0 ->
+          Process.sleep(20)
+          eventually_account(name, tries - 1)
+
+        account ->
+          account
+      end
     end
 
     defp eventually(name, expected, tries \\ 50) do
@@ -229,6 +328,38 @@ defmodule Lei.Stripe.ObjectCheckTest do
         )
 
       assert eventually(name, "ok") == "ok"
+    end
+
+    test "reports the account it read" do
+      stub(Lei.StripeMock, :retrieve_price, fn _ -> {:ok, price()} end)
+      expect(Lei.StripeMock, :retrieve_account, fn -> {:ok, account(true, false)} end)
+
+      name = start({@live, @prices, "production", Lei.StripeMock, nil})
+      assert eventually(name, "ok") == "ok"
+
+      assert %{result: "ok", charges_enabled: true, payouts_enabled: false} =
+               eventually_account(name)
+    end
+
+    test "a hold does not fail the Stripe check, so it cannot roll a deploy back" do
+      # The deploy canary rolls back on anything but ok, pending or unreachable
+      # in checks.stripe. A hold is Stripe's decision about the account, not a
+      # fault in the release: rolling back would not clear it, and would block
+      # shipping a fix while it lasts. The monitor reads the hold instead.
+      stub(Lei.StripeMock, :retrieve_price, fn _ -> {:ok, price()} end)
+
+      stub(Lei.StripeMock, :retrieve_account, fn ->
+        {:ok, account(false, false, "requirements.past_due")}
+      end)
+
+      name = start({@live, @prices, "production", Lei.StripeMock, nil})
+      assert %{charges_enabled: false} = eventually_account(name)
+      assert ObjectCheck.status(name) == "ok"
+    end
+
+    test "a checker that is not running says so, rather than reporting an account" do
+      assert %{result: "not_running", charges_enabled: nil, payouts_enabled: nil} =
+               ObjectCheck.account(:no_such_object_check)
     end
 
     test "a raising Stripe client reads as unreachable, not a crashed checker" do

@@ -25,6 +25,8 @@ defmodule Lei.StripeBehaviour do
               {:ok, [String.t()]} | {:error, {pos_integer(), map()}} | {:error, term()}
   @callback retrieve_price(String.t()) ::
               {:ok, map()} | {:error, {pos_integer(), map()}} | {:error, term()}
+  @callback retrieve_account() ::
+              {:ok, map()} | {:error, {pos_integer(), map()}} | {:error, term()}
 end
 
 defmodule Lei.Stripe do
@@ -484,6 +486,13 @@ defmodule Lei.Stripe do
     do: {:error, {status, decode_or_raw(body)}}
 
   defp json_result({:error, reason}), do: {:error, reason}
+
+  # The account the key belongs to: whether it may take charges and pay out,
+  # which is what a hold switches off (Lei.Stripe.ObjectCheck.check_account/3).
+  @impl true
+  def retrieve_account do
+    get_json("/v1/account", headers())
+  end
 
   @impl true
   def retrieve_checkout_session(session_id) do

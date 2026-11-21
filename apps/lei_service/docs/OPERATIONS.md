@@ -1145,10 +1145,32 @@ credited:
 scripts/payments.sh reconciliation
 ```
 
-**Known gap.** Because nothing reads account state, the first sign of a hold
-will be refusals on `/metrics` or a customer telling you. Adding an account
-check to `ObjectCheck` would surface it directly; it is not built, and `payouts_enabled`
-would still need somewhere to report to, since no existing gauge covers payouts.
+**How a hold shows up.** `Lei.Stripe.ObjectCheck` reads the account beside the
+prices, hourly (every minute while Stripe is unreachable), and `/metrics`
+publishes it:
+
+```
+lei_stripe_account{measure="check",result="ok"} 1
+lei_stripe_account{measure="charges_enabled"} 1
+lei_stripe_account{measure="payouts_enabled"} 1
+lei_stripe_account{measure="disabled",reason="..."} 1   # only when Stripe gives one
+```
+
+The flags appear only when the account was actually read; `result` says why
+when it was not (`unauthorized` is a key without permission to read the
+account). `scripts/check-stripe-account.sh < metrics.txt` reads them: in live
+mode it fails on either flag at 0 or an unread account, and in test mode it
+reports them without failing, because a sandbox account not yet activated for
+live payments reports both false while sandbox payments work.
+
+A hold does **not** change `checks.stripe` on `/readyz`. The deploy canary rolls
+back on that, and a hold is not a fault in the release -- rolling back would not
+clear it, and would block shipping a fix while it lasted.
+
+**The monitor does not run the check yet.** It checks out main, so wiring it in
+the same change would fail every monitor run between that merge and its deploy;
+it is wired in a follow-up once production publishes the gauges. Until then,
+read them by hand: `curl -s https://lowendinsight.dev/metrics | grep lei_stripe_account`.
 
 ### `scripts/payments.sh`
 

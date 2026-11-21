@@ -91,6 +91,14 @@ defmodule Lei.Metrics do
       "# TYPE lei_stripe_mode gauge",
       "lei_stripe_mode{mode=\"#{Lei.Stripe.Mode.current()}\"} 1",
       "",
+      # Whether the Stripe account may take charges and pay out -- what a hold
+      # switches off. Nothing else here can see one: a held account answers
+      # every read /readyz makes, and paused payouts change no other signal at
+      # all. The monitor enforces it in live mode (scripts/check-stripe-account.sh).
+      "# HELP lei_stripe_account Stripe account state: whether it could be read, and whether it may take charges and pay out",
+      "# TYPE lei_stripe_account gauge",
+      stripe_account_metrics(Lei.Stripe.ObjectCheck.account()),
+      "",
       # Whether this deployment charges for analysis (ADR-007). One series,
       # value 1, labelled with the mode -- the same shape as lei_stripe_mode,
       # and for the same reason: monitor.yml asserts which mode it expects, so
@@ -345,6 +353,30 @@ defmodule Lei.Metrics do
       require Logger
       Logger.error("Reversal metrics failed: #{inspect(error)}")
       [~s(lei_credit_reversals{measure="error"} 1)]
+  end
+
+  @doc false
+  # The read's result always; the flags only when the account was read, so an
+  # unread account cannot look like an all-clear (1) or a hold (0).
+  def stripe_account_metrics(account) do
+    flags =
+      for measure <- [:charges_enabled, :payouts_enabled],
+          is_boolean(Map.get(account, measure)) do
+        ~s(lei_stripe_account{measure="#{measure}"} #{if Map.get(account, measure), do: 1, else: 0})
+      end
+
+    reason =
+      case account[:disabled_reason] do
+        reason when is_binary(reason) and reason != "" ->
+          # Stripe's text, made safe for a label value.
+          safe = reason |> String.downcase() |> String.replace(~r/[^a-z0-9_.]/, "_")
+          [~s(lei_stripe_account{measure="disabled",reason="#{safe}"} 1)]
+
+        _ ->
+          []
+      end
+
+    [~s(lei_stripe_account{measure="check",result="#{account.result}"} 1)] ++ flags ++ reason
   end
 
   defp switch_metrics do
