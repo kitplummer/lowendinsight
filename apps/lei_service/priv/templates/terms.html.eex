@@ -18,18 +18,47 @@
     the only input to a decision that matters.
   </p>
 
-  <h2>Analysis is free during beta</h2>
-  <p>
-    <%= if guide.beta? do %>
-      Nothing is charged today. Accounts are limited to
+  <h2>What is charged</h2>
+  <%= if guide.beta? do %>
+    <p>
+      Analysis is free during beta. Accounts are limited to
       <%= LeiService.AgentGuide.number(guide.free_monthly_analyses) %> analyses a
-      month, which is what keeps the beta affordable for us.
-    <% else %>
-      Beta has ended and analysis is charged at the published rates.
-    <% end %>
+      month, which is what keeps the beta affordable for us. Signing up on this
+      site costs nothing.
+    </p>
+    <p>
+      An agent that has no account is asked once for
+      <%= LeiService.AgentGuide.number(guide.challenge_credits) %> credits (<%= guide.challenge_usd %>),
+      the smallest amount our payment rails will settle. That buys an account, not analysis: nothing is deducted from it
+      while analysis is free, the credits do not expire, and they stay yours to
+      spend when charging begins.
+    </p>
+    <p>
+      <%= if guide.stablecoin.real_money? do %>
+        That payment is made in <%= guide.stablecoin.token %> on
+        <%= guide.stablecoin.chain %> and is real money. Stripe receives it and
+        settles it in US dollars.
+      <% else %>
+        Payments currently run on <%= guide.stablecoin.chain %>, in
+        <%= guide.stablecoin.token %>, a test token. No real money changes hands.
+      <% end %>
+    </p>
+  <% else %>
+    <p>Beta has ended and analysis is charged at the published rates.</p>
+  <% end %>
+  <p>
     Prices are published at <a href="/llms.txt">/llms.txt</a> so that when beta
     ends nothing about the change is a surprise. We will tell account holders
     before charging begins.
+  </p>
+
+  <h2>Refunds</h2>
+  <p>
+    <strong>Payments are not refundable</strong>, except where the law requires
+    a refund. What a payment buys is an account and the credits on it, and you
+    keep both whether or not you use them. Unused credits are not paid back, and
+    a lost API key is not grounds for a refund. The service is provided with no
+    warranty and at your own risk, as the next section says.
   </p>
 
   <h2>No warranty, and use is at your own risk</h2>

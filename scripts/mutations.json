@@ -3353,7 +3353,7 @@
       "id": "deploy-gate-hides-that-it-declined",
       "bug": "A deploy run that deliberately ships nothing concludes success, so declining and shipping are identical in the run list. Without the job summary saying which happened, the run page carries no way to tell -- which produced two wrong answers in one sitting.",
       "file": ".github/workflows/deploy.yml",
-      "find": "              echo \"### DECLINED — nothing was shipped by this run\"",
+      "find": "              echo \"### DECLINED \u2014 nothing was shipped by this run\"",
       "replace": "              echo \"### Deploy\"",
       "guarded_by": "test/lei_service/deploy_reporting_test.exs",
       "app": "apps/lei_service"
@@ -5120,6 +5120,42 @@
       "find": "scripts/ops/confirm.sh smoke scripts/ops/run-deployed.sh https://lowendinsight.dev scripts/smoke-test.sh https://lowendinsight.dev",
       "replace": "scripts/ops/confirm.sh smoke ./scripts/smoke-test.sh https://lowendinsight.dev",
       "guarded_by": "test/lei_service/run_deployed_test.exs",
+      "app": "apps/lei_service"
+    },
+    {
+      "id": "terms-say-nothing-is-charged",
+      "bug": "/terms said 'Nothing is charged today' during beta while the gate asked every account-less agent for $0.50. Misleading on testnet, false the moment the Stripe key is live (lei_ops#1).",
+      "file": "apps/lei_service/priv/templates/terms.html.eex",
+      "find": "      Analysis is free during beta. Accounts are limited to",
+      "replace": "      Nothing is charged today. Accounts are limited to",
+      "guarded_by": "test/lei_service/terms_charges_test.exs",
+      "app": "apps/lei_service"
+    },
+    {
+      "id": "terms-quote-a-fixed-challenge",
+      "bug": "A terms page quoting the challenge as a constant drifts from what Lei.Payments.Gate asks for when the beta floor or a rail's minimum changes -- a page stating a price the service does not charge.",
+      "file": "apps/lei_service/priv/templates/terms.html.eex",
+      "find": "<%= LeiService.AgentGuide.number(guide.challenge_credits) %> credits (<%= guide.challenge_usd %>),",
+      "replace": "500 credits ($0.50),",
+      "guarded_by": "test/lei_service/terms_charges_test.exs",
+      "app": "apps/lei_service"
+    },
+    {
+      "id": "terms-call-live-money-a-test-token",
+      "bug": "With a live Stripe key the agent pays real USDC.e; terms still describing a test token would tell a buyer paying real money that nothing real changed hands.",
+      "file": "apps/lei_service/priv/templates/terms.html.eex",
+      "find": "<%= if guide.stablecoin.real_money? do %>",
+      "replace": "<%= if false do %>",
+      "guarded_by": "test/lei_service/terms_charges_test.exs",
+      "app": "apps/lei_service"
+    },
+    {
+      "id": "terms-promise-refunds",
+      "bug": "The owner's decision is no refunds, especially in beta (no warranty, use at your own risk). Terms that drop that statement leave a buyer to assume one; a page that promised a refund would be a commitment nobody made.",
+      "file": "apps/lei_service/priv/templates/terms.html.eex",
+      "find": "    <strong>Payments are not refundable</strong>, except where the law requires",
+      "replace": "    <strong>Payments are refundable within 30 days</strong>, except where the law requires",
+      "guarded_by": "test/lei_service/terms_charges_test.exs",
       "app": "apps/lei_service"
     }
   ]
