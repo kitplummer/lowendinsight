@@ -1158,19 +1158,18 @@ lei_stripe_account{measure="disabled",reason="..."} 1   # only when Stripe gives
 
 The flags appear only when the account was actually read; `result` says why
 when it was not (`unauthorized` is a key without permission to read the
-account). `scripts/check-stripe-account.sh < metrics.txt` reads them: in live
-mode it fails on either flag at 0 or an unread account, and in test mode it
-reports them without failing, because a sandbox account not yet activated for
-live payments reports both false while sandbox payments work.
+account). `scripts/check-stripe-account.sh < metrics.txt` reads them, and
+fails on either flag at 0 or an unread account, in every Stripe mode. The
+sandbox account reported both flags true before cutover, so test mode is
+enforced too: a hold is worth knowing about before the live key goes in.
 
 A hold does **not** change `checks.stripe` on `/readyz`. The deploy canary rolls
 back on that, and a hold is not a fault in the release -- rolling back would not
 clear it, and would block shipping a fix while it lasted.
 
-**The monitor does not run the check yet.** It checks out main, so wiring it in
-the same change would fail every monitor run between that merge and its deploy;
-it is wired in a follow-up once production publishes the gauges. Until then,
-read them by hand: `curl -s https://lowendinsight.dev/metrics | grep lei_stripe_account`.
+**The monitor runs it every 15 minutes** ("Check the Stripe account can take
+charges and pay out"), as the deployed commit's copy, and a failure pages at
+priority 5 with the other money checks.
 
 ### `scripts/payments.sh`
 

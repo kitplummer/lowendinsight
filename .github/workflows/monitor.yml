@@ -472,8 +472,8 @@ jobs:
       # A Stripe account hold switches off charges or payouts, and nothing else
       # here can see either: a held account answers every read /readyz makes,
       # and paused payouts change no other signal at all (#365). Enforced in
-      # live mode only; in test mode the flags are reported. The deployed
-      # commit's copy, because this checkout is main and can be ahead of it.
+      # every Stripe mode. The deployed commit's copy, because this checkout is
+      # main and can be ahead of it.
       - name: Check the Stripe account can take charges and pay out
         id: stripe_account
         shell: bash

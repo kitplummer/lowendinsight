@@ -5195,11 +5195,11 @@
       "app": "apps/lei_service"
     },
     {
-      "id": "hold-enforced-in-sandbox",
-      "bug": "Enforcing the hold flags in test mode: an account not activated for live payments reports both false while sandbox payments work, so the monitor would page every 15 minutes for a state we chose.",
+      "id": "hold-check-skips-sandbox",
+      "bug": "The hold check enforced in live mode only. Production's sandbox account reports both flags true, so skipping test mode only hid a hold until the live key went in.",
       "file": "scripts/check-stripe-account.sh",
-      "find": "if [ \"$MODE\" != \"live\" ]; then",
-      "replace": "if [ \"$MODE\" = \"never\" ]; then",
+      "find": "MODE=$(gauge 's/^lei_stripe_mode{mode=\"\\([a-z_]*\\)\"} 1$/\\1/p')",
+      "replace": "MODE=$(gauge 's/^lei_stripe_mode{mode=\"\\([a-z_]*\\)\"} 1$/\\1/p')\n[ \"$MODE\" = \"live\" ] || exit 0",
       "guarded_by": "test/lei_service/stripe_account_hold_test.exs",
       "app": "apps/lei_service"
     },
