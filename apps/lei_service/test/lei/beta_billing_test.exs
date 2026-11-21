@@ -227,7 +227,7 @@ defmodule Lei.BetaBillingTest do
       conn = :get |> Plug.Test.conn("/terms") |> LeiService.Endpoint.call([])
 
       assert conn.status == 200
-      assert conn.resp_body =~ "Nothing is charged today"
+      assert conn.resp_body =~ "Analysis is free during beta"
       # The two statements that must be there whatever the mode.
       assert conn.resp_body =~ "no warranty of any kind"
       assert conn.resp_body =~ "at your own risk"
