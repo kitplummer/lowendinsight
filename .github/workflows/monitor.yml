@@ -469,6 +469,16 @@ jobs:
 
           exit $FAILED
 
+      # A Stripe account hold switches off charges or payouts, and nothing else
+      # here can see either: a held account answers every read /readyz makes,
+      # and paused payouts change no other signal at all (#365). Enforced in
+      # live mode only; in test mode the flags are reported. The deployed
+      # commit's copy, because this checkout is main and can be ahead of it.
+      - name: Check the Stripe account can take charges and pay out
+        id: stripe_account
+        shell: bash
+        run: scripts/ops/run-deployed.sh https://lowendinsight.dev scripts/check-stripe-account.sh < "$RUNNER_TEMP/metrics.txt"
+
       # Between deploys, nothing else exercises the journey the site exists
       # for. Not strict here: without an admin key the analysis check can be
       # satisfied by a cached report, and the canary says so rather than
@@ -630,6 +640,7 @@ jobs:
           WEBHOOKS: ${{ steps.webhooks.outcome }}
           LEDGER: ${{ steps.ledger.outcome }}
           PAYMENTS: ${{ steps.payments.outcome }}
+          STRIPE_ACCOUNT: ${{ steps.stripe_account.outcome }}
           CANARY: ${{ steps.canary.outcome }}
           SMOKE: ${{ steps.smoke.outcome }}
           DEPLOYED: ${{ steps.deployed.outcome }}
@@ -638,7 +649,8 @@ jobs:
           # than that something is.
           FAILED=""
           for pair in "alerting:$ALERTING" "billing_mode:$BILLING_MODE" "readiness:$READINESS" "queue:$QUEUE" "webhooks:$WEBHOOKS" \
-                      "ledger:$LEDGER" "payments:$PAYMENTS" "canary:$CANARY" "smoke:$SMOKE" \
+                      "ledger:$LEDGER" "payments:$PAYMENTS" "stripe_account:$STRIPE_ACCOUNT" \
+                      "canary:$CANARY" "smoke:$SMOKE" \
                       "deployed:$DEPLOYED"; do
             name="${pair%%:*}"
             outcome="${pair#*:}"
@@ -666,7 +678,7 @@ jobs:
           # Money and a dead dependency wake someone up. A canary or smoke
           # failure is a broken journey worth looking at now, not at 3am.
           case "$FAILED" in
-            *readiness*|*payments*|*ledger*|*webhooks*) PRIORITY=5 ;;
+            *readiness*|*payments*|*ledger*|*webhooks*|*stripe_account*) PRIORITY=5 ;;
             *) PRIORITY=4 ;;
           esac
 
