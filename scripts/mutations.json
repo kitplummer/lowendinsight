@@ -5157,6 +5157,87 @@
       "replace": "    <strong>Payments are refundable within 30 days</strong>, except where the law requires",
       "guarded_by": "test/lei_service/terms_charges_test.exs",
       "app": "apps/lei_service"
+    },
+    {
+      "id": "hold-unread-account-reads-as-enabled",
+      "bug": "A Stripe answer without charges_enabled/payouts_enabled read as an account in good standing: the all-clear nobody gave, on exactly the response a hold detector must not trust.",
+      "file": "apps/lei_service/lib/lei/stripe/object_check.ex",
+      "find": "          {:ok, _} ->\n            unread(\"unreachable\")",
+      "replace": "          {:ok, _} ->\n            %{result: \"ok\", charges_enabled: true, payouts_enabled: true, disabled_reason: nil}",
+      "guarded_by": "test/lei/stripe/object_check_test.exs",
+      "app": "apps/lei_service"
+    },
+    {
+      "id": "hold-fails-the-stripe-check",
+      "bug": "A hold folded into checks.stripe would make the deploy canary roll back every release while it lasts -- a rollback that cannot clear a hold and blocks shipping a fix.",
+      "file": "apps/lei_service/lib/lei/stripe/object_check.ex",
+      "find": "    {:reply, worst([state.result, deposit]), state}",
+      "replace": "    {:reply, worst([state.result, deposit, if(state.account.charges_enabled == false, do: \"mismatch\", else: \"ok\")]), state}",
+      "guarded_by": "test/lei/stripe/object_check_test.exs",
+      "app": "apps/lei_service"
+    },
+    {
+      "id": "hold-metric-guesses-flags",
+      "bug": "An account that was never read published charges/payouts flags anyway: 0 is a hold nobody placed, and a nil cast to 1 would be an all-clear.",
+      "file": "apps/lei_service/lib/lei/metrics.ex",
+      "find": "          is_boolean(Map.get(account, measure)) do",
+      "replace": "          true do",
+      "guarded_by": "test/lei_service/stripe_account_hold_test.exs",
+      "app": "apps/lei_service"
+    },
+    {
+      "id": "hold-metric-not-collected",
+      "bug": "The account gauges defined but not wired into /metrics: the monitor's check would find nothing to read (lei_ops#1).",
+      "file": "apps/lei_service/lib/lei/metrics.ex",
+      "find": "      stripe_account_metrics(Lei.Stripe.ObjectCheck.account()),",
+      "replace": "      [],",
+      "guarded_by": "test/lei_service/stripe_account_hold_test.exs",
+      "app": "apps/lei_service"
+    },
+    {
+      "id": "hold-enforced-in-sandbox",
+      "bug": "Enforcing the hold flags in test mode: an account not activated for live payments reports both false while sandbox payments work, so the monitor would page every 15 minutes for a state we chose.",
+      "file": "scripts/check-stripe-account.sh",
+      "find": "if [ \"$MODE\" != \"live\" ]; then",
+      "replace": "if [ \"$MODE\" = \"never\" ]; then",
+      "guarded_by": "test/lei_service/stripe_account_hold_test.exs",
+      "app": "apps/lei_service"
+    },
+    {
+      "id": "hold-check-passes-without-metrics",
+      "bug": "The hold check passing when /metrics publishes no lei_stripe_account at all -- an absent check reading exactly like a clean one.",
+      "file": "scripts/check-stripe-account.sh",
+      "find": "if [ -z \"$CHECK\" ]; then",
+      "replace": "if false; then",
+      "guarded_by": "test/lei_service/stripe_account_hold_test.exs",
+      "app": "apps/lei_service"
+    },
+    {
+      "id": "hold-check-passes-unreadable-account",
+      "bug": "Live mode with an account that could not be read (an unauthorized key) passing: a hold would be invisible for as long as the key lacked the permission.",
+      "file": "scripts/check-stripe-account.sh",
+      "find": "if [ \"$CHECK\" != \"ok\" ]; then",
+      "replace": "if false; then",
+      "guarded_by": "test/lei_service/stripe_account_hold_test.exs",
+      "app": "apps/lei_service"
+    },
+    {
+      "id": "hold-check-ignores-paused-payouts",
+      "bug": "Paused payouts not failing the check -- the one hold nothing else in this repository can see: money arrives, the ledger reconciles, none of it reaches the bank.",
+      "file": "scripts/check-stripe-account.sh",
+      "find": "if [ \"$PAYOUTS\" != \"1\" ]; then",
+      "replace": "if false; then",
+      "guarded_by": "test/lei_service/stripe_account_hold_test.exs",
+      "app": "apps/lei_service"
+    },
+    {
+      "id": "hold-check-ignores-disabled-charges",
+      "bug": "Disabled charges not failing the check in live mode: every rail keeps issuing challenges Stripe will not settle.",
+      "file": "scripts/check-stripe-account.sh",
+      "find": "if [ \"$CHARGES\" != \"1\" ]; then",
+      "replace": "if false; then",
+      "guarded_by": "test/lei_service/stripe_account_hold_test.exs",
+      "app": "apps/lei_service"
     }
   ]
 }

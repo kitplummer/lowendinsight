@@ -30,6 +30,19 @@ defmodule Lei.Stripe.ObjectCheck do
 
   Outside production, no key at all is `"ok"`: billing is off on purpose there,
   and there is nothing configured to be wrong.
+
+  ## The account, read beside the objects
+
+  A held account answers every read above perfectly well, so `status/1` stays
+  `"ok"` through a hold. `check_account/3` reads whether the account may take
+  charges and pay out, and `account/1` reports it for `/metrics`, where the
+  monitor reads it.
+
+  It is deliberately **not** folded into `status/1`. The deploy canary rolls
+  back on anything there but ok, pending or unreachable, and a hold is
+  Stripe's decision about the account, not a fault in the release: rolling
+  back would not clear it, and would block shipping a fix for as long as it
+  lasted.
   """
 
   use GenServer
@@ -50,6 +63,18 @@ defmodule Lei.Stripe.ObjectCheck do
     GenServer.call(server, :status, 1_000)
   catch
     :exit, _ -> "not_running"
+  end
+
+  @doc """
+  The latest account read: `result` (`"ok"`, `"unauthorized"`, `"unreachable"`,
+  `"unconfigured"`, `"malformed"`, `"pending"`, or `"not_running"`), and
+  `charges_enabled`, `payouts_enabled` and `disabled_reason` as Stripe gave
+  them. The flags are `nil` whenever the account was not read, never a guess.
+  """
+  def account(server \\ __MODULE__) do
+    GenServer.call(server, :account, 1_000)
+  catch
+    :exit, _ -> unread("not_running")
   end
 
   @doc """
@@ -97,6 +122,46 @@ defmodule Lei.Stripe.ObjectCheck do
         end
     end
   end
+
+  @doc """
+  Reads whether the key's account may take charges and pay out -- the two
+  things a hold switches off, independently. Pure apart from the Stripe call.
+  """
+  def check_account(key, deploy_env, stripe_module) do
+    case Lei.Stripe.Mode.of(key) do
+      :malformed ->
+        unread("malformed")
+
+      :unconfigured ->
+        unread(if Lei.Stripe.Mode.production?(deploy_env), do: "unconfigured", else: "ok")
+
+      _mode ->
+        case stripe_module.retrieve_account() do
+          {:ok, %{"charges_enabled" => charges, "payouts_enabled" => payouts} = account}
+          when is_boolean(charges) and is_boolean(payouts) ->
+            %{
+              result: "ok",
+              charges_enabled: charges,
+              payouts_enabled: payouts,
+              disabled_reason: get_in(account, ["requirements", "disabled_reason"])
+            }
+
+          # A 200 without both flags is not an account in good standing: reading
+          # a missing flag as enabled would be the all-clear nobody gave.
+          {:ok, _} ->
+            unread("unreachable")
+
+          {:error, {status, _}} when status in [401, 403] ->
+            unread("unauthorized")
+
+          _ ->
+            unread("unreachable")
+        end
+    end
+  end
+
+  defp unread(result),
+    do: %{result: result, charges_enabled: nil, payouts_enabled: nil, disabled_reason: nil}
 
   @doc """
   Runs the check once, synchronously. Pure apart from the Stripe calls, which
@@ -177,6 +242,7 @@ defmodule Lei.Stripe.ObjectCheck do
     state = %{
       result: "pending",
       deposit: {nil, "pending"},
+      account: unread("pending"),
       config: Keyword.get(opts, :config, &config/0),
       recheck_ms: Keyword.get(opts, :recheck_ms, @recheck_ms),
       retry_ms: Keyword.get(opts, :retry_ms, @retry_ms)
@@ -191,6 +257,8 @@ defmodule Lei.Stripe.ObjectCheck do
     {_address, deposit} = state.deposit
     {:reply, worst([state.result, deposit]), state}
   end
+
+  def handle_call(:account, _from, state), do: {:reply, state.account, state}
 
   def handle_call({:deposit_confirmed?, address}, _from, state) do
     {:reply, state.deposit == {address, "ok"}, state}
@@ -210,6 +278,14 @@ defmodule Lei.Stripe.ObjectCheck do
 
     {_, deposit_result} = deposit
 
+    account =
+      case safely(fn -> check_account(key, deploy_env, stripe_module) end) do
+        %{} = read -> read
+        failed -> unread(failed)
+      end
+
+    log_account(account, state.account)
+
     if deposit_result not in ["ok", elem(state.deposit, 1)] do
       Logger.error("Stripe deposit address check: #{deposit_result}")
     end
@@ -219,10 +295,25 @@ defmodule Lei.Stripe.ObjectCheck do
     end
 
     delay =
-      if "unreachable" in [result, deposit_result], do: state.retry_ms, else: state.recheck_ms
+      if "unreachable" in [result, deposit_result, account.result],
+        do: state.retry_ms,
+        else: state.recheck_ms
 
     Process.send_after(self(), :check, delay)
-    {:noreply, %{state | result: result, deposit: deposit}}
+    {:noreply, %{state | result: result, deposit: deposit, account: account}}
+  end
+
+  # Logged on change only, so an hourly re-read of a lasting hold is one line.
+  defp log_account(account, previous) do
+    if account != previous and
+         (account.result != "ok" or account.charges_enabled == false or
+            account.payouts_enabled == false) do
+      Logger.error(
+        "Stripe account: #{account.result}, charges_enabled=#{inspect(account.charges_enabled)}, " <>
+          "payouts_enabled=#{inspect(account.payouts_enabled)}, " <>
+          "disabled_reason=#{inspect(account.disabled_reason)}"
+      )
+    end
   end
 
   defp safely(fun) do
